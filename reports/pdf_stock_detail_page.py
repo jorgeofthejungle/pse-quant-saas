@@ -75,7 +75,7 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
                 fontName='Helvetica', alignment=TA_CENTER
             ))],
             [Paragraph(
-                f"{grade(sc)} — {grade_label(sc)}",
+                f"{grade(sc)}  {grade_label(sc)}",
                 ParagraphStyle(
                     'GV', fontSize=11, textColor=score_color(sc),
                     fontName='Helvetica-Bold', alignment=TA_CENTER

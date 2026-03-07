@@ -20,7 +20,10 @@ try:
 except ImportError:
     _ANTHROPIC_AVAILABLE = False
 
-MODEL = "claude-haiku-4-5-20251001"
+try:
+    from config import PIPELINE_AI_MODEL as MODEL
+except ImportError:
+    MODEL = "claude-haiku-4-5-20251001"
 
 _PROMPT_TEMPLATE = """\
 You are a financial news analyst for the Philippine Stock Exchange.

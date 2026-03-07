@@ -47,6 +47,14 @@ SCRAPE_DELAY_SECS   = 3     # seconds between requests — be respectful
 REQUEST_TIMEOUT     = 30    # seconds before a request times out
 MAX_RETRIES         = 3     # number of retry attempts for failed requests
 
+# ── AI Model Selection ─────────────────────────────────────
+# Pipeline runs (sentiment analysis, news classification):
+#   → Use Haiku — fast, cheap, sufficient for classification tasks.
+# Self-repair / error analysis (if AI-assisted code correction is added):
+#   → Use Sonnet — smarter, better at reasoning about code errors.
+PIPELINE_AI_MODEL   = "claude-haiku-4-5-20251001"   # sentiment, news, classification
+SELF_REPAIR_MODEL   = "claude-sonnet-4-6"            # error diagnosis, code repair
+
 # ── Financial Model Settings ───────────────────────────────
 # These match the values in mos.py — update both if you change them
 PH_RISK_FREE_RATE   = 0.065   # PH 10-year T-bond rate (~6.5%)

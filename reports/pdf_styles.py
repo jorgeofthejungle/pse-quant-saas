@@ -8,25 +8,29 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.platypus import Flowable
 
-# ── Colour Palette ──────────────────────────────────────────
-NAVY        = colors.HexColor('#1B4B6B')
-NAVY_LIGHT  = colors.HexColor('#2C6A8F')
-GOLD        = colors.HexColor('#4CAF7D')
-GOLD_LIGHT  = colors.HexColor('#E8F8F0')
-GREEN       = colors.HexColor('#27AE60')
+# ── Stockpilot Brand Colours ─────────────────────────────────
+# Matched to the Stockpilot Philippines logo:
+#   Deep navy (#0D1F3C) — primary headers and backgrounds
+#   Amber gold (#F0A500) — accent bars, dividers, highlights
+NAVY        = colors.HexColor('#0D1F3C')   # Deep navy (logo background)
+NAVY_LIGHT  = colors.HexColor('#1A3564')   # Secondary headers
+GOLD        = colors.HexColor('#F0A500')   # Amber gold (logo accent)
+GOLD_LIGHT  = colors.HexColor('#FDF3DC')   # Light gold tint for row backgrounds
+GREEN       = colors.HexColor('#27AE60')   # Positive / buy zone
 GREEN_LIGHT = colors.HexColor('#D5F5E3')
-RED         = colors.HexColor('#E74C3C')
+RED         = colors.HexColor('#E74C3C')   # Negative / above IV
 RED_LIGHT   = colors.HexColor('#FADBD8')
-BLUE        = colors.HexColor('#2980B9')
-BLUE_LIGHT  = colors.HexColor('#E8F4FD')
-ORANGE      = colors.HexColor('#E67E22')
+BLUE        = colors.HexColor('#2471A3')   # Fairly valued
+BLUE_LIGHT  = colors.HexColor('#EBF5FB')
+ORANGE      = colors.HexColor('#E67E22')   # Caution
 ORANGE_LIGHT= colors.HexColor('#FDEBD0')
 LIGHT_GREY  = colors.HexColor('#F5F7FA')
 MID_GREY    = colors.HexColor('#BDC3C7')
 DARK_GREY   = colors.HexColor('#566573')
 WHITE       = colors.white
-BLACK       = colors.HexColor('#2C3E50')
+BLACK       = colors.HexColor('#1A252F')
 
 # ── Page Settings ───────────────────────────────────────────
 PAGE_WIDTH, PAGE_HEIGHT = A4
@@ -39,54 +43,56 @@ CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
 MOS_EXPLAIN = {
     'STRONG BUY ZONE': (
         GREEN,
-        'Trading WELL BELOW our calculated fair value. '
-        'Large safety cushion — you are paying significantly '
-        'less than what the business appears to be worth.'
+        'This stock is trading WELL BELOW our calculated fair value. '
+        'You are paying significantly less than what the business appears to be worth. '
+        'A wide margin of safety gives you more cushion if our estimates are off.'
     ),
     'BUY ZONE': (
         BLUE,
-        'Trading BELOW our calculated fair value. '
-        'Reasonable safety margin. The price appears attractive '
-        'relative to the underlying business fundamentals.'
+        'This stock is trading BELOW our calculated fair value. '
+        'The price looks attractive relative to the underlying business fundamentals. '
+        'A reasonable margin of safety is present.'
     ),
     'FAIRLY VALUED': (
         ORANGE,
-        'Trading NEAR our calculated fair value. Not expensive, '
-        'but the margin of safety is thin. Consider waiting '
-        'for a better entry price.'
+        'This stock is trading NEAR our calculated fair value. '
+        'It is not expensive, but the margin of safety is thin. '
+        'Patient investors may want to wait for a lower entry price.'
     ),
     'ABOVE IV': (
         RED,
-        'Trading ABOVE our calculated fair value. Based on '
-        'current fundamentals, the market may be overpricing '
-        'this stock. Exercise caution.'
+        'This stock is trading ABOVE our calculated fair value. '
+        'Based on current fundamentals, the market may be overpricing this stock. '
+        'Proceed with extra caution and verify the fundamentals carefully.'
     ),
 }
 
 PORTFOLIO_EXPLAIN = {
     'pure_dividend': (
         'What is a Pure Dividend Portfolio?',
-        'This portfolio targets stocks that pay the HIGHEST CURRENT INCOME — '
-        'like collecting rent on your investments every quarter. '
-        'The goal is maximum cash flow from dividends RIGHT NOW, '
-        'with a strict focus on payout safety and earnings stability. '
-        'Ideal for investors who need reliable income today.'
+        'Think of this like collecting rent. This portfolio finds stocks that pay '
+        'the highest cash dividends right now. Every quarter, qualifying companies '
+        'send cash directly to shareholders. The screening is strict: companies must '
+        'have a proven track record of paying dividends, a safe payout ratio, and '
+        'enough free cash flow to sustain those payments. Best suited for investors '
+        'who want reliable income in their hands today.'
     ),
     'dividend_growth': (
         'What is a Dividend Growth Portfolio?',
-        'This portfolio targets stocks that GROW their dividends year after year — '
-        'faster than inflation. You start with a moderate yield, but the '
-        'income compounds over time. A stock paying 4% today at 10% CAGR '
-        'pays 6.4% on your original cost in 5 years. '
-        'Ideal for investors building long-term wealth and rising income.'
+        'This portfolio finds companies that consistently raise their dividend every '
+        'year, even if the starting yield is modest. The power of compounding works '
+        'in your favour over time. A stock paying 4% today that grows its dividend '
+        'at 10% per year pays 6.4% on your original cost after just 5 years. '
+        'Best suited for investors who are building long-term wealth and want their '
+        'income to grow faster than inflation.'
     ),
     'value': (
         'What is a Value Portfolio?',
-        'This portfolio looks for stocks that are UNDERPRICED — '
-        'great businesses available at a discount to their true worth. '
-        'Inspired by Warren Buffett and Benjamin Graham. '
-        'The goal is capital growth as the market eventually '
-        'recognises the business\'s true value.'
+        'This portfolio hunts for great businesses that are selling at a price below '
+        'what they are truly worth. Inspired by the principles of Warren Buffett and '
+        'Benjamin Graham, it uses multiple valuation tools to estimate fair value '
+        'and only includes stocks trading at a meaningful discount. The goal is '
+        'capital growth as the market eventually recognises the true value of the business.'
     ),
 }
 
@@ -125,7 +131,7 @@ def build_styles():
     ))
     styles.add(ParagraphStyle(
         name='GoldLabel',
-        fontSize=9, textColor=NAVY, alignment=TA_LEFT,
+        fontSize=9, textColor=GOLD, alignment=TA_LEFT,
         fontName='Helvetica-Bold', spaceAfter=3, spaceBefore=4
     ))
     styles.add(ParagraphStyle(
@@ -170,3 +176,68 @@ def mos_signal(mos_pct):
     elif mos_pct >= 15:  return 'BUY ZONE'
     elif mos_pct >= 0:   return 'FAIRLY VALUED'
     else:                return 'ABOVE IV'
+
+
+# ── Stockpilot Bar Chart Icon ────────────────────────────────
+# Draws the 3-bar rising chart icon from the Stockpilot logo.
+# Colors: deep navy background, amber gold bars, darker amber shadow.
+_ICON_GOLD  = colors.HexColor('#F0A500')
+_ICON_SHADE = colors.HexColor('#B07800')   # bottom shadow on bars
+
+
+def draw_bar_icon(canv, x, y, size):
+    """
+    Draw the Stockpilot 3-bar rising chart icon onto a canvas.
+    Args:
+        canv  : ReportLab canvas object
+        x, y  : bottom-left corner of the icon bounding box (points)
+        size  : width = height of the icon (square)
+    """
+    canv.saveState()
+
+    # Navy background square
+    canv.setFillColor(NAVY)
+    canv.roundRect(x, y, size, size, size * 0.07, fill=1, stroke=0)
+
+    # Bar layout
+    pad      = size * 0.11
+    bar_w    = size * 0.20
+    gap      = size * 0.065
+    base_y   = y + pad
+    max_h    = size - 2 * pad
+    shadow_h = size * 0.13   # fixed absolute shadow height (same on all bars)
+
+    # Bar heights (fraction of max_h): short, medium, tall
+    fractions = [0.36, 0.63, 0.93]
+    total_w   = 3 * bar_w + 2 * gap
+    start_x   = x + (size - total_w) / 2
+
+    for i, frac in enumerate(fractions):
+        bx = start_x + i * (bar_w + gap)
+        bh = max_h * frac
+        sh = min(shadow_h, bh)
+
+        # Darker amber shadow at the base
+        canv.setFillColor(_ICON_SHADE)
+        canv.rect(bx, base_y, bar_w, sh, fill=1, stroke=0)
+
+        # Gold main bar above shadow
+        canv.setFillColor(_ICON_GOLD)
+        canv.rect(bx, base_y + sh, bar_w, bh - sh, fill=1, stroke=0)
+
+    canv.restoreState()
+
+
+class BarChartIcon(Flowable):
+    """
+    ReportLab Platypus Flowable that renders the Stockpilot bar chart icon.
+    Use inside Table cells or directly in a story.
+    """
+    def __init__(self, size):
+        Flowable.__init__(self)
+        self.size   = size
+        self.width  = size
+        self.height = size
+
+    def draw(self):
+        draw_bar_icon(self.canv, 0, 0, self.size)

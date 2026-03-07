@@ -20,6 +20,14 @@ You never ask the user to paste code, run commands, or fix errors manually
 unless the error requires something only they can provide
 (e.g. a missing API key, a PSE Edge login, or a file only they have).
 
+### AI Model Policy
+- **Pipeline / classification tasks** (sentiment analysis, news scoring):
+  Use `PIPELINE_AI_MODEL` from `config.py` → currently `claude-haiku-4-5-20251001`
+- **Self-repair / error diagnosis** (any AI-assisted debugging or code repair):
+  Use `SELF_REPAIR_MODEL` from `config.py` → currently `claude-sonnet-4-6`
+
+Never hardcode model strings. Always import from `config.py`.
+
 ---
 
 ## 2. PROJECT OVERVIEW
@@ -29,15 +37,18 @@ unless the error requires something only they can provide
 - Parses and stores data in a local SQLite database
 - Scores every PSE stock across 3 portfolio strategies
 - Calculates Margin of Safety (intrinsic value vs current price)
+- Enriches top stocks with AI-powered news sentiment (Claude Haiku)
 - Generates professional PDF reports
 - Delivers reports to Discord automatically on a schedule
+- Sends real-time alerts for new dividends, earnings, and price triggers
+- Provides a local Flask dashboard for admin and member management
 
 **Three portfolio strategies:**
 | Portfolio | Focus | Key Metrics |
 |-----------|-------|-------------|
-| DIVIDEND  | Passive income | Yield, Payout Ratio, FCF Coverage, Dividend CAGR |
-| VALUE     | Undervalued businesses | P/E, P/B, EV/EBITDA, ROE, Revenue CAGR |
-| HYBRID    | Income + Value combined | Blend of both above |
+| PURE DIVIDEND | Passive income, yield ≥ 3% | Yield, Payout Ratio, FCF Coverage, Dividend CAGR |
+| DIVIDEND GROWTH | Dividend growers, CAGR > 0% | CAGR, payout ≤ 75%, MoS 20% |
+| VALUE | Undervalued businesses | P/E, P/B, EV/EBITDA, ROE, Revenue CAGR, MoS 30% |
 
 **Architecture pipeline:**
 ```
@@ -45,7 +56,9 @@ PSE Edge → Scraper → Parser → Validator → Database
                                               ↓
                               Metrics → Filter → Scorer → MoS
                                                             ↓
-                                              PDF Report → Discord
+                                    Sentiment (Haiku) → PDF Report
+                                                            ↓
+                                                   Discord → Members
 ```
 
 ---
@@ -55,34 +68,71 @@ PSE Edge → Scraper → Parser → Validator → Database
 ```
 pse-quant-saas/
 ├── CLAUDE.md               ← YOU ARE HERE
-├── .env                    ← API keys and config (never commit this)
+├── README.md               ← Public-facing system overview
+├── config.py               ← Central config (models, URLs, thresholds)
+├── .env                    ← API keys and secrets (never commit this)
 ├── main.py                 ← Entry point — runs the full pipeline
 │
 ├── engine/                 ← Core calculation logic (DETERMINISTIC)
-│   ├── metrics.py          ← Financial ratio calculators ✅ DONE
-│   ├── filters.py          ← Portfolio eligibility filters ✅ DONE
-│   ├── scorer.py           ← 0-100 scoring engine ✅ DONE
-│   ├── mos.py              ← Margin of Safety calculator ✅ DONE
-│   └── validator.py        ← Data validation layer ⬜ TODO
+│   ├── metrics.py          ← Financial ratio calculators ✅
+│   ├── filters.py          ← Portfolio eligibility filters ✅
+│   ├── scorer.py           ← 0-100 scoring engine ✅ (facade)
+│   │   ├── scorer_utils.py
+│   │   └── scorer_explanations.py
+│   ├── mos.py              ← Margin of Safety calculator ✅
+│   ├── validator.py        ← Data validation layer ✅
+│   └── sentiment_engine.py ← Claude Haiku news sentiment ✅
 │
 ├── scraper/                ← PSE Edge data collection
-│   ├── pse_scraper.py      ← Main scraper ⬜ TODO
-│   ├── pdf_parser.py       ← Parses PSE Edge PDF disclosures ⬜ TODO
-│   └── session.py          ← HTTP session manager ⬜ TODO
+│   ├── pse_edge_scraper.py ← Main scraper facade ✅
+│   │   ├── pse_session.py
+│   │   ├── pse_lookup.py
+│   │   ├── pse_stock_data.py
+│   │   └── pse_financial_reports.py
+│   └── news_fetcher.py     ← Yahoo Finance + news RSS ✅
 │
 ├── db/                     ← Database layer
-│   ├── database.py         ← SQLite connection and schema ⬜ TODO
-│   ├── models.py           ← Table definitions ⬜ TODO
-│   └── pse_quant.db        ← SQLite database file (auto-created)
+│   ├── database.py         ← Facade (re-exports all DB functions) ✅
+│   ├── db_connection.py    ← SQLite connection + DB_PATH ✅
+│   ├── db_schema.py        ← Table creation (init_db) ✅
+│   ├── db_prices.py        ← Price data CRUD ✅
+│   ├── db_scores.py        ← Score storage + get_last_top5 ✅
+│   ├── db_financials.py    ← Financial data CRUD ✅
+│   └── db_sentiment.py     ← Sentiment cache CRUD ✅
 │
 ├── reports/                ← PDF generation
-│   └── pdf_generator.py    ← PDF report builder ✅ DONE
+│   ├── pdf_generator.py    ← Facade ✅
+│   ├── pdf_styles.py
+│   ├── pdf_cover_page.py
+│   ├── pdf_rankings_table.py
+│   ├── pdf_stock_detail_page.py
+│   └── pdf_sentiment.py
 │
 ├── discord/                ← Discord delivery
-│   └── publisher.py        ← Sends reports to Discord ✅ DONE
+│   ├── publisher.py        ← Facade ✅
+│   ├── discord_core.py
+│   ├── discord_reports.py
+│   └── discord_alerts.py
 │
-├── alerts/                 ← Real-time alerts
-│   └── alert_engine.py     ← Disclosure and price alerts ⬜ TODO
+├── alerts/
+│   └── alert_engine.py     ← Price, dividend, earnings alerts ✅
+│
+├── dashboard/              ← Local Flask admin dashboard ✅
+│   ├── app.py              ← Flask app factory, runs on :8080
+│   ├── background.py       ← Thread-based pipeline runner
+│   ├── db_members.py       ← Members/subscriptions DB operations
+│   ├── routes_home.py      ← Overview page + /api/status
+│   ├── routes_pipeline.py  ← Pipeline controls + status polling
+│   ├── routes_members.py   ← Member CRUD + extend/cancel
+│   ├── routes_analytics.py ← Chart data JSON endpoints
+│   ├── routes_settings.py  ← Config display + webhook test
+│   ├── routes_paymongo.py  ← PayMongo payment link generation
+│   ├── templates/          ← Jinja2 HTML templates (7 files)
+│   └── static/             ← CSS + JS (style.css, dashboard.js)
+│
+├── scheduler.py            ← APScheduler facade ✅
+│   ├── scheduler_data.py   ← Ticker lists + run-date helpers
+│   └── scheduler_jobs.py   ← daily_job, run_alert_check
 │
 ├── data/
 │   ├── raw/                ← Raw scraped HTML/JSON
@@ -90,12 +140,12 @@ pse-quant-saas/
 │   └── reports/            ← Generated PDF output files
 │
 └── tests/
-    ├── test_metrics.py     ✅ DONE
-    ├── test_filters.py     ✅ DONE
-    ├── test_scorer.py      ✅ DONE
-    ├── test_mos.py         ✅ DONE
-    ├── test_pdf.py         ✅ DONE
-    └── test_discord.py     ✅ DONE
+    ├── test_metrics.py     ✅
+    ├── test_filters.py     ✅
+    ├── test_scorer.py      ✅
+    ├── test_mos.py         ✅
+    ├── test_pdf.py         ✅
+    └── test_discord.py     ✅
 ```
 
 ---
@@ -118,10 +168,10 @@ Functions: `filter_dividend_portfolio(stock)`,
 Each returns: `(eligible: bool, reason: str)`
 Bank and REIT sector exemptions are already implemented.
 
-### engine/scorer.py
+### engine/scorer.py (facade)
 Functions: `score_dividend(metrics)`, `score_value(metrics)`,
-`score_hybrid(metrics)`
-Each returns: `(score: float, breakdown: dict)`
+`score_hybrid(metrics)` → each returns `(score: float, breakdown: dict)`
+Implementation split across `scorer_utils.py` + `scorer_explanations.py`.
 
 Breakdown dict format:
 ```python
@@ -144,18 +194,34 @@ Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`,
 Risk-free rate = 6.5% (PH 10Y T-bond). Update periodically.
 Max DDM growth rate capped at 7% to prevent model explosion.
 
-### reports/pdf_generator.py
+### engine/sentiment_engine.py
+Uses `PIPELINE_AI_MODEL` from `config.py` (Claude Haiku).
+Entry: `enrich_with_sentiment(stocks)` — enriches list in-place.
+Caches results in `sentiment` DB table for 24 hours.
+Returns `None` silently if `ANTHROPIC_API_KEY` is missing.
+
+### reports/pdf_generator.py (facade)
 Function: `generate_report(portfolio_type, ranked_stocks,
 output_path, total_stocks_screened)`
-Generates A4 PDF with cover page, rankings table,
-per-stock detail with score breakdowns and explanations,
-and methodology/disclaimer page.
+Includes sentiment panel per stock when `sentiment_data` is present.
 
-### discord/publisher.py
+### discord/publisher.py (facade)
 Loads webhook URLs from `.env` via `python-dotenv`.
 Functions: `send_report`, `send_dividend_alert`,
 `send_price_alert`, `send_earnings_alert`,
-`send_rescore_notice`, `test_webhook`
+`send_rescore_notice`, `send_opportunistic_alert`, `test_webhook`
+
+### alerts/alert_engine.py
+Three checks: price (DB-only), dividend (PSE Edge), earnings (PSE Edge).
+First-run baseline: records existing disclosures without alerting.
+Only checks top-15 ranked tickers to avoid PSE Edge rate limits.
+CLI: `py alerts/alert_engine.py --dry-run`
+
+### dashboard/app.py
+Flask app — run with `py dashboard/app.py`, open `http://localhost:8080`.
+5 pages: Overview, Pipeline, Members, Analytics, Settings.
+PayMongo integration: generates payment links via API (manual confirmation).
+New DB tables: `members`, `subscriptions`, `activity_log`.
 
 ---
 
@@ -213,78 +279,32 @@ The validator will flag nulls and the scorer handles them gracefully.
 
 ## 6. DATABASE SCHEMA
 
-Target SQLite schema (to be built in Phase 3):
+SQLite database at: `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`
 
-```sql
-CREATE TABLE stocks (
-    ticker          TEXT PRIMARY KEY,
-    name            TEXT,
-    sector          TEXT,
-    is_reit         INTEGER DEFAULT 0,
-    is_bank         INTEGER DEFAULT 0,
-    last_updated    TEXT
-);
-
-CREATE TABLE financials (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker          TEXT,
-    year            INTEGER,
-    revenue         REAL,
-    net_income      REAL,
-    equity          REAL,
-    total_debt      REAL,
-    cash            REAL,
-    operating_cf    REAL,
-    capex           REAL,
-    ebitda          REAL,
-    eps             REAL,
-    dps             REAL,
-    FOREIGN KEY (ticker) REFERENCES stocks(ticker)
-);
-
-CREATE TABLE prices (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker          TEXT,
-    date            TEXT,
-    close           REAL,
-    market_cap      REAL,
-    FOREIGN KEY (ticker) REFERENCES stocks(ticker)
-);
-
-CREATE TABLE scores (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker          TEXT,
-    run_date        TEXT,
-    dividend_score  REAL,
-    value_score     REAL,
-    hybrid_score    REAL,
-    dividend_rank   INTEGER,
-    value_rank      INTEGER,
-    hybrid_rank     INTEGER,
-    FOREIGN KEY (ticker) REFERENCES stocks(ticker)
-);
-
-CREATE TABLE disclosures (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker          TEXT,
-    date            TEXT,
-    type            TEXT,
-    title           TEXT,
-    url             TEXT,
-    FOREIGN KEY (ticker) REFERENCES stocks(ticker)
-);
-```
+Tables:
+- `stocks` — ticker, name, sector, is_reit, is_bank, last_updated
+- `financials` — id, ticker, year, revenue, net_income, equity, total_debt, cash, operating_cf, capex, ebitda, eps, dps
+- `prices` — id, ticker, date, close, market_cap
+- `scores` — id, ticker, run_date, pure_dividend_score, dividend_growth_score, value_score, and ranks
+- `disclosures` — id, ticker, date, type, title, url (used for alert dedup)
+- `sentiment` — id, ticker, date, score, category, key_events, summary, opportunistic_flag, risk_flag, headlines
+- `members` — id, discord_name, discord_id, email, plan, status, expiry_date, notes, created_at
+- `subscriptions` — id, member_id, plan, amount, paid_at, expiry_date, notes
+- `activity_log` — id, category, action, detail, status, timestamp
 
 ---
 
 ## 7. SYSTEM RULES — NON-NEGOTIABLE
 
-These come directly from the project's instruction manual:
-
 ### Deterministic scoring
 - Scoring logic is pure Python — no AI, no ML, no randomness
 - Same inputs always produce same outputs
 - Never modify weights or thresholds without explicit instruction
+
+### AI model discipline
+- Pipeline AI calls → `PIPELINE_AI_MODEL` (Haiku) from `config.py`
+- Self-repair AI calls → `SELF_REPAIR_MODEL` (Sonnet) from `config.py`
+- Never hardcode model strings in application files
 
 ### Data integrity
 - Never invent or approximate missing financial data
@@ -303,135 +323,108 @@ These come directly from the project's instruction manual:
 - Data sourced from PSE Edge must credit PSE Edge
 - Do not store raw financial data outside the local machine
 
+### File size discipline
+- Keep all files under 500 lines
+- Use facade pattern: thin re-export module + focused sub-modules
+- Do not refactor working code unless explicitly instructed
+
 ---
+
 ## 7A. EDUCATIONAL COMMUNICATION LAYER — REPORT WRITING STANDARD
 
-This system is deterministic in calculation,
-but educational in communication.
+This system is deterministic in calculation, but educational in communication.
+All PDF explanations, stock summaries, and breakdown text must follow this framework.
 
-All PDF explanations, stock summaries, and breakdown text
-must follow this communication framework.
+### Role when writing report text
+Senior investment learning designer — not a salesperson, not a promoter.
 
-### ROLE WHEN WRITING REPORT TEXT
+### Writing style
+1. Simple language. Short sentences.
+2. Explain financial terms immediately in plain English.
+3. Never assume prior investing knowledge.
+4. Always explain both strengths and risks.
+5. Never promise returns. Never imply a recommendation.
+6. Always reinforce that intrinsic value is a mathematical estimate — not a price target.
 
-When generating any explanation text (PDF reports, score breakdown explanations, summaries):
+### Tone
+Calm, analytical, neutral, beginner-friendly, rational, professional.
 
-You are a senior investment learning designer with 10+ years of experience
-educating beginner Philippine retail investors.
+### Key term definitions
+- P/E: "You are paying ₱X for every ₱1 the company earns per year."
+- ROE: "This measures how efficiently management uses shareholders' money."
+- D/E: "This shows how much the company relies on borrowed money."
+- MoS: "Discount between intrinsic value and current price. Larger = more cushion."
+- Intrinsic Value: "Mathematical estimate of fair business value. Not a price prediction."
 
-You are not a salesperson.
-You are not a hype promoter.
-You are an educator.
-
----
-
-### WRITING STYLE RULES
-
-1. Use simple language.
-2. Short sentences.
-3. Explain financial terms immediately in plain English.
-4. Never assume prior investing knowledge.
-5. Always explain both strengths and risks.
-6. Never promise returns.
-7. Never imply a recommendation.
-8. Always reinforce that intrinsic value is a mathematical estimate — not a price target.
-9. Always reinforce that this is for research and educational purposes only.
-
----
-
-### TONE
-
-- Calm
-- Analytical
-- Neutral
-- Beginner-friendly
-- Rational
-- Professional but understandable
-
-Never:
-- Use dramatic language
-- Use urgency tactics
-- Use phrases like “don’t miss out”
-- Declare a stock “the best”
-- Suggest guaranteed upside
-
----
-
-### HOW TO EXPLAIN COMMON TERMS
-
-When these terms appear in the report, explain them clearly:
-
-P/E Ratio:
-"You are paying ₱X for every ₱1 the company earns per year."
-
-ROE:
-"This measures how efficiently management uses shareholders’ money."
-
-Debt/Equity:
-"This shows how much the company relies on borrowed money."
-
-Margin of Safety:
-"The discount between our calculated intrinsic value and the current price.
-A larger margin provides more cushion if our estimates are wrong."
-
-Intrinsic Value:
-"Our mathematical estimate of fair business value based on earnings,
-cash flow, or dividends. It is not a price prediction."
-
----
-
-### COMMUNICATION PRIORITY HIERARCHY
-
-If any conflict occurs between depth and clarity:
-
-1. Clarity > Complexity
-2. Education > Technical jargon
-3. Risk disclosure > Optimism
-4. Neutrality > Persuasion
-
----
-
-### OBJECTIVE OF REPORT TEXT
-
-A beginner reading the PDF should feel:
-
-- “I understand what this score means.”
-- “I understand why this stock ranked where it did.”
-- “I understand the risks.”
-- “I am learning how value investing works.”
-
-The goal is financial literacy — not stock promotion.
+### Priority hierarchy
+Clarity > Complexity | Education > Jargon | Risk > Optimism | Neutrality > Persuasion
 
 ---
 
 ## 8. PHASE ROADMAP
 
 ### Phase 1 — Engine Core ✅ COMPLETE
-All calculation and scoring logic. Tested with sample data.
+metrics.py, filters.py, scorer.py, mos.py, validator.py. All tested.
 
 ### Phase 2 — Reports & Delivery ✅ COMPLETE
-- [x] pdf_generator.py — professional PDF reports
-- [x] publisher.py — Discord delivery via webhook
-- [x] main.py — pipeline orchestrator (next task)
+pdf_generator.py, publisher.py, main.py.
 
-### Phase 3 — Data Pipeline ⬜ TODO
-- [ ] database.py — SQLite schema and connection
-- [ ] pse_scraper.py — scrape stock list and prices from PSE Edge
-- [ ] pdf_parser.py — parse annual report PDFs with pdfplumber
-- [ ] validator.py — validate and flag bad/missing data
+### Phase 3 — Data Pipeline ✅ COMPLETE
+database.py (+ sub-modules), pse_edge_scraper.py (+ sub-modules),
+news_fetcher.py, sentiment_engine.py.
+223 PSE stocks scraped. DB live at AppData/Local/pse_quant/.
 
-### Phase 4 — Automation ⬜ TODO
-- [ ] scheduler.py — APScheduler for weekly runs
-- [ ] alert_engine.py — Discord alerts for new disclosures
-- [ ] backtester.py — historical performance of scoring model
+### Phase 4 — Automation ✅ COMPLETE
+scheduler.py — daily scoring at 16:00 PHT, alert check at 06:30 PHT.
+alert_engine.py — price, dividend, earnings alerts with first-run dedup.
+
+### Phase 5 — Dashboard ✅ COMPLETE
+Local Flask dashboard at http://localhost:8080.
+Member management, PayMongo payment links, pipeline controls, analytics.
+
+### Phase 6 — Next (Backlog)
+- [ ] backtester.py — historical performance of scoring model vs PSEi
+- [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
+- [ ] REIT FFO-based FCF coverage exemption in dividend filters
+- [ ] Export rankings to CSV/Excel from dashboard
 
 ---
 
 ## 9. HOW TO RUN THE SYSTEM
 
 ```bash
-# Run full pipeline (when complete)
+# Full pipeline (all portfolios)
 py main.py
+
+# Single portfolio
+py main.py --portfolio pure_dividend
+py main.py --portfolio dividend_growth
+py main.py --portfolio value
+
+# Dry run (no Discord publish)
+py main.py --dry-run
+
+# Scheduler (continuous — runs jobs on schedule)
+py scheduler.py
+
+# Run scoring job now
+py scheduler.py --run-now
+
+# Run alert check now
+py scheduler.py --run-alerts
+
+# Alerts only
+py alerts/alert_engine.py --dry-run
+py alerts/alert_engine.py --check price
+py alerts/alert_engine.py --check dividend
+py alerts/alert_engine.py --check earnings
+
+# Local dashboard
+py dashboard/app.py
+# Open: http://localhost:8080
+
+# Test sentiment for one ticker
+py engine/sentiment_engine.py --ticker DMC
 
 # Run individual tests
 py tests/test_metrics.py
@@ -440,10 +433,6 @@ py tests/test_scorer.py
 py tests/test_mos.py
 py tests/test_pdf.py
 py tests/test_discord.py
-
-# Generate reports with sample data
-py tests/test_pdf.py
-# Output: Desktop\PSE_DIVIDEND_REPORT.pdf etc.
 ```
 
 **Python command on this machine: `py` (not `python`)**
@@ -454,29 +443,36 @@ Location: `C:\Users\Josh\AppData\Local\Python\pythoncore-3.14-64\`
 
 ## 10. INSTALLED PACKAGES
 
-All required packages are already installed:
 ```
 requests, beautifulsoup4, pdfplumber, reportlab,
 apscheduler, pydantic, pandas, pytest,
-python-dotenv, lxml
+python-dotenv, lxml, anthropic, flask
 ```
 
-Install missing packages with:
-```bash
-py -m pip install <package_name>
-```
+Install missing: `py -m pip install <package_name>`
 
 ---
 
-## 11. ENVIRONMENT VARIABLES
+## 11. ENVIRONMENT VARIABLES (.env)
 
-Create a `.env` file in the project root for secrets:
 ```
-DISCORD_WEBHOOK_DIVIDEND=https://discord.com/api/webhooks/...
+# Discord webhooks
+DISCORD_WEBHOOK_PURE_DIVIDEND=https://discord.com/api/webhooks/...
+DISCORD_WEBHOOK_DIVIDEND_GROWTH=https://discord.com/api/webhooks/...
 DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_HYBRID=https://discord.com/api/webhooks/...
+DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...
+
+# PSE Edge login
 PSE_EDGE_EMAIL=your@email.com
 PSE_EDGE_PASSWORD=yourpassword
+
+# AI sentiment (optional — dashboard works without this)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# PayMongo (optional — dashboard works without this)
+PAYMONGO_SECRET_KEY=sk_test_...
+MONTHLY_PRICE_CENTAVOS=29900
+ANNUAL_PRICE_CENTAVOS=299900
 ```
 
 Load with:
@@ -484,7 +480,7 @@ Load with:
 from dotenv import load_dotenv
 import os
 load_dotenv()
-webhook = os.getenv('DISCORD_WEBHOOK_DIVIDEND')
+webhook = os.getenv('DISCORD_WEBHOOK_PURE_DIVIDEND')
 ```
 
 ---
@@ -500,12 +496,16 @@ When you encounter an error:
 5. **If still failing after 3 attempts** — report the error to the user
    with: what you tried, what failed, and what you need from them
 
+**If adding AI-assisted self-repair logic, use `SELF_REPAIR_MODEL` (Sonnet).**
+
 Common errors on this Windows setup:
 - `ModuleNotFoundError` → run `py -m pip install <module>`
 - `FileNotFoundError` → create the directory first with `os.makedirs`
 - `SyntaxError` → check indentation and missing colons
 - `KeyError` on stock dict → add `.get('key', default)` not `['key']`
 - `return outside function` → check indentation of return statements
+- `UnicodeEncodeError` in print() → replace Unicode box chars with ASCII
+- SQL `SUM()` on empty table → returns NULL rows, always coerce with `or 0`
 
 ---
 
@@ -513,40 +513,31 @@ Common errors on this Windows setup:
 
 Work through these in order. Complete and test each before moving on.
 
-**IMMEDIATE — Phase 2 completion:**
-1. Build `main.py`
-   - Orchestrate: load data → filter → score → mos → report → publish
-   - Accept `--portfolio` flag: `py main.py --portfolio dividend`
-   - Accept `--dry-run` flag: generates report but does not send to Discord
-   - Load webhook URLs from .env
-
-**THEN — Phase 3 data pipeline:**
-2. Build `db/database.py` — SQLite connection, schema creation
-3. Build `scraper/pse_scraper.py` — PSE Edge stock list and prices
-4. Build `scraper/pdf_parser.py` — annual report PDF parser
-5. Build `engine/validator.py` — data quality checks
-
-**THEN — Phase 4 automation:**
-6. Build `scheduler.py` — weekly automated runs
-7. Build `alerts/alert_engine.py` — disclosure alerts
+1. Add `ANTHROPIC_API_KEY` to `.env` → activates news sentiment in PDF reports
+2. Add `DISCORD_WEBHOOK_ALERTS` to `.env` → activates opportunistic alerts
+3. Add `PAYMONGO_SECRET_KEY` to `.env` → activates payment link generation
+4. Manual data entry for GSMI 2022 and GLO 2022 (missing from PSE Edge — enter from PSE Edge PDF disclosures directly)
+5. Build `backtester.py` — historical model performance vs PSEi benchmark
 
 ---
 
 ## 14. DISCORD SETUP
 
-Three Discord channels needed:
-- `#pse-dividend` — Dividend portfolio reports
+Five channels needed:
+- `#pse-dividend` — Pure dividend portfolio reports
+- `#pse-growth` — Dividend growth portfolio reports
 - `#pse-value` — Value portfolio reports
-- `#pse-hybrid` — Hybrid portfolio reports
+- `#pse-alerts` — Price / dividend / earnings alerts + opportunistic flags
+- `#pse-admin` — (optional) internal admin notifications
 
 To get a webhook URL:
 Discord → Channel Settings → Integrations → Webhooks → New Webhook → Copy URL
 
-Paste webhook URLs into `.env` (not config.py).
+Paste webhook URLs into `.env` only (not config.py).
 
 ---
 
-## 15. BACKTESTING NOTES (Phase 4)
+## 15. BACKTESTING NOTES (Phase 6)
 
 Per the project instruction manual:
 - Focus on statistical interpretation — not return guarantees
@@ -559,6 +550,15 @@ Per the project instruction manual:
 
 ---
 
-*Last updated: Phase 2 complete — publisher.py done*
+## 16. IMPORTANT FILESYSTEM NOTE
+
+Python (via Bash tool) **cannot write new files** to `C:\Users\Josh\Documents\`.
+Use the **Write tool** directly to create new files — it bypasses this restriction.
+PDFs are saved to Desktop (`C:\Users\Josh\Desktop\`) for this reason.
+The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
+
+---
+
+*Last updated: Phase 5 complete — dashboard done (2026-03-07)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

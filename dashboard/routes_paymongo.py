@@ -100,6 +100,6 @@ def config():
     _, configured = _get_auth()
     return jsonify({
         'configured':    configured,
-        'monthly_php':   int(os.getenv('MONTHLY_PRICE_CENTAVOS', 29900)) / 100,
-        'annual_php':    int(os.getenv('ANNUAL_PRICE_CENTAVOS', 299900)) / 100,
+        'monthly_php':   int(os.getenv('MONTHLY_PRICE_CENTAVOS', 100000)) / 100,
+        'annual_php':    int(os.getenv('ANNUAL_PRICE_CENTAVOS', 750000)) / 100,
     })

@@ -103,6 +103,45 @@ def init_db():
             FOREIGN KEY (ticker) REFERENCES stocks(ticker)
         );
 
+        -- ── Discord members / subscribers ─────────────────────
+        CREATE TABLE IF NOT EXISTS members (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id   TEXT UNIQUE,
+            discord_name TEXT NOT NULL,
+            email        TEXT,
+            plan         TEXT DEFAULT 'monthly',
+            status       TEXT DEFAULT 'active',
+            joined_date  TEXT NOT NULL,
+            expiry_date  TEXT,
+            notes        TEXT,
+            created_at   TEXT NOT NULL
+        );
+
+        -- ── Payment / billing records ──────────────────────────
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            member_id      INTEGER NOT NULL,
+            payment_id     TEXT,
+            amount         REAL NOT NULL,
+            plan           TEXT NOT NULL,
+            status         TEXT DEFAULT 'paid',
+            payment_method TEXT,
+            paid_date      TEXT NOT NULL,
+            period_start   TEXT NOT NULL,
+            period_end     TEXT NOT NULL,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        );
+
+        -- ── System activity log ────────────────────────────────
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            category  TEXT NOT NULL,
+            action    TEXT NOT NULL,
+            detail    TEXT,
+            status    TEXT DEFAULT 'ok'
+        );
+
         -- ── Indexes for common query patterns ────────────────
         CREATE INDEX IF NOT EXISTS idx_prices_ticker_date
             ON prices(ticker, date);
@@ -112,6 +151,12 @@ def init_db():
             ON financials(ticker, year);
         CREATE INDEX IF NOT EXISTS idx_sentiment_ticker_date
             ON sentiment(ticker, date);
+        CREATE INDEX IF NOT EXISTS idx_members_status
+            ON members(status);
+        CREATE INDEX IF NOT EXISTS idx_members_expiry
+            ON members(expiry_date);
+        CREATE INDEX IF NOT EXISTS idx_activity_timestamp
+            ON activity_log(timestamp);
     """)
     conn.commit()
     conn.close()

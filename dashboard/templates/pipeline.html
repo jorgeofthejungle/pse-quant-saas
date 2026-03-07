@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Pipeline{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Pipeline</h1>
+  <span class="timestamp">{{ now }}</span>
+</div>
+
+<!-- Job Status Banner -->
+<div id="job-banner" class="banner {{ 'banner-info' if job.running else 'banner-hidden' }}">
+  <span id="job-spinner" class="spinner"></span>
+  <span id="job-msg">
+    {% if job.running %}
+      Running {{ job.type }} job (started {{ job.started }})...
+    {% endif %}
+  </span>
+</div>
+
+<!-- Run Controls -->
+<div class="card-row">
+  <div class="card">
+    <h2>Scoring Pipeline</h2>
+    <p>Filters and scores all 223 stocks across all three portfolios.
+       Generates PDF reports and sends to Discord if top-5 changed.</p>
+    <div id="scoring-result" class="result-box" style="display:none"></div>
+    <button class="btn btn-primary" id="btn-scoring" onclick="triggerJob('scoring')">
+      Run Scoring Now
+    </button>
+    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 16:00 PHT</span>
+  </div>
+
+  <div class="card">
+    <h2>Alert Check</h2>
+    <p>Checks for new dividend declarations, earnings filings, and
+       stocks trading at or below their Margin of Safety price.</p>
+    <div id="alerts-result" class="result-box" style="display:none"></div>
+    <button class="btn btn-secondary" id="btn-alerts" onclick="triggerJob('alerts')">
+      Run Alert Check Now
+    </button>
+    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 06:30 PHT</span>
+  </div>
+</div>
+
+<!-- Latest Rankings -->
+<div class="card full-width">
+  <h2>Latest Rankings</h2>
+  <div class="portfolio-grid">
+    {% for pt, stocks in rankings.items() %}
+    <div>
+      <h4>{{ pt.replace('_', ' ').title() }}</h4>
+      {% if stocks %}
+      <table class="data-table">
+        <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
+        <tbody>
+          {% for s in stocks %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><strong>{{ s.ticker }}</strong></td>
+            <td>{{ s.score }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-muted">No data — run pipeline first.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Recent Run Dates -->
+{% if recent_runs %}
+<div class="card full-width">
+  <h2>Recent Runs</h2>
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap">
+    {% for d in recent_runs %}
+    <span class="ticker-badge">{{ d }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function triggerJob(type) {
+  const url     = type === 'scoring' ? '/pipeline/run' : '/pipeline/alerts';
+  const btn     = document.getElementById('btn-' + type);
+  const resultEl = document.getElementById(type + '-result');
+
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+
+  fetch(url, {method: 'POST', body: new FormData()})
+    .then(r => r.json())
+    .then(d => {
+      if (d.started) {
+        showJobBanner(true, type + ' job running...');
+        pollJobStatus(type, btn, resultEl);
+      } else {
+        resultEl.style.display = 'block';
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = d.message;
+        btn.disabled = false;
+        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check Now';
+      }
+    });
+}
+
+function pollJobStatus(type, btn, resultEl) {
+  const interval = setInterval(() => {
+    fetch('/pipeline/status').then(r => r.json()).then(d => {
+      if (!d.running) {
+        clearInterval(interval);
+        showJobBanner(false, '');
+        btn.disabled = false;
+        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check Now';
+        resultEl.style.display = 'block';
+        if (d.error) {
+          resultEl.className = 'result-box result-error';
+          resultEl.textContent = 'Error: ' + d.error;
+        } else {
+          resultEl.className = 'result-box result-success';
+          resultEl.textContent = d.result + ' (finished ' + d.finished + ')';
+        }
+      }
+    });
+  }, 3000);
+}
+
+function showJobBanner(show, msg) {
+  const banner = document.getElementById('job-banner');
+  const msgEl  = document.getElementById('job-msg');
+  banner.className = show ? 'banner banner-info' : 'banner banner-hidden';
+  msgEl.textContent = msg;
+}
+
+// Check if a job is already running on page load
+fetch('/pipeline/status').then(r => r.json()).then(d => {
+  if (d.running) {
+    showJobBanner(true, d.type + ' job running since ' + d.started + '...');
+    document.getElementById('btn-scoring').disabled = true;
+    document.getElementById('btn-alerts').disabled  = true;
+    pollJobStatus(d.type,
+      document.getElementById('btn-' + d.type),
+      document.getElementById(d.type + '-result'));
+  }
+});
+</script>
+{% endblock %}

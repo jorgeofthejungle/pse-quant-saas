@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Analytics</h1>
+</div>
+
+<div class="card-row">
+  <div class="card">
+    <h2>Monthly Revenue (PHP)</h2>
+    <canvas id="chart-revenue" height="200"></canvas>
+  </div>
+  <div class="card">
+    <h2>Member Growth</h2>
+    <canvas id="chart-members" height="200"></canvas>
+  </div>
+</div>
+
+<div class="card-row">
+  <div class="card">
+    <h2>Plan Distribution</h2>
+    <div style="max-width:280px; margin:0 auto">
+      <canvas id="chart-plans" height="200"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Score Trends (Top Dividend Stocks)</h2>
+    <canvas id="chart-scores" height="200"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const NAVY  = '#1B4B6B';
+const GREEN = '#27AE60';
+const RED   = '#E74C3C';
+const GOLD  = '#F39C12';
+const PURP  = '#8E44AD';
+
+function initCharts() {
+  // Revenue bar chart
+  fetch('/analytics/revenue').then(r => r.json()).then(d => {
+    new Chart(document.getElementById('chart-revenue'), {
+      type: 'bar',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: 'Revenue (PHP)',
+          data: d.values,
+          backgroundColor: GREEN + 'CC',
+          borderColor: GREEN,
+          borderWidth: 1,
+        }]
+      },
+      options: {responsive: true, plugins: {legend: {display: false}}}
+    });
+  });
+
+  // Member growth line chart
+  fetch('/analytics/members').then(r => r.json()).then(d => {
+    new Chart(document.getElementById('chart-members'), {
+      type: 'line',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: 'Total Members',
+          data: d.values,
+          borderColor: NAVY,
+          backgroundColor: NAVY + '22',
+          fill: true,
+          tension: 0.3,
+        }]
+      },
+      options: {responsive: true, plugins: {legend: {display: false}}}
+    });
+  });
+
+  // Plan distribution doughnut
+  fetch('/analytics/plans').then(r => r.json()).then(d => {
+    new Chart(document.getElementById('chart-plans'), {
+      type: 'doughnut',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          data: d.values,
+          backgroundColor: [GREEN, NAVY, GOLD, RED],
+        }]
+      },
+      options: {responsive: true}
+    });
+  });
+
+  // Score trends line chart
+  fetch('/analytics/scores').then(r => r.json()).then(d => {
+    new Chart(document.getElementById('chart-scores'), {
+      type: 'line',
+      data: {
+        labels: d.labels,
+        datasets: d.datasets,
+      },
+      options: {
+        responsive: true,
+        scales: {y: {min: 0, max: 100}},
+        plugins: {legend: {position: 'bottom'}},
+      }
+    });
+  });
+}
+
+initCharts();
+</script>
+{% endblock %}

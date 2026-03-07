@@ -175,7 +175,7 @@ def run_daily_job():
 
     for portfolio_type in ['pure_dividend', 'dividend_growth', 'value']:
         name = PORTFOLIO_NAMES[portfolio_type]
-        print(f"\n  ── {name} ──")
+        print(f"\n  -- {name} --")
 
         old_top5   = db.get_last_top5(portfolio_type)
         old_scores = db.get_last_scores(portfolio_type)

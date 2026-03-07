@@ -20,6 +20,19 @@ from db.db_financials import (upsert_financials, get_financials,
                                upsert_stock, get_all_tickers)
 from db.db_sentiment  import upsert_sentiment, get_sentiment
 
+try:
+    from dashboard.db_members import (
+        add_member, get_member, get_all_members, update_member,
+        extend_member, cancel_member, record_payment,
+        get_member_subscriptions, get_expiring_soon,
+        log_activity, get_recent_activity,
+        get_revenue_by_month, get_member_growth,
+        get_plan_distribution, get_member_stats,
+        expire_overdue_members,
+    )
+except ImportError:
+    pass   # dashboard not installed yet — core DB still works
+
 __all__ = [
     'get_connection', 'DB_PATH',
     'init_db',
@@ -27,6 +40,12 @@ __all__ = [
     'save_scores', 'get_last_top5', 'get_last_scores',
     'upsert_financials', 'get_financials', 'upsert_stock', 'get_all_tickers',
     'upsert_sentiment', 'get_sentiment',
+    'add_member', 'get_member', 'get_all_members', 'update_member',
+    'extend_member', 'cancel_member', 'record_payment',
+    'get_member_subscriptions', 'get_expiring_soon',
+    'log_activity', 'get_recent_activity',
+    'get_revenue_by_month', 'get_member_growth',
+    'get_plan_distribution', 'get_member_stats', 'expire_overdue_members',
 ]
 
 

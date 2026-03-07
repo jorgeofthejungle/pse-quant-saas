@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}{{ member.discord_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ member.discord_name }}</h1>
+  <span class="badge badge-{{ member.status }} badge-lg">{{ member.status }}</span>
+</div>
+
+<div class="card-row">
+  <!-- Member Info -->
+  <div class="card">
+    <h2>Member Info</h2>
+    <form method="POST" action="{{ url_for('members.edit', member_id=member.id) }}">
+      <table class="info-table">
+        <tr>
+          <td>Discord Name</td>
+          <td><input name="discord_name" value="{{ member.discord_name }}" class="form-input-sm"></td>
+        </tr>
+        <tr>
+          <td>Discord ID</td>
+          <td><input name="discord_id" value="{{ member.discord_id or '' }}" class="form-input-sm" placeholder="optional"></td>
+        </tr>
+        <tr>
+          <td>Email</td>
+          <td><input name="email" value="{{ member.email or '' }}" class="form-input-sm" placeholder="optional"></td>
+        </tr>
+        <tr>
+          <td>Plan</td>
+          <td>
+            <select name="plan" class="form-select-sm">
+              <option value="monthly" {{ 'selected' if member.plan == 'monthly' }}>Monthly</option>
+              <option value="annual"  {{ 'selected' if member.plan == 'annual' }}>Annual</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td>Expiry</td>
+          <td>
+            <strong>{{ member.expiry_date or 'N/A' }}</strong>
+            {% if days_left is not none %}
+              {% if days_left > 0 %}
+                <span class="text-muted">({{ days_left }} days left)</span>
+              {% else %}
+                <span class="text-error">({{ days_left|abs }} days ago)</span>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>Joined</td>
+          <td class="text-muted">{{ member.joined_date }}</td>
+        </tr>
+        <tr>
+          <td>Notes</td>
+          <td><textarea name="notes" class="form-input-sm">{{ member.notes or '' }}</textarea></td>
+        </tr>
+      </table>
+      <button type="submit" class="btn btn-secondary" style="margin-top:0.75rem">Save Changes</button>
+    </form>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="card">
+    <h2>Actions</h2>
+
+    <h4 style="margin-top:1rem">Extend Subscription</h4>
+    <form method="POST" action="{{ url_for('members.extend', member_id=member.id) }}" style="display:flex; gap:0.5rem; align-items:center">
+      <select name="plan" class="form-select-sm">
+        <option value="monthly">+30 days (Monthly)</option>
+        <option value="annual">+365 days (Annual)</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Extend</button>
+    </form>
+
+    <h4 style="margin-top:1.25rem">Record Manual Payment</h4>
+    <form method="POST" action="{{ url_for('members.mark_paid', member_id=member.id) }}" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
+      <input name="amount" type="number" step="0.01" placeholder="Amount (PHP)" class="form-input-sm" style="width:140px" required>
+      <select name="plan" class="form-select-sm">
+        <option value="monthly">Monthly</option>
+        <option value="annual">Annual</option>
+      </select>
+      <select name="method" class="form-select-sm">
+        <option value="gcash">GCash</option>
+        <option value="maya">Maya</option>
+        <option value="bank">Bank Transfer</option>
+        <option value="manual">Manual</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Mark as Paid</button>
+    </form>
+
+    <h4 style="margin-top:1.25rem">PayMongo Payment Link</h4>
+    <p class="text-muted" style="font-size:0.85rem">Generates a link to send to the member via Discord DM.</p>
+    <div style="display:flex; gap:0.5rem; align-items:center">
+      <select id="pm-plan" class="form-select-sm">
+        <option value="monthly">Monthly</option>
+        <option value="annual">Annual</option>
+      </select>
+      <button class="btn btn-secondary" onclick="generatePayMongoLink()">Generate Link</button>
+    </div>
+    <div id="pm-result" style="margin-top:0.75rem; display:none"></div>
+
+    <hr style="margin:1.5rem 0">
+
+    <form method="POST" action="{{ url_for('members.cancel', member_id=member.id) }}"
+          onsubmit="return confirm('Cancel {{ member.discord_name }}? This cannot be undone.')">
+      <button type="submit" class="btn btn-danger">Cancel Member</button>
+    </form>
+  </div>
+</div>
+
+<!-- Payment History -->
+<div class="card full-width">
+  <h2>Payment History</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Period</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for s in subscriptions %}
+      <tr>
+        <td class="text-mono">{{ s.paid_date }}</td>
+        <td>{{ s.plan }}</td>
+        <td><strong>PHP {{ "%.2f"|format(s.amount) }}</strong></td>
+        <td>{{ s.payment_method or '—' }}</td>
+        <td class="text-muted">{{ s.period_start }} → {{ s.period_end }}</td>
+        <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted text-center">No payments recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div style="margin-top:1rem">
+  <a href="{{ url_for('members.index') }}" class="btn btn-secondary">Back to Members</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function generatePayMongoLink() {
+  const plan = document.getElementById('pm-plan').value;
+  const res  = document.getElementById('pm-result');
+  res.style.display = 'block';
+  res.innerHTML = 'Generating...';
+
+  fetch('/paymongo/create-link', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      member_id:   {{ member.id }},
+      member_name: '{{ member.discord_name }}',
+      plan:        plan,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      res.innerHTML = '<strong>Payment Link:</strong> <a href="' + d.url + '" target="_blank">' + d.url + '</a>'
+        + ' <button onclick="navigator.clipboard.writeText(\'' + d.url + '\')" class="btn btn-sm" style="margin-left:0.5rem">Copy</button>';
+    } else {
+      res.innerHTML = '<span style="color:var(--red)">Error: ' + d.error + '</span>';
+    }
+  });
+}
+</script>
+{% endblock %}

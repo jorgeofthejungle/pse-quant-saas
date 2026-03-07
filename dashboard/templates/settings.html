@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Settings</h1>
+</div>
+
+<!-- Discord Webhooks -->
+<div class="card full-width">
+  <h2>Discord Webhooks</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>Channel</th><th>Env Variable</th><th>Status</th><th>URL (masked)</th><th>Test</th></tr>
+    </thead>
+    <tbody>
+      {% for name, info in webhooks.items() %}
+      <tr>
+        <td><strong>{{ name }}</strong></td>
+        <td class="text-mono">{{ info.env_key }}</td>
+        <td>
+          {% if info.set %}
+            <span class="badge badge-active">Set</span>
+          {% else %}
+            <span class="badge badge-expired">Not Set</span>
+          {% endif %}
+        </td>
+        <td class="text-mono text-muted">{{ info.masked }}</td>
+        <td>
+          {% if info.set %}
+          <button class="btn btn-sm" onclick="testWebhook('{{ name }}', this)">Test</button>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="text-muted" style="margin-top:0.75rem; font-size:0.85rem">
+    Edit webhook URLs in the <code>.env</code> file at the project root, then restart the dashboard.
+  </p>
+</div>
+
+<!-- PayMongo -->
+<div class="card">
+  <h2>PayMongo</h2>
+  <table class="info-table">
+    <tr>
+      <td>Secret Key</td>
+      <td>
+        {% if pm_key_set %}
+          <span class="badge badge-active">Configured</span>
+        {% else %}
+          <span class="badge badge-expired">Not Set</span>
+          <span class="text-muted"> — Add PAYMONGO_SECRET_KEY to .env</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td>Monthly Price</td>
+      <td><strong>PHP {{ "%.2f"|format(pm_monthly) }}</strong>
+        <span class="text-muted">(MONTHLY_PRICE_CENTAVOS in .env)</span>
+      </td>
+    </tr>
+    <tr>
+      <td>Annual Price</td>
+      <td><strong>PHP {{ "%.2f"|format(pm_annual) }}</strong>
+        <span class="text-muted">(ANNUAL_PRICE_CENTAVOS in .env)</span>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<!-- Scheduler -->
+<div class="card">
+  <h2>Scheduler</h2>
+  <table class="info-table">
+    <tr><td>Alert Check</td><td>Weekdays {{ alert_time }} PHT</td></tr>
+    <tr><td>Score & Report</td><td>Weekdays {{ score_time }} PHT</td></tr>
+    <tr><td>PSE Edge Base URL</td><td class="text-mono">{{ pse_base_url }}</td></tr>
+    <tr><td>Scrape Delay</td><td>{{ scrape_delay }}s between requests</td></tr>
+  </table>
+</div>
+
+<!-- Database -->
+<div class="card full-width">
+  <h2>Database</h2>
+  <table class="info-table">
+    <tr><td>Location</td><td class="text-mono">{{ db_path }}</td></tr>
+    <tr><td>Size</td><td>{{ db_size_kb }} KB</td></tr>
+  </table>
+  <h4 style="margin-top:1rem">Table Row Counts</h4>
+  <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem">
+    {% for table, count in table_counts.items() %}
+    <div class="stat-mini">
+      <div class="stat-mini-value">{{ count }}</div>
+      <div class="stat-mini-label">{{ table }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div id="webhook-toast" class="toast" style="display:none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testWebhook(channel, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+
+  fetch('/settings/test-webhook', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({channel}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    showToast(d.message, d.ok ? 'success' : 'error');
+    btn.disabled = false;
+    btn.textContent = 'Test';
+  });
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('webhook-toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + type;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+</script>
+{% endblock %}

@@ -16,7 +16,7 @@ from dashboard.db_members import (
     get_all_members, get_member, add_member, update_member,
     extend_member, cancel_member, record_payment,
     get_member_subscriptions, get_expiring_soon,
-    expire_overdue_members, get_member_stats,
+    expire_overdue_members, get_member_stats, bulk_cancel_inactive,
 )
 
 members_bp = Blueprint('members', __name__)
@@ -127,6 +127,14 @@ def mark_paid(member_id: int):
 def cancel(member_id: int):
     cancel_member(member_id)
     flash('Member marked as cancelled.', 'success')
+    return redirect(url_for('members.index'))
+
+
+@members_bp.route('/bulk-cancel', methods=['POST'])
+def bulk_cancel():
+    """Marks all expired and cancelled members as cancelled (archive/clean up)."""
+    count = bulk_cancel_inactive()
+    flash(f'{count} non-active member(s) archived as cancelled.', 'success')
     return redirect(url_for('members.index'))
 
 

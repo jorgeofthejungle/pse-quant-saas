@@ -182,8 +182,17 @@ def generate_overall_assessment(stock, score, portfolio_type):
     rev  = stock.get('revenue_cagr',      0) or 0
     cagr = stock.get('dividend_cagr_5y',  0) or 0
     ni3  = stock.get('net_income_3y',     [])
+    ocf  = stock.get('operating_cf',      None)
 
     positive_years = sum(1 for n in ni3 if n > 0)
+
+    # Cash Flow Quality ratio
+    _ni_latest = ni3[0] if ni3 and ni3[0] else None
+    cf_quality_ratio = round(ocf / abs(_ni_latest), 2) if (ocf is not None and _ni_latest and _ni_latest != 0) else None
+
+    # Earnings Yield vs Bond Rate (for value)
+    _bond_rate = 6.5
+    ey_spread = round((1 / pe) * 100 - _bond_rate, 1) if pe and pe > 0 else None
 
     if portfolio_type in ('pure_dividend', 'dividend_growth'):
         if dy >= 7:
@@ -240,6 +249,44 @@ def generate_overall_assessment(stock, score, portfolio_type):
                 f"over 5 years). The income from this stock has been declining"
             )
 
+        # Cash Flow Quality for dividend portfolios
+        if cf_quality_ratio is not None:
+            if cf_quality_ratio >= 1.1:
+                strengths.append(
+                    f"strong cash flow quality of {cf_quality_ratio:.2f}x. For every PHP 1 "
+                    f"of reported profit, the company generates PHP {cf_quality_ratio:.2f} "
+                    f"in actual cash. The earnings are real and the dividend is credible"
+                )
+            elif cf_quality_ratio < 0.7:
+                concerns.append(
+                    f"a low cash flow quality ratio of {cf_quality_ratio:.2f}x. Reported "
+                    f"earnings are significantly higher than actual cash collected from "
+                    f"operations. This gap deserves scrutiny before trusting the dividend"
+                )
+
+    if portfolio_type == 'dividend_growth':
+        # Growth Consistency for dividend growth
+        revenue_5y = stock.get('revenue_5y', [])
+        if len(revenue_5y) >= 3:
+            valid_rev = [r for r in revenue_5y if r and r > 0]
+            if len(valid_rev) >= 3:
+                import statistics as _st
+                mean_r = sum(valid_rev) / len(valid_rev)
+                if mean_r > 0:
+                    cv = _st.pstdev(valid_rev) / mean_r
+                    if cv <= 0.20:
+                        strengths.append(
+                            f"highly consistent revenue growth (variation coefficient {cv:.2f}). "
+                            f"Steady, predictable revenue makes future dividend increases "
+                            f"far more reliable"
+                        )
+                    elif cv > 0.50:
+                        concerns.append(
+                            f"erratic revenue growth (variation coefficient {cv:.2f}). "
+                            f"The boom-and-bust pattern makes it harder to count on "
+                            f"sustained dividend increases year after year"
+                        )
+
     if portfolio_type == 'value':
         if pe and pe <= 10:
             strengths.append(
@@ -276,6 +323,35 @@ def generate_overall_assessment(stock, score, portfolio_type):
                 f"declining revenue (CAGR of {rev:.1f}% per year). A shrinking "
                 f"top line is a warning sign that the business may be losing ground"
             )
+
+        # Earnings Yield vs Bond Rate for value stocks
+        if ey_spread is not None:
+            ey_val = round((1 / pe) * 100, 1) if pe and pe > 0 else None
+            if ey_spread >= 5 and ey_val:
+                strengths.append(
+                    f"an earnings yield of {ey_val:.1f}% which is {ey_spread:.1f}% above "
+                    f"the PH 10Y bond rate of {_bond_rate}%. You are being well compensated "
+                    f"for the extra risk of owning this stock over a government bond"
+                )
+            elif ey_spread < 0:
+                concerns.append(
+                    f"an earnings yield of {ey_val:.1f}% which is BELOW the "
+                    f"PH 10Y bond rate of {_bond_rate}%. A risk-free government bond "
+                    f"currently pays more than this stock earns per peso of price"
+                )
+
+        # Cash Flow Quality for value stocks
+        if cf_quality_ratio is not None:
+            if cf_quality_ratio >= 1.1:
+                strengths.append(
+                    f"strong cash flow quality of {cf_quality_ratio:.2f}x, confirming "
+                    f"that reported profits are backed by real cash from operations"
+                )
+            elif cf_quality_ratio < 0.7:
+                concerns.append(
+                    f"a low cash flow quality ratio of {cf_quality_ratio:.2f}x. "
+                    f"Reported earnings are not fully converting into real operating cash"
+                )
 
     # ROE and debt apply to all portfolios
     if roe >= 15:

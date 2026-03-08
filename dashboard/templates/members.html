@@ -11,10 +11,16 @@
 </div>
 
 {% if expired_count > 0 %}
-<div class="banner banner-error">
-  <strong>{{ expired_count }} member(s) expired.</strong>
-  Kick them from Discord, then cancel here.
-  <a href="{{ url_for('members.index') }}?status=expired">View Expired</a>
+<div class="banner banner-error" style="display:flex; justify-content:space-between; align-items:center">
+  <span>
+    <strong>{{ expired_count }} member(s) expired.</strong>
+    Kick them from Discord, then cancel here.
+    <a href="{{ url_for('members.index') }}?status=expired">View Expired</a>
+  </span>
+  <form method="POST" action="{{ url_for('members.bulk_cancel') }}"
+        onsubmit="return confirm('Archive all {{ expired_count }} expired/cancelled member(s) as cancelled? This cannot be undone.')">
+    <button type="submit" class="btn btn-sm btn-danger">Archive All Non-Active</button>
+  </form>
 </div>
 {% endif %}
 
@@ -43,11 +49,19 @@
 </div>
 
 <!-- Filter tabs -->
-<div class="tab-row">
-  <a href="{{ url_for('members.index') }}"               class="tab {{ 'tab-active' if status_filter == 'all' }}">All</a>
-  <a href="{{ url_for('members.index') }}?status=active" class="tab {{ 'tab-active' if status_filter == 'active' }}">Active</a>
-  <a href="{{ url_for('members.index') }}?status=expired" class="tab {{ 'tab-active' if status_filter == 'expired' }}">Expired</a>
-  <a href="{{ url_for('members.index') }}?status=cancelled" class="tab {{ 'tab-active' if status_filter == 'cancelled' }}">Cancelled</a>
+<div class="tab-row" style="display:flex; justify-content:space-between; align-items:center">
+  <div>
+    <a href="{{ url_for('members.index') }}"               class="tab {{ 'tab-active' if status_filter == 'all' }}">All</a>
+    <a href="{{ url_for('members.index') }}?status=active" class="tab {{ 'tab-active' if status_filter == 'active' }}">Active</a>
+    <a href="{{ url_for('members.index') }}?status=expired" class="tab {{ 'tab-active' if status_filter == 'expired' }}">Expired</a>
+    <a href="{{ url_for('members.index') }}?status=cancelled" class="tab {{ 'tab-active' if status_filter == 'cancelled' }}">Cancelled</a>
+  </div>
+  {% if expired_count > 0 %}
+  <form method="POST" action="{{ url_for('members.bulk_cancel') }}"
+        onsubmit="return confirm('Archive all non-active members as cancelled?')">
+    <button type="submit" class="btn btn-sm btn-danger">Archive All Non-Active ({{ expired_count }})</button>
+  </form>
+  {% endif %}
 </div>
 
 <!-- Member Table -->

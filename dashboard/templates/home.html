@@ -75,6 +75,50 @@
   </div>
 </div>
 
+<!-- Quick Payment Link -->
+<div class="card full-width">
+  <h2>Generate Payment Link</h2>
+  <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap">
+    <div>
+      <label class="form-label">Member name / note</label>
+      <input type="text" id="pay-member" class="form-input" placeholder="e.g. Juan#1234" style="width:200px">
+    </div>
+    <div>
+      <label class="form-label">Plan</label>
+      <select id="pay-plan" class="form-select">
+        <option value="monthly">Monthly — PHP {{ '%.2f'|format(pm_monthly) }}</option>
+        <option value="annual">Annual — PHP {{ '%.2f'|format(pm_annual) }}</option>
+      </select>
+    </div>
+    {% if pm_configured %}
+    <button class="btn btn-primary" onclick="generateLink(this)">Generate Link</button>
+    {% else %}
+    <button class="btn" disabled title="Add PAYMONGO_SECRET_KEY to .env to enable">Generate Link</button>
+    <span class="text-muted" style="font-size:0.82rem">PayMongo not configured</span>
+    {% endif %}
+  </div>
+
+  <div id="pay-result" style="display:none; margin-top:1rem">
+    <div style="display:flex; gap:1.5rem; align-items:flex-start; flex-wrap:wrap">
+      <div style="flex:1; min-width:260px">
+        <label class="form-label">Payment Link</label>
+        <div style="display:flex; gap:0.5rem">
+          <input type="text" id="pay-link-url" class="form-input" readonly style="flex:1; font-size:0.82rem">
+          <button class="btn btn-sm" onclick="copyLink()">Copy</button>
+        </div>
+        <p class="text-muted" style="font-size:0.80rem; margin-top:0.4rem">
+          Send this link to the member via Discord DM. After they pay, click <strong>Mark as Paid</strong> on their member page.
+        </p>
+      </div>
+      <div>
+        <label class="form-label">QR Code</label>
+        <canvas id="pay-qr" width="140" height="140" style="border:1px solid #ddd; border-radius:4px; display:block"></canvas>
+        <button class="btn btn-sm" onclick="downloadQR()" style="margin-top:0.4rem; width:100%">Download QR</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Recent Activity -->
 <div class="card full-width">
   <h2>Recent Activity</h2>
@@ -100,6 +144,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
 // Load system status via API
 fetch('/api/status').then(r => r.json()).then(d => {
@@ -108,5 +153,45 @@ fetch('/api/status').then(r => r.json()).then(d => {
   document.getElementById('sys-db-size').textContent  = d.db_size_kb + ' KB';
   document.getElementById('stat-active').textContent  = d.active_members;
 });
+
+function generateLink(btn) {
+  const memberName = document.getElementById('pay-member').value.trim() || 'Member';
+  const plan       = document.getElementById('pay-plan').value;
+  btn.disabled = true; btn.textContent = 'Generating...';
+
+  fetch('/paymongo/create-link', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({member_id: null, member_name: memberName, plan: plan}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled = false; btn.textContent = 'Generate Link';
+    if (d.ok && d.url) {
+      document.getElementById('pay-link-url').value = d.url;
+      document.getElementById('pay-result').style.display = 'block';
+      const canvas = document.getElementById('pay-qr');
+      QRCode.toCanvas(canvas, d.url, {width: 140, margin: 1}, function(err) {
+        if (err) console.error('QR error:', err);
+      });
+    } else {
+      alert('Error: ' + (d.error || 'Could not generate link'));
+    }
+  })
+  .catch(e => { btn.disabled = false; btn.textContent = 'Generate Link'; alert('Network error: ' + e); });
+}
+
+function copyLink() {
+  const url = document.getElementById('pay-link-url').value;
+  navigator.clipboard.writeText(url).then(() => alert('Link copied to clipboard!'));
+}
+
+function downloadQR() {
+  const canvas = document.getElementById('pay-qr');
+  const a = document.createElement('a');
+  a.download = 'pse-quant-payment-qr.png';
+  a.href = canvas.toDataURL();
+  a.click();
+}
 </script>
 {% endblock %}

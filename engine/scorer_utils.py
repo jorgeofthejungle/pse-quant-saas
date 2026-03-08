@@ -69,3 +69,55 @@ def _eps_vol_ratio(eps_history: list) -> float | None:
         return None
     stdev_eps = _stats.pstdev(valid)
     return round(stdev_eps / mean_eps, 3)
+
+
+def _cf_quality(operating_cf, net_income_3y: list) -> float | None:
+    """
+    Computes Cash Flow Quality = Operating CF / abs(most recent Net Income).
+    Ratio >= 1.0 means earnings are fully backed by real cash.
+    Returns None if data is missing or net income is zero.
+    """
+    if operating_cf is None:
+        return None
+    if not net_income_3y:
+        return None
+    ni = net_income_3y[0] if net_income_3y[0] is not None else None
+    if ni is None or ni == 0:
+        return None
+    return round(operating_cf / abs(ni), 3)
+
+
+def _dividend_stability(dividends_5y: list) -> float | None:
+    """
+    Computes Dividend Stability as the Coefficient of Variation (CV)
+    of dividend payments over the past 5 years.
+    CV = StdDev / Mean. Lower CV = more stable dividend stream.
+    Returns None if fewer than 3 data points or mean <= 0.
+
+    Used in the Pure Dividend Quality Composite alongside ROE and CF Quality.
+    A company can have volatile EPS but maintain stable dividends (e.g. utilities).
+    """
+    valid = [d for d in dividends_5y if d is not None and d > 0]
+    if len(valid) < 3:
+        return None
+    mean_d = sum(valid) / len(valid)
+    if mean_d <= 0:
+        return None
+    stdev_d = _stats.pstdev(valid)
+    return round(stdev_d / mean_d, 3)
+
+
+def _growth_consistency(series: list) -> float | None:
+    """
+    Computes Growth Consistency as the Coefficient of Variation (CV) of a series.
+    CV = StdDev / Mean. Lower CV = more consistent growth.
+    Returns None if insufficient data or mean <= 0.
+    """
+    valid = [v for v in series if v is not None and v > 0]
+    if len(valid) < 3:
+        return None
+    mean_val = sum(valid) / len(valid)
+    if mean_val <= 0:
+        return None
+    stdev_val = _stats.pstdev(valid)
+    return round(stdev_val / mean_val, 3)

@@ -162,6 +162,86 @@ def enrich_with_sentiment(stocks: list[dict]) -> None:
             print(f"  [sentiment] error for {ticker}: {e}")
 
 
+def classify_signal(
+    sentiment_data: dict,
+    mos_pct: float | None,
+    overall_score: float,
+) -> dict:
+    """
+    Deterministic signal classification using sentiment + fundamentals.
+    Rules evaluated top-to-bottom; first match wins.
+
+    Parameters:
+        sentiment_data  — dict returned by analyze_sentiment()
+                          Keys used: score, opportunistic_flag, risk_flag
+        mos_pct         — Margin of Safety % (None if intrinsic value unavailable)
+        overall_score   — Portfolio score 0-100 from scorer.py
+
+    Returns:
+        {
+          'signal':    'potential_opportunity' | 'half_position' | 'caution' | 'monitor',
+          'label':     Human-readable label string,
+          'reasoning': One-line explanation built from inputs,
+          'level':     'positive' | 'neutral' | 'negative',
+        }
+    """
+    score    = float(sentiment_data.get('score', 0.0))
+    opp_flag = int(bool(sentiment_data.get('opportunistic_flag', 0)))
+    risk_flag = int(bool(sentiment_data.get('risk_flag', 0)))
+    mos       = mos_pct if mos_pct is not None else -1.0
+
+    # ── Rule 1: Potential Opportunity ────────────────────────
+    if (
+        (opp_flag == 1 and score >= 0.3 and mos >= 20)
+        or (score >= 0.5 and mos >= 30 and overall_score >= 65)
+    ):
+        mos_str = f'{mos:.0f}% margin of safety' if mos_pct is not None else 'no MoS data'
+        return {
+            'signal':    'potential_opportunity',
+            'label':     'Potential Opportunity',
+            'reasoning': (
+                f'Positive news catalyst + {mos_str} + score {overall_score:.0f}/100'
+            ),
+            'level': 'positive',
+        }
+
+    # ── Rule 2: Half Position Signal ─────────────────────────
+    if (
+        (opp_flag == 1 and score >= 0.2 and (mos_pct is None or mos < 20))
+        or (score >= 0.3 and mos >= 10 and overall_score >= 50)
+    ):
+        mos_str = f'{mos:.0f}% margin of safety' if mos_pct is not None else 'no MoS data'
+        return {
+            'signal':    'half_position',
+            'label':     'Half Position Signal',
+            'reasoning': (
+                f'Positive sentiment but limited margin of safety '
+                f'({mos_str}, score {overall_score:.0f}/100)'
+            ),
+            'level': 'positive',
+        }
+
+    # ── Rule 3: Caution Signal ───────────────────────────────
+    if (risk_flag == 1 and score <= -0.3) or (score <= -0.5):
+        return {
+            'signal':    'caution',
+            'label':     'Caution Signal',
+            'reasoning': (
+                f'Negative news sentiment (score {score:.2f}) '
+                + ('with material risk flag' if risk_flag else '')
+            ).strip(),
+            'level': 'negative',
+        }
+
+    # ── Rule 4: Monitor (default) ────────────────────────────
+    return {
+        'signal':    'monitor',
+        'label':     'Monitor',
+        'reasoning': f'Sentiment neutral or insufficient signal (score {score:.2f})',
+        'level':     'neutral',
+    }
+
+
 def _load_dotenv_key() -> str | None:
     """Try to load ANTHROPIC_API_KEY from .env without requiring dotenv."""
     try:

@@ -11,22 +11,25 @@
 
 from discord.discord_core import (
     _post_webhook, _post_webhook_with_file,
-    WEBHOOKS, DISCLAIMER,
+    WEBHOOKS, DISCLAIMER, SIGNAL_DISCLAIMER,
     COLOUR_DIVIDEND, COLOUR_VALUE, COLOUR_HYBRID, COLOUR_ALERT, COLOUR_INFO,
+    COLOUR_OPPORTUNITY, COLOUR_HALF_POS, COLOUR_CAUTION, COLOUR_SHORTLIST,
     PORTFOLIO_COLOURS, PORTFOLIO_EMOJI, MAX_FILE_BYTES,
 )
 from discord.discord_reports import send_report
 from discord.discord_alerts  import (
     send_dividend_alert, send_price_alert, send_earnings_alert,
-    send_rescore_notice, send_opportunistic_alert,
+    send_rescore_notice, send_opportunistic_alert, send_sentiment_signal,
+    send_shortlist_change,
 )
 
 __all__ = [
     'send_report',
     'send_dividend_alert', 'send_price_alert', 'send_earnings_alert',
-    'send_rescore_notice', 'send_opportunistic_alert',
+    'send_rescore_notice', 'send_opportunistic_alert', 'send_sentiment_signal',
+    'send_shortlist_change',
     'test_webhook',
-    'WEBHOOKS', 'DISCLAIMER',
+    'WEBHOOKS', 'DISCLAIMER', 'SIGNAL_DISCLAIMER',
 ]
 
 

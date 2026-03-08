@@ -39,12 +39,56 @@ DDM_MAX_GROWTH_RATE = 0.07  # 7.0%
 # Default target PE multiple for Philippine market
 DEFAULT_TARGET_PE = 15.0
 
+# Conglomerate IV discount (Holding Firms sector)
+CONGLOMERATE_DISCOUNT = 0.20
+
 # Margin of Safety targets per portfolio
 MOS_TARGET = {
     'pure_dividend':   0.25,   # 25% — income investors are conservative
     'dividend_growth': 0.20,   # 20% — growth companies command a premium
     'value':           0.30,   # 30% — value investors demand the most cushion
 }
+
+
+def _sector_median_pe(sector: str, all_stocks: list) -> float:
+    """
+    Computes median PE for a sector from the current stock universe.
+    Falls back to DEFAULT_TARGET_PE if sector has fewer than 3 stocks.
+
+    Filters out PE outliers (< 0 or > 100) to get a realistic median.
+    """
+    sector_pes = [
+        s['pe'] for s in all_stocks
+        if s.get('sector') == sector
+        and s.get('pe') is not None
+        and 0 < s['pe'] < 100
+    ]
+    if len(sector_pes) < 3:
+        return DEFAULT_TARGET_PE
+    sorted_pes = sorted(sector_pes)
+    return round(sorted_pes[len(sorted_pes) // 2], 1)
+
+
+def apply_conglomerate_discount(intrinsic_value: float, sector: str) -> float:
+    """
+    Applies a structural discount to intrinsic value for conglomerates.
+    Philippine holding companies (Holding Firms sector) trade at a discount
+    due to cross-holding complexity and limited segment-level reporting.
+
+    Discount: 20% (configurable via config.py CONGLOMERATE_DISCOUNT)
+    Applied only to 'Holding Firms' sector.
+    Returns intrinsic_value unchanged for all other sectors.
+    Returns None if intrinsic_value is None.
+    """
+    if intrinsic_value is None:
+        return None
+    if sector == 'Holding Firms':
+        try:
+            from config import CONGLOMERATE_DISCOUNT as _disc
+        except ImportError:
+            _disc = CONGLOMERATE_DISCOUNT
+        return round(intrinsic_value * (1 - _disc), 2)
+    return intrinsic_value
 
 
 def calc_ddm(
@@ -93,7 +137,7 @@ def calc_ddm(
 
 def calc_eps_pe(
     eps_3y: list,
-    target_pe: float = DEFAULT_TARGET_PE,
+    target_pe: float = None,
     roe: float = None,
 ):
     """
@@ -115,6 +159,10 @@ def calc_eps_pe(
 
     if normalised_eps <= 0:
         return None, "EPS-PE not applicable — negative normalised EPS"
+
+    # Use provided sector-median PE, else fall back to default
+    if target_pe is None:
+        target_pe = DEFAULT_TARGET_PE
 
     # Adjust target PE upward for high quality businesses
     # High ROE companies deserve a premium multiple
@@ -288,37 +336,42 @@ def calc_hybrid_intrinsic(
     ddm_value: float,
     eps_pe_value: float,
     dcf_value: float,
+    weights: tuple = (0.40, 0.40, 0.20),
 ):
     """
-    Hybrid Portfolio Intrinsic Value.
-    Weighted blend of all three methods.
+    Hybrid Intrinsic Value — weighted blend of all three methods.
 
-    Formula: (DDM x 40%) + (EPS-PE x 40%) + (DCF x 20%)
+    Default weights: DDM 40%, EPS-PE 40%, DCF 20%.
+    Pass custom weights tuple (ddm_w, eps_w, dcf_w) per portfolio:
+      pure_dividend:   (0.50, 0.25, 0.25) — income focus
+      dividend_growth: (0.40, 0.30, 0.30) — balanced
+      value:           (0.20, 0.40, 0.40) — fundamentals focus
 
     If a method returns None (not applicable),
     the weight is redistributed to available methods.
     """
+    ddm_w, eps_w, dcf_w = weights
     values  = []
-    weights = []
+    blend_w = []
 
     if ddm_value is not None and ddm_value > 0:
         values.append(ddm_value)
-        weights.append(0.40)
+        blend_w.append(ddm_w)
 
     if eps_pe_value is not None and eps_pe_value > 0:
         values.append(eps_pe_value)
-        weights.append(0.40)
+        blend_w.append(eps_w)
 
     if dcf_value is not None and dcf_value > 0:
         values.append(dcf_value)
-        weights.append(0.20)
+        blend_w.append(dcf_w)
 
     if not values:
         return None, "No intrinsic value methods applicable"
 
     # Normalise weights to sum to 1.0
-    total_weight = sum(weights)
-    normalised   = [w / total_weight for w in weights]
+    total_weight = sum(blend_w)
+    normalised   = [w / total_weight for w in blend_w]
 
     intrinsic_value = sum(v * w for v, w in zip(values, normalised))
 

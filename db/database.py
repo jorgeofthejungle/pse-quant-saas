@@ -17,8 +17,10 @@ from db.db_schema     import init_db
 from db.db_prices     import upsert_price, get_latest_price
 from db.db_scores     import save_scores, get_last_top5, get_last_scores
 from db.db_financials import (upsert_financials, get_financials,
-                               upsert_stock, get_all_tickers)
+                               upsert_stock, get_all_tickers,
+                               mark_stock_status, get_stale_financials_tickers)
 from db.db_sentiment  import upsert_sentiment, get_sentiment
+from db.db_settings   import get_setting, set_setting, get_all_settings
 
 try:
     from dashboard.db_members import (
@@ -28,7 +30,7 @@ try:
         log_activity, get_recent_activity,
         get_revenue_by_month, get_member_growth,
         get_plan_distribution, get_member_stats,
-        expire_overdue_members,
+        expire_overdue_members, bulk_cancel_inactive,
     )
 except ImportError:
     pass   # dashboard not installed yet — core DB still works
@@ -39,13 +41,16 @@ __all__ = [
     'upsert_price', 'get_latest_price',
     'save_scores', 'get_last_top5', 'get_last_scores',
     'upsert_financials', 'get_financials', 'upsert_stock', 'get_all_tickers',
+    'mark_stock_status', 'get_stale_financials_tickers',
     'upsert_sentiment', 'get_sentiment',
+    'get_setting', 'set_setting', 'get_all_settings',
     'add_member', 'get_member', 'get_all_members', 'update_member',
     'extend_member', 'cancel_member', 'record_payment',
     'get_member_subscriptions', 'get_expiring_soon',
     'log_activity', 'get_recent_activity',
     'get_revenue_by_month', 'get_member_growth',
-    'get_plan_distribution', 'get_member_stats', 'expire_overdue_members',
+    'get_plan_distribution', 'get_member_stats',
+    'expire_overdue_members', 'bulk_cancel_inactive',
 ]
 
 

@@ -143,30 +143,38 @@ Alert engine (dividend, earnings, price triggers)
 ## Scoring Methodology
 
 ### Pure Dividend Score (weighted average of sub-scores)
-| Metric | Weight | What It Measures |
+| Factor | Weight | What It Measures |
 |--------|--------|-----------------|
-| Dividend Yield | 30% | Income return relative to price |
-| FCF Coverage | 25% | Can dividends be sustained from cash flow? |
-| Payout Ratio | 20% | What fraction of earnings is paid out? |
-| Dividend CAGR | 15% | Is the dividend growing over time? |
-| D/E Ratio | 10% | Is the company overleveraged? |
+| Dividend Yield | 20% | Income return relative to price |
+| FCF Yield | 15% | Free cash flow as % of market cap |
+| Quality Composite | 20% | ROE (50%) + Cash Flow Quality (50%) |
+| EPS Stability | 15% | Consistency of earnings over time |
+| Leverage + Coverage | 15% | D/E, FCF coverage, interest coverage blend |
+| Relative Valuation | 15% | P/E and EV/EBITDA blend |
+
+Cash Flow Quality = Operating CF / Net Income. Ratio >= 1.0 means reported earnings are fully backed by real cash.
 
 ### Dividend Growth Score
-| Metric | Weight | What It Measures |
+| Factor | Weight | What It Measures |
 |--------|--------|-----------------|
-| Dividend CAGR | 35% | Consistent dividend growth rate |
-| FCF Coverage | 25% | Sustainability of future growth |
-| Payout Ratio | 20% | Headroom to grow dividends further |
-| ROE | 20% | Is management creating value for shareholders? |
+| Dividend CAGR | 20% | How fast dividends are growing per year |
+| Growth Composite | 20% | EPS Growth (60%) + Growth Consistency (40%) |
+| Quality Composite | 15% | ROE (50%) + Cash Flow Quality (50%) |
+| Dividend Yield | 15% | Current income yield |
+| Payout Headroom | 15% | Room to raise dividends further |
+| Leverage Stability | 15% | D/E and FCF coverage blend |
+
+Growth Consistency penalizes erratic revenue/EPS patterns (high coefficient of variation).
 
 ### Value Score
-| Metric | Weight | What It Measures |
+| Factor | Weight | What It Measures |
 |--------|--------|-----------------|
-| P/E Ratio | 25% | Price paid per peso of earnings |
-| P/B Ratio | 20% | Price vs book value of assets |
-| EV/EBITDA | 20% | Enterprise value vs operating profit |
-| ROE | 20% | Management efficiency |
-| Revenue CAGR | 15% | Business growth trajectory |
+| Valuation Composite | 30% | P/E + EV/EBITDA + FCF Yield + Earnings Yield vs Bonds (25% each) |
+| Quality Composite | 30% | ROE (40%) + EPS Stability (30%) + Cash Flow Quality (30%) |
+| Growth Composite | 20% | Revenue CAGR (60%) + Growth Consistency (40%) |
+| Leverage Risk | 20% | D/E and interest coverage blend |
+
+Earnings Yield vs Bonds = stock earnings yield minus PH 10Y bond rate (6.5%). Positive spread means the stock earns more than risk-free bonds.
 
 > Weights and thresholds are fixed and deterministic. They are never modified
 > without explicit instruction from the project owner.

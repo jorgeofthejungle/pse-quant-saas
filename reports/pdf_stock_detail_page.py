@@ -17,6 +17,7 @@ from reports.pdf_styles import (
 )
 from reports.pdf_rankings_table import generate_overall_assessment
 from reports.pdf_sentiment import build_sentiment_panel
+from reports.pdf_momentum import build_momentum_panel
 
 
 def build_stock_detail(styles, stock, rank, portfolio_type):
@@ -254,18 +255,25 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
         elements.append(Paragraph('SCORE BREAKDOWN', styles['GoldLabel']))
         elements.append(Paragraph(
             'Each factor below contributed points to the final score. '
-            'Full bar = perfect 100/100 on that factor. '
+            'Full bar = top contributing factor; each bar shows points earned '
+            'relative to the highest contributor. '
             'The explanation below each bar tells you exactly '
             'why this stock scored what it scored.',
             styles['ExplainText']
         ))
         elements.append(Spacer(1, 2 * mm))
 
+        max_contrib = max(
+            (d.get('score', 0) * d.get('weight', 0) for d in breakdown.values()),
+            default=1.0
+        ) or 1.0
+
         for metric, data in breakdown.items():
             sub         = data.get('score', 0)
             wt          = data.get('weight', 0)
             contrib     = round(sub * wt, 1)
-            filled      = int(sub / 10)
+            bar_fill    = (sub * wt) / max_contrib
+            filled      = round(bar_fill * 10)
             empty       = 10 - filled
             bar_col     = score_color(sub)
             explanation = data.get('explanation', '')
@@ -327,7 +335,10 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
 
             elements.append(Spacer(1, 1 * mm))
 
-    # ── Sentiment panel (injected after score breakdown) ──
+    # ── Momentum analysis panel (after score breakdown, before sentiment) ──
+    elements += build_momentum_panel(stock, styles)
+
+    # ── Sentiment panel ──
     elements += build_sentiment_panel(stock)
 
     return elements

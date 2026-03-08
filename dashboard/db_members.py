@@ -36,6 +36,23 @@ def expire_overdue_members():
     return changed
 
 
+def bulk_cancel_inactive() -> int:
+    """
+    Marks all expired and cancelled members as 'cancelled' (archival).
+    Effectively removes non-active members from the active view.
+    Returns the number of records updated.
+    """
+    conn = get_connection()
+    cur  = conn.execute("""
+        UPDATE members SET status = 'cancelled'
+        WHERE status IN ('expired', 'cancelled')
+    """)
+    conn.commit()
+    changed = cur.rowcount
+    conn.close()
+    return changed
+
+
 # ── Member CRUD ───────────────────────────────────────────────
 
 def get_all_members(status_filter: str = None) -> list:

@@ -46,7 +46,7 @@ Never hardcode model strings. Always import from `config.py`.
 **Three portfolio strategies:**
 | Portfolio | Focus | Key Metrics |
 |-----------|-------|-------------|
-| PURE DIVIDEND | Passive income, yield ≥ 3% | Yield, Payout Ratio, FCF Coverage, Dividend CAGR |
+| PURE DIVIDEND | Passive income, yield ≥ 3% | Yield, FCF Yield, Quality (ROE+CF Quality), EPS Stability |
 | DIVIDEND GROWTH | Dividend growers, CAGR > 0% | CAGR, payout ≤ 75%, MoS 20% |
 | VALUE | Undervalued businesses | P/E, P/B, EV/EBITDA, ROE, Revenue CAGR, MoS 30% |
 
@@ -78,7 +78,8 @@ pse-quant-saas/
 │   ├── filters.py          ← Portfolio eligibility filters ✅
 │   ├── scorer.py           ← 0-100 scoring engine ✅ (facade)
 │   │   ├── scorer_utils.py
-│   │   └── scorer_explanations.py
+│   │   ├── scorer_explanations.py
+│   │   └── scorer_momentum.py  ← Fundamental momentum composite ✅
 │   ├── mos.py              ← Margin of Safety calculator ✅
 │   ├── validator.py        ← Data validation layer ✅
 │   └── sentiment_engine.py ← Claude Haiku news sentiment ✅
@@ -171,7 +172,8 @@ Bank and REIT sector exemptions are already implemented.
 ### engine/scorer.py (facade)
 Functions: `score_dividend(metrics)`, `score_value(metrics)`,
 `score_hybrid(metrics)` → each returns `(score: float, breakdown: dict)`
-Implementation split across `scorer_utils.py` + `scorer_explanations.py`.
+Implementation split across `scorer_utils.py`, `scorer_explanations.py`,
+and `scorer_momentum.py`.
 
 Breakdown dict format:
 ```python
@@ -184,6 +186,27 @@ Breakdown dict format:
   }
 }
 ```
+
+**Current factor weights (v4 — includes Fundamental Momentum):**
+
+| Factor | Pure Dividend | Dividend Growth | Value |
+|--------|--------------|----------------|-------|
+| Dividend Yield | 18% | 14% | — |
+| FCF Yield | 14% | — | — |
+| Quality Composite (ROE+CFQ) | 18% | 14% | — |
+| EPS Stability | 14% | — | — |
+| Leverage / Coverage | 14% | 13% | 19% |
+| Relative Valuation | 12% | — | — |
+| Fundamental Momentum | 10% | 10% | 10% |
+| CAGR | — | 17% | — |
+| Growth Composite (EPS+Consistency) | — | 18% | 17% |
+| Payout Ratio | — | 14% | — |
+| Valuation Composite | — | — | 27% |
+| Quality Composite (ROE+EPS+CFQ) | — | — | 27% |
+
+**Momentum data fields required:** `revenue_5y` (newest first), `eps_5y` (newest first),
+`operating_cf_history` (newest first). Minimum 4 values per signal; `None` → weight redistributed.
+
 **CRITICAL: Do not change weights or normalisation thresholds
 without explicit instruction from the user. The scoring logic
 is deterministic by design.**
@@ -382,8 +405,23 @@ alert_engine.py — price, dividend, earnings alerts with first-run dedup.
 Local Flask dashboard at http://localhost:8080.
 Member management, PayMongo payment links, pipeline controls, analytics.
 
-### Phase 6 — Next (Backlog)
-- [ ] backtester.py — historical performance of scoring model vs PSEi
+### Phase 6 — Scoring Enhancement ✅ COMPLETE
+Fundamental Momentum layer added to all 3 portfolio scorers.
+- `engine/scorer_momentum.py` — Split-Window CAGR Delta + OCF mean-comparison
+- Signals: Revenue Momentum (40%), EPS Momentum (35%), Operating CF Momentum (25%)
+- 10% weight in all portfolios; graceful None fallback via `_blend()`
+- Requires: `revenue_5y`, `eps_5y`, `operating_cf_history` (newest-first lists, min 4 values)
+- Config: `MOMENTUM_MIN_YEARS = 4` in `config.py`
+
+### Phase 7 — Backtester ✅ COMPLETE
+`backtester.py` — fundamental score simulation across historical years.
+- Re-runs scoring model for each year using only financials available at that time
+- Measures rank consistency, Spearman correlation, portfolio turnover, score trajectories
+- Uses current prices with historical fundamentals (no multi-year price archive)
+- CLI: `py backtester.py --portfolio pure_dividend --years 2022 2023 2024 2025`
+- Includes educational disclaimer per CLAUDE.md 7A
+
+### Phase 8 — Next (Backlog)
 - [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
 - [ ] REIT FFO-based FCF coverage exemption in dividend filters
 - [ ] Export rankings to CSV/Excel from dashboard
@@ -559,6 +597,6 @@ The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
 
 ---
 
-*Last updated: Phase 5 complete — dashboard done (2026-03-07)*
+*Last updated: Phase 7 complete — backtester done (2026-03-08)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

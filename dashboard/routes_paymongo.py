@@ -18,6 +18,9 @@ from flask import Blueprint, request, jsonify
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'db'))
+
+from db.db_settings import get_setting
 
 paymongo_bp = Blueprint('paymongo', __name__)
 
@@ -52,12 +55,14 @@ def create_link():
                      'Add it to use PayMongo payment links.',
         })
 
-    # Amount in centavos
+    # Amount in centavos — DB setting takes priority over .env
     if plan == 'annual':
-        centavos    = int(os.getenv('ANNUAL_PRICE_CENTAVOS', 299900))
+        centavos    = int(get_setting('annual_price_centavos',
+                                       os.getenv('ANNUAL_PRICE_CENTAVOS', 299900)))
         description = 'PSE Quant SaaS - Annual Subscription'
     else:
-        centavos    = int(os.getenv('MONTHLY_PRICE_CENTAVOS', 29900))
+        centavos    = int(get_setting('monthly_price_centavos',
+                                       os.getenv('MONTHLY_PRICE_CENTAVOS', 29900)))
         description = 'PSE Quant SaaS - Monthly Subscription'
 
     payload = {

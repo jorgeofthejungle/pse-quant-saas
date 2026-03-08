@@ -65,3 +65,34 @@ DDM_MAX_GROWTH_RATE = 0.07    # Cap on DDM dividend growth rate
 # ── Data Lookback ──────────────────────────────────────────
 YEARS_PREFERRED = 5   # Use 5 years of data when available
 YEARS_MINIMUM   = 3   # Require at least 3 years; flag stocks with less
+
+# ── Conglomerate IV Discount ───────────────────────────────
+# Applied to intrinsic value for stocks in the 'Holding Firms' sector.
+# Philippine conglomerates trade at a structural discount due to opacity,
+# cross-holding complexity, and limited segment-level reporting.
+CONGLOMERATE_DISCOUNT = 0.20   # 20% reduction to intrinsic value
+
+# ── PDF Trigger Threshold ──────────────────────────────────
+# Send a new PDF if any top-10 stock's score shifts by this many points
+SCORE_CHANGE_THRESHOLD = 5.0
+
+# ── Weekly Full Financial Scrape ───────────────────────────
+WEEKLY_SCRAPE_DAY  = 'sun'
+WEEKLY_SCRAPE_HOUR = 22    # 10:00 PM PHT — after-hours, before Monday market
+
+# ── Stale Data Detection ───────────────────────────────────
+# If a stock's latest price is older than WARN days, print a warning but
+# still allow scoring.  If older than BLOCK days, the stock is hard-blocked
+# from scoring (likely suspended or delisted).
+STALE_PRICE_WARN_DAYS  = 30
+STALE_PRICE_BLOCK_DAYS = 90
+
+# How many days without a PSE Edge scrape before a ticker is auto-marked
+# as 'suspended' during the weekly scrape comparison.
+STALE_SCRAPE_SUSPEND_DAYS = 14
+
+# ── Fundamental Momentum ───────────────────────────────────
+# Minimum historical data points required to compute any momentum signal.
+# With 4 points: 2 recent vs 2 prior (minimal but usable).
+# Stocks with fewer data points receive None -- _blend() redistributes weight.
+MOMENTUM_MIN_YEARS = 4

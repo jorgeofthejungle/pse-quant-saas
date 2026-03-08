@@ -30,7 +30,8 @@ from scheduler_data import (
     FILTERS, SCORERS, PORTFOLIO_NAMES, SCRAPER_AVAILABLE,
 )
 from scheduler_jobs import (
-    run_daily_job, _score_and_rank, _top5_changed, _build_changes,
+    run_daily_job, run_weekly_scrape,
+    _score_and_rank, _top5_changed, _significant_score_change, _build_changes,
 )
 
 try:
@@ -38,10 +39,13 @@ try:
 except ImportError:
     from alert_engine import run_alert_check
 
-from config import DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE
+from config import (DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE,
+                    WEEKLY_SCRAPE_DAY, WEEKLY_SCRAPE_HOUR)
+from db.db_settings import get_setting
 
 __all__ = [
-    'run_daily_job', '_score_and_rank', '_top5_changed', '_build_changes',
+    'run_daily_job', 'run_weekly_scrape',
+    '_score_and_rank', '_top5_changed', '_significant_score_change', '_build_changes',
     'load_sample_stocks', '_load_stocks',
     'FILTERS', 'SCORERS', 'PORTFOLIO_NAMES',
     'run_alert_check',
@@ -65,26 +69,40 @@ def start_scheduler():
 
     scheduler = BlockingScheduler(timezone='Asia/Manila')
 
+    # Read schedule times from DB (dashboard-editable), fallback to config
+    alert_h = int(get_setting('alert_hour',   DAILY_ALERT_HOUR))
+    alert_m = int(get_setting('alert_minute', DAILY_ALERT_MINUTE))
+    score_h = int(get_setting('score_hour',   16))
+    score_m = int(get_setting('score_minute', 0))
+
     scheduler.add_job(
         run_alert_check,
-        CronTrigger(day_of_week='mon-fri',
-                    hour=DAILY_ALERT_HOUR, minute=DAILY_ALERT_MINUTE),
+        CronTrigger(day_of_week='mon-fri', hour=alert_h, minute=alert_m),
         id='daily_alert_check',
         name='PSE Alert Check (price/dividend/earnings)',
         misfire_grace_time=600,
     )
     scheduler.add_job(
         run_daily_job,
-        CronTrigger(day_of_week='mon-fri', hour=16, minute=0),
+        CronTrigger(day_of_week='mon-fri', hour=score_h, minute=score_m),
         id='daily_pse_run',
         name='PSE Daily Score & Report',
         misfire_grace_time=600,
     )
+    scheduler.add_job(
+        run_weekly_scrape,
+        CronTrigger(day_of_week=WEEKLY_SCRAPE_DAY,
+                    hour=WEEKLY_SCRAPE_HOUR, minute=0),
+        id='weekly_full_scrape',
+        name='PSE Weekly Full Financial Scrape',
+        misfire_grace_time=3600,
+    )
 
     print("=" * 55)
     print("  PSE QUANT SAAS — Scheduler Started")
-    print(f"  Alert check:  weekdays {DAILY_ALERT_HOUR:02d}:{DAILY_ALERT_MINUTE:02d} PHT")
-    print("  Score & report: weekdays 16:00 PHT")
+    print(f"  Alert check:    weekdays {alert_h:02d}:{alert_m:02d} PHT")
+    print(f"  Score & report: weekdays {score_h:02d}:{score_m:02d} PHT")
+    print(f"  Full scrape:    {WEEKLY_SCRAPE_DAY.upper()} {WEEKLY_SCRAPE_HOUR:02d}:00 PHT")
     print("  Press Ctrl+C to stop")
     print("=" * 55)
 
@@ -125,6 +143,11 @@ def main():
         action='store_true',
         help='Combined with --run-alerts: detect alerts without sending to Discord',
     )
+    parser.add_argument(
+        '--run-weekly',
+        action='store_true',
+        help='Run the weekly full financial scrape immediately (for testing)',
+    )
     args = parser.parse_args()
 
     db.init_db()
@@ -135,6 +158,9 @@ def main():
     elif args.run_now:
         print("Running one full daily cycle now...")
         run_daily_job()
+    elif args.run_weekly:
+        print("Running weekly full financial scrape now...")
+        run_weekly_scrape()
     else:
         start_scheduler()
 

@@ -9,8 +9,9 @@
 from datetime import datetime
 from discord.discord_core import (
     _post_webhook, WEBHOOKS,
-    COLOUR_DIVIDEND, COLOUR_ALERT, COLOUR_INFO,
-    PORTFOLIO_COLOURS, PORTFOLIO_EMOJI, DISCLAIMER,
+    COLOUR_DIVIDEND, COLOUR_ALERT, COLOUR_INFO, COLOUR_SHORTLIST,
+    COLOUR_OPPORTUNITY, COLOUR_HALF_POS, COLOUR_CAUTION,
+    PORTFOLIO_COLOURS, PORTFOLIO_EMOJI, DISCLAIMER, SIGNAL_DISCLAIMER,
 )
 
 
@@ -181,6 +182,83 @@ def send_rescore_notice(
     return _post_webhook(webhook_url, {'embeds': [embed]})
 
 
+def send_sentiment_signal(
+    webhook_url:      str,
+    ticker:           str,
+    company:          str,
+    signal:           str,
+    reasoning:        str,
+    sentiment_summary: str,
+    key_events:       list,
+    mos_pct:          float | None,
+    overall_score:    float,
+    portfolio_type:   str,
+) -> bool:
+    """
+    Sends an educational sentiment signal alert to #pse-alerts.
+
+    Parameters:
+        signal     — 'potential_opportunity' | 'half_position' | 'caution'
+        reasoning  — one-line deterministic explanation
+        mos_pct    — Margin of Safety % (None if unavailable)
+        overall_score — 0-100 portfolio score
+        portfolio_type — 'pure_dividend' | 'dividend_growth' | 'value'
+    """
+    url = webhook_url or WEBHOOKS.get('alerts', '')
+    if not url:
+        print(f"[discord_alerts] DISCORD_WEBHOOK_ALERTS not set -- skipping signal for {ticker}")
+        return False
+
+    _SIGNAL_META = {
+        'potential_opportunity': {
+            'label':  'Potential Opportunity',
+            'colour': COLOUR_OPPORTUNITY,
+            'prefix': 'Quantitative criteria suggest a potential opportunity.',
+        },
+        'half_position': {
+            'label':  'Half Position Signal',
+            'colour': COLOUR_HALF_POS,
+            'prefix': 'Positive sentiment with limited margin of safety — signals caution.',
+        },
+        'caution': {
+            'label':  'Caution Signal',
+            'colour': COLOUR_CAUTION,
+            'prefix': 'Negative news sentiment detected for this stock.',
+        },
+    }
+    meta = _SIGNAL_META.get(signal, {
+        'label': signal.title(), 'colour': COLOUR_INFO, 'prefix': '',
+    })
+
+    mos_str = f'{mos_pct:.1f}%' if mos_pct is not None else 'N/A'
+    portfolio_label = portfolio_type.replace('_', ' ').title()
+
+    events_text = '\n'.join(f'- {e}' for e in (key_events or [])[:3]) or 'No specific events.'
+
+    fields = [
+        {'name': 'Signal',          'value': f"**{meta['label']}**",     'inline': True},
+        {'name': 'Portfolio Score', 'value': f'{overall_score:.1f}/100', 'inline': True},
+        {'name': 'Margin of Safety','value': mos_str,                    'inline': True},
+        {'name': 'Reasoning',       'value': reasoning,                  'inline': False},
+        {'name': 'News Summary',    'value': sentiment_summary or 'N/A', 'inline': False},
+        {'name': 'Key Events',      'value': events_text,                'inline': False},
+    ]
+
+    embed = {
+        'title':       f"{meta['label']}: {ticker}  ({portfolio_label})",
+        'description': (
+            f"**{company}** ({ticker})\n\n"
+            f"{meta['prefix']}\n\n"
+            f"*{SIGNAL_DISCLAIMER}*"
+        ),
+        'color':   meta['colour'],
+        'fields':  fields,
+        'footer':  {'text': SIGNAL_DISCLAIMER},
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }
+    return _post_webhook(url, {'embeds': [embed]})
+
+
 def send_opportunistic_alert(
     ticker:       str,
     company_name: str,
@@ -218,3 +296,93 @@ def send_opportunistic_alert(
     if success:
         print(f"[discord_alerts] Opportunistic alert sent for {ticker}")
     return success
+
+
+# ── Portfolio name lookup (matches scheduler_data.py) ────────
+_PORTFOLIO_NAMES = {
+    'pure_dividend':   'PURE DIVIDEND',
+    'dividend_growth': 'DIVIDEND GROWTH',
+    'value':           'VALUE',
+}
+
+
+def send_shortlist_change(
+    webhook_url:    str,
+    portfolio_type: str,
+    changes:        list,
+) -> bool:
+    """
+    Sends an educational alert when stocks enter or leave a portfolio's
+    qualifying shortlist (all stocks that pass filters).
+
+    Parameters:
+        changes -- list of dicts from _build_shortlist_changes():
+            exit:  {'type': 'exit',  'ticker', 'name', 'reason', 'old_score', 'old_rank'}
+            entry: {'type': 'entry', 'ticker', 'name', 'score', 'rank',
+                     'strongest_factor', 'strongest_score'}
+    """
+    url = webhook_url or WEBHOOKS.get('alerts', '')
+    if not url:
+        print("[discord_alerts] DISCORD_WEBHOOK_ALERTS not set -- skipping shortlist alert")
+        return False
+
+    emoji = PORTFOLIO_EMOJI.get(portfolio_type, '')
+    name  = _PORTFOLIO_NAMES.get(portfolio_type, portfolio_type.upper())
+
+    exits   = [c for c in changes if c['type'] == 'exit']
+    entries = [c for c in changes if c['type'] == 'entry']
+
+    desc_parts = []
+    if exits:
+        desc_parts.append(f"**{len(exits)}** stock(s) no longer qualify")
+    if entries:
+        desc_parts.append(f"**{len(entries)}** new stock(s) now qualify")
+    desc = '. '.join(desc_parts) + '.' if desc_parts else 'Shortlist updated.'
+
+    fields = []
+
+    for c in exits[:12]:
+        ticker = c.get('ticker', '?')
+        cname  = c.get('name', ticker)
+        reason = c.get('reason', 'No longer meets portfolio criteria.')
+        old_s  = c.get('old_score')
+        old_r  = c.get('old_rank')
+        score_line = f"  Previous score: {old_s:.1f}/100 (rank #{old_r})." if old_s is not None else ''
+        fields.append({
+            'name':   f"REMOVED: {ticker}",
+            'value':  f"{cname} -- {reason}{score_line}",
+            'inline': False,
+        })
+
+    for c in entries[:12]:
+        ticker = c.get('ticker', '?')
+        cname  = c.get('name', ticker)
+        score  = c.get('score', 0)
+        rank   = c.get('rank', '?')
+        factor = c.get('strongest_factor', '')
+        f_score = c.get('strongest_score')
+        highlight = ''
+        if factor and f_score is not None:
+            factor_label = factor.replace('_', ' ').title()
+            highlight = f"  Strongest area: {factor_label} at {f_score:.0f}/100."
+        fields.append({
+            'name':   f"ADDED: {ticker}",
+            'value':  f"{cname} joined at rank #{rank} with score {score:.1f}/100.{highlight}",
+            'inline': False,
+        })
+
+    embed = {
+        'title':       f"{emoji}  Shortlist Update -- {name}",
+        'description': (
+            f"The qualifying stocks for the {name} portfolio have changed.\n\n"
+            f"{desc}\n\n"
+            f"*Shortlist changes reflect updated financial data and filter criteria. "
+            f"A stock leaving the shortlist means it no longer meets the minimum "
+            f"requirements -- it is not a sell signal.*"
+        ),
+        'color':     COLOUR_SHORTLIST,
+        'fields':    fields,
+        'footer':    {'text': DISCLAIMER},
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }
+    return _post_webhook(url, {'embeds': [embed]})

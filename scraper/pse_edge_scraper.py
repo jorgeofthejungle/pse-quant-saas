@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / 'db'))
 sys.path.insert(0, str(ROOT))
 
 import database as db
-from config import SCRAPE_DELAY_SECS
+from config import SCRAPE_DELAY_SECS, STALE_SCRAPE_SUSPEND_DAYS
 
 try:
     from scraper.pse_session import make_session, _get, PSE_SECTORS
@@ -136,11 +136,13 @@ def _save_company(company_info: dict, stock_data: dict):
     ticker = company_info['ticker']
 
     db.upsert_stock(
-        ticker  = ticker,
-        name    = company_info.get('name', ''),
-        sector  = company_info.get('sector', ''),
-        is_reit = company_info.get('is_reit', False),
-        is_bank = company_info.get('is_bank', False),
+        ticker       = ticker,
+        name         = company_info.get('name', ''),
+        sector       = company_info.get('sector', ''),
+        is_reit      = company_info.get('is_reit', False),
+        is_bank      = company_info.get('is_bank', False),
+        last_scraped = datetime.now().isoformat(),
+        status       = 'active',
     )
 
     if stock_data.get('current_price'):
@@ -270,6 +272,42 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
             print("no data")
 
     print(f"\n  Saved {saved}/{len(all_companies)} companies to database.")
+
+    # ── New IPO detection ─────────────────────────────────────
+    existing_tickers = set(db.get_all_tickers(active_only=False))
+    scraped_tickers  = {c['ticker'] for c in all_companies if c.get('ticker')}
+    new_tickers = scraped_tickers - existing_tickers
+    if new_tickers:
+        print(f"  New tickers detected on PSE Edge (possible IPOs): {', '.join(sorted(new_tickers))}")
+        db.log_activity('scraper', 'new_ticker_detected',
+                        f"Possible new IPOs: {', '.join(sorted(new_tickers))}", 'ok')
+
+    # ── Suspension detection ──────────────────────────────────
+    # Tickers that were in our DB (active) but were NOT in the PSE Edge
+    # company directory today. If their last_scraped is > STALE_SCRAPE_SUSPEND_DAYS
+    # old, we mark them as 'suspended'. They auto-reactivate on next successful scrape.
+    from datetime import timedelta
+    cutoff_dt = datetime.now() - timedelta(days=STALE_SCRAPE_SUSPEND_DAYS)
+    cutoff    = cutoff_dt.isoformat()
+
+    conn = db.get_connection()
+    stale_rows = conn.execute("""
+        SELECT ticker, last_scraped FROM stocks
+        WHERE status = 'active'
+          AND ticker NOT IN ({})
+          AND (last_scraped IS NULL OR last_scraped < ?)
+    """.format(','.join('?' * len(scraped_tickers))),
+        (*scraped_tickers, cutoff)
+    ).fetchall()
+    conn.close()
+
+    if stale_rows:
+        for row in stale_rows:
+            t = row['ticker']
+            db.mark_stock_status(t, 'suspended')
+            print(f"  SUSPENDED: {t} not found on PSE Edge for {STALE_SCRAPE_SUSPEND_DAYS}+ days")
+        db.log_activity('scraper', 'tickers_suspended',
+                        f"Suspended: {', '.join(r['ticker'] for r in stale_rows)}", 'warn')
 
 
 # ── CLI entry point ───────────────────────────────────────────

@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / 'db'))
 sys.path.insert(0, str(ROOT))
 
 import database as db
+from db.db_settings import get_setting
 from dashboard.db_members import (
     expire_overdue_members, get_member_stats,
     get_expiring_soon, get_recent_activity,
@@ -37,12 +38,22 @@ def index():
     for pt in ['pure_dividend', 'dividend_growth', 'value']:
         portfolios[pt] = db.get_last_top5(pt) or []
 
+    # Pricing for quick payment link card
+    pm_configured = bool(os.getenv('PAYMONGO_SECRET_KEY', ''))
+    pm_monthly    = int(get_setting('monthly_price_centavos',
+                                     os.getenv('MONTHLY_PRICE_CENTAVOS', 29900))) / 100
+    pm_annual     = int(get_setting('annual_price_centavos',
+                                     os.getenv('ANNUAL_PRICE_CENTAVOS', 299900))) / 100
+
     context = {
         'member_stats':   member_stats,
         'expiring_soon':  expiring_soon,
         'activity':       activity,
         'portfolios':     portfolios,
         'now':            datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'pm_configured':  pm_configured,
+        'pm_monthly':     pm_monthly,
+        'pm_annual':      pm_annual,
     }
     return render_template('home.html', **context)
 

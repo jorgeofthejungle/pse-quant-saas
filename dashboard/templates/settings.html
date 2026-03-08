@@ -42,10 +42,10 @@
   </p>
 </div>
 
-<!-- PayMongo -->
+<!-- PayMongo + Pricing -->
 <div class="card">
-  <h2>PayMongo</h2>
-  <table class="info-table">
+  <h2>PayMongo &amp; Pricing</h2>
+  <table class="info-table" style="margin-bottom:1rem">
     <tr>
       <td>Secret Key</td>
       <td>
@@ -57,27 +57,54 @@
         {% endif %}
       </td>
     </tr>
-    <tr>
-      <td>Monthly Price</td>
-      <td><strong>PHP {{ "%.2f"|format(pm_monthly) }}</strong>
-        <span class="text-muted">(MONTHLY_PRICE_CENTAVOS in .env)</span>
-      </td>
-    </tr>
-    <tr>
-      <td>Annual Price</td>
-      <td><strong>PHP {{ "%.2f"|format(pm_annual) }}</strong>
-        <span class="text-muted">(ANNUAL_PRICE_CENTAVOS in .env)</span>
-      </td>
-    </tr>
   </table>
+  <h4 style="margin-bottom:0.5rem">Subscription Pricing</h4>
+  <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap">
+    <div>
+      <label class="form-label">Monthly (PHP)</label>
+      <input type="number" id="inp-monthly" class="form-input" style="width:130px"
+             value="{{ '%.2f'|format(pm_monthly) }}" step="0.01" min="1">
+    </div>
+    <div>
+      <label class="form-label">Annual (PHP)</label>
+      <input type="number" id="inp-annual" class="form-input" style="width:130px"
+             value="{{ '%.2f'|format(pm_annual) }}" step="0.01" min="1">
+    </div>
+    <button class="btn btn-primary" onclick="savePricing(this)">Save Prices</button>
+  </div>
+  <p class="text-muted" style="margin-top:0.5rem; font-size:0.82rem">
+    Prices are saved to DB and used immediately for new payment links. No restart needed.
+  </p>
 </div>
 
 <!-- Scheduler -->
 <div class="card">
   <h2>Scheduler</h2>
-  <table class="info-table">
-    <tr><td>Alert Check</td><td>Weekdays {{ alert_time }} PHT</td></tr>
-    <tr><td>Score & Report</td><td>Weekdays {{ score_time }} PHT</td></tr>
+  <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:0.75rem">
+    <div>
+      <label class="form-label">Alert Check time (PHT)</label>
+      <div style="display:flex; gap:0.4rem; align-items:center">
+        <input type="number" id="inp-alert-h" class="form-input" style="width:70px"
+               value="{{ '%02d'|format(alert_hour) }}" min="0" max="23"> :
+        <input type="number" id="inp-alert-m" class="form-input" style="width:70px"
+               value="{{ '%02d'|format(alert_minute) }}" min="0" max="59">
+      </div>
+    </div>
+    <div>
+      <label class="form-label">Score &amp; Report time (PHT)</label>
+      <div style="display:flex; gap:0.4rem; align-items:center">
+        <input type="number" id="inp-score-h" class="form-input" style="width:70px"
+               value="{{ '%02d'|format(score_hour) }}" min="0" max="23"> :
+        <input type="number" id="inp-score-m" class="form-input" style="width:70px"
+               value="{{ '%02d'|format(score_minute) }}" min="0" max="59">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="saveSchedule(this)">Save Schedule</button>
+  </div>
+  <p class="text-muted" style="font-size:0.82rem">
+    Both jobs run weekdays only. Changes take effect the next time <code>py scheduler.py</code> is started.
+  </p>
+  <table class="info-table" style="margin-top:0.75rem">
     <tr><td>PSE Edge Base URL</td><td class="text-mono">{{ pse_base_url }}</td></tr>
     <tr><td>Scrape Delay</td><td>{{ scrape_delay }}s between requests</td></tr>
   </table>
@@ -128,7 +155,38 @@ function showToast(msg, type) {
   t.textContent = msg;
   t.className = 'toast toast-' + type;
   t.style.display = 'block';
-  setTimeout(() => { t.style.display = 'none'; }, 3000);
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+function savePricing(btn) {
+  const monthly = parseFloat(document.getElementById('inp-monthly').value);
+  const annual  = parseFloat(document.getElementById('inp-annual').value);
+  if (!monthly || !annual || monthly <= 0 || annual <= 0) {
+    showToast('Enter valid prices greater than zero.', 'error'); return;
+  }
+  btn.disabled = true; btn.textContent = 'Saving...';
+  fetch('/settings/save-pricing', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({monthly_php: monthly, annual_php: annual}),
+  })
+  .then(r => r.json())
+  .then(d => { showToast(d.message, d.ok ? 'success' : 'error'); btn.disabled = false; btn.textContent = 'Save Prices'; });
+}
+
+function saveSchedule(btn) {
+  const alertH = parseInt(document.getElementById('inp-alert-h').value);
+  const alertM = parseInt(document.getElementById('inp-alert-m').value);
+  const scoreH = parseInt(document.getElementById('inp-score-h').value);
+  const scoreM = parseInt(document.getElementById('inp-score-m').value);
+  btn.disabled = true; btn.textContent = 'Saving...';
+  fetch('/settings/save-schedule', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alert_hour: alertH, alert_minute: alertM, score_hour: scoreH, score_minute: scoreM}),
+  })
+  .then(r => r.json())
+  .then(d => { showToast(d.message, d.ok ? 'success' : 'error'); btn.disabled = false; btn.textContent = 'Save Schedule'; });
 }
 </script>
 {% endblock %}

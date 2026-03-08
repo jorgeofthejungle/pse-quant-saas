@@ -24,7 +24,9 @@ def init_db():
             sector       TEXT,
             is_reit      INTEGER DEFAULT 0,
             is_bank      INTEGER DEFAULT 0,
-            last_updated TEXT
+            last_updated TEXT,
+            last_scraped TEXT,
+            status       TEXT DEFAULT 'active'
         );
 
         -- ── Annual financial data (from PSE Edge filings) ───
@@ -42,6 +44,7 @@ def init_db():
             ebitda       REAL,
             eps          REAL,
             dps          REAL,
+            updated_at   TEXT,
             UNIQUE(ticker, year),
             FOREIGN KEY (ticker) REFERENCES stocks(ticker)
         );
@@ -142,6 +145,13 @@ def init_db():
             status    TEXT DEFAULT 'ok'
         );
 
+        -- ── Runtime settings (key-value, overrides config.py) ─
+        CREATE TABLE IF NOT EXISTS settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         -- ── Indexes for common query patterns ────────────────
         CREATE INDEX IF NOT EXISTS idx_prices_ticker_date
             ON prices(ticker, date);
@@ -159,5 +169,27 @@ def init_db():
             ON activity_log(timestamp);
     """)
     conn.commit()
+
+    # ── Schema migrations for existing DBs ───────────────────
+    # SQLite does not support IF NOT EXISTS on ALTER TABLE.
+    # We catch the OperationalError that fires when the column already exists.
+    migrations = [
+        "ALTER TABLE stocks     ADD COLUMN last_scraped TEXT",
+        "ALTER TABLE stocks     ADD COLUMN status       TEXT DEFAULT 'active'",
+        "ALTER TABLE financials ADD COLUMN updated_at   TEXT",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass   # column already exists — safe to ignore
+    conn.commit()
+
+    # Add the status index only after the column migration has run
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_status ON stocks(status)")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
     print(f"Database ready: {DB_PATH}")

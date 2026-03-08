@@ -66,6 +66,15 @@ SCORED_FIELDS = [
     'de_ratio',
 ]
 
+# Hard-block thresholds: values so extreme they indicate bad data.
+# Stocks that trip these are blocked (valid=False), not just warned.
+BLOCK_THRESHOLDS = {
+    # P/B > 100x almost always means equity is in wrong units
+    'pb': ('>', 100.0,
+           "P/B of {v:.1f}x exceeds 100x — "
+           "likely a unit error in equity data (check millions vs thousands)"),
+}
+
 # Thresholds for suspicious-value warnings (not hard errors).
 # All values are in the same units the stock dict uses.
 WARN_THRESHOLDS = {
@@ -245,6 +254,40 @@ def validate_stock(stock: dict) -> dict:
             'missing_fields': [],
         }
 
+    # ── Stale price detection ─────────────────────────────────
+    try:
+        from config import STALE_PRICE_WARN_DAYS, STALE_PRICE_BLOCK_DAYS
+    except ImportError:
+        STALE_PRICE_WARN_DAYS, STALE_PRICE_BLOCK_DAYS = 30, 90
+
+    price_date = stock.get('price_date')
+    if price_date:
+        from datetime import date
+        try:
+            pd_date = date.fromisoformat(price_date)
+            age_days = (date.today() - pd_date).days
+            if age_days > STALE_PRICE_BLOCK_DAYS:
+                errors.append(
+                    f"{ticker}: Price data is {age_days} days old "
+                    f"(last: {price_date}) — stock may be suspended or delisted. "
+                    f"Excluded from scoring until fresh price data is available."
+                )
+                return {
+                    'ticker':        ticker,
+                    'valid':         False,
+                    'completeness':  0.0,
+                    'errors':        errors,
+                    'warnings':      warnings,
+                    'missing_fields': [],
+                }
+            elif age_days > STALE_PRICE_WARN_DAYS:
+                warnings.append(
+                    f"{ticker}: Price data is {age_days} days old (last: {price_date}) — "
+                    f"stock may be thinly traded or temporarily suspended."
+                )
+        except (ValueError, TypeError):
+            pass   # malformed date — skip staleness check
+
     # ── Special dividend detection and yield cap ──────────────
     # Must run before completeness / threshold checks so the capped values
     # are what flows into the filter and scoring engines.
@@ -271,6 +314,25 @@ def validate_stock(stock: dict) -> dict:
             f"Missing: {', '.join(missing[:5])}"
             + (f" and {len(missing)-5} more" if len(missing) > 5 else "")
         )
+        return {
+            'ticker':        ticker,
+            'valid':         False,
+            'completeness':  completeness,
+            'errors':        errors,
+            'warnings':      warnings,
+            'missing_fields': missing,
+        }
+
+    # ── Hard-block extreme values ─────────────────────────────
+    for field, (op, threshold, msg_tpl) in BLOCK_THRESHOLDS.items():
+        val = stock.get(field)
+        if val is None:
+            continue
+        triggered = (val > threshold) if op == '>' else (val < threshold)
+        if triggered:
+            errors.append(f"{ticker}: " + msg_tpl.format(v=val))
+
+    if errors:
         return {
             'ticker':        ticker,
             'valid':         False,

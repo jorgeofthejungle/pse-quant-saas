@@ -49,6 +49,17 @@ DISCLAIMER = (
     'Not investment advice. Always do your own due diligence.'
 )
 
+SIGNAL_DISCLAIMER = (
+    'Educational signal based on quantitative criteria and AI-classified news sentiment. '
+    'This is NOT investment advice. Always do your own research before making any investment decision.'
+)
+
+# ── Signal alert colours ───────────────────────────────────
+COLOUR_OPPORTUNITY = 0x27AE60   # green — potential opportunity
+COLOUR_HALF_POS    = 0xF39C12   # amber — half position signal
+COLOUR_CAUTION     = 0xE74C3C   # red   — caution signal
+COLOUR_SHORTLIST   = 0xE67E22   # orange — shortlist membership change
+
 
 def _post_webhook(webhook_url: str, payload: dict) -> bool:
     """

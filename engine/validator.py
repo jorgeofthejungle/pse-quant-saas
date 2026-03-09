@@ -3,35 +3,9 @@
 # PSE Quant SaaS — Phase 3
 # ============================================================
 # Validates the stock dict produced by build_stock_dict_from_db()
-# BEFORE it enters the filter / scorer / MoS pipeline.
-#
-# Two levels of issue:
-#
-#   ERRORS   — hard stops. Data is missing or obviously broken.
-#              The stock is marked invalid and skipped entirely.
-#              Example: no current price, no earnings data at all.
-#
-#   WARNINGS — suspicious values. Likely a scraping or unit error.
-#              The stock is still scored, but the issue is logged.
-#              Example: dividend yield of 40% (almost always wrong).
-#
-# Returns a ValidationResult dict:
-#   {
-#     'ticker':         str,
-#     'valid':          bool,       # False = skip this stock
-#     'completeness':   float,      # 0.0–1.0 — how much data we have
-#     'errors':         list[str],  # hard blocks (causes valid=False)
-#     'warnings':       list[str],  # suspicious but not blocking
-#     'missing_fields': list[str],  # None fields that affect scoring
-#   }
-#
-# Usage:
-#   result = validate_stock(stock)
-#   if not result['valid']:
-#       continue
-#   if result['warnings']:
-#       for w in result['warnings']:
-#           print(f"  WARN  {w}")
+# before it enters the filter / scorer / MoS pipeline.
+# ERRORS = hard stops (stock skipped). WARNINGS = suspicious values logged.
+# Returns: {'ticker', 'valid', 'completeness', 'errors', 'warnings', 'missing_fields'}
 # ============================================================
 
 
@@ -146,26 +120,9 @@ SPECIAL_DIVIDEND_DPS_EPS_MULTIPLE = 3.0
 
 def _detect_and_cap_special_dividend(stock: dict, warnings: list) -> None:
     """
-    Detects one-time special dividends that would distort dividend scoring.
-
-    Philippine conglomerates occasionally declare extraordinary dividends:
-    property spin-offs, proceeds from asset sales, subsidiary share
-    distributions, etc. These inflate reported yield to 30–400%, making the
-    stock appear as an elite income payer when its regular dividend is ordinary.
-
-    Trigger (yield cap only):
-      - dividend_yield > SPECIAL_DIVIDEND_YIELD_CAP (20%)
-
-    When triggered:
-      - Caps dividend_yield at 20%
-      - Scales dps_last DOWN to match the 20% yield (never raised)
-      - Sets stock['special_dividend_flag'] = True
-
-    A separate cross-field check (DPS > 3x EPS) adds a warning independently
-    but does NOT trigger the cap, because EPS can be understated (parent-only
-    holdco financials) while DPS is correctly reported.
-
-    The flag is read by the PDF generator to print a disclosure note.
+    Detects one-time special dividends (yield > 20%) that would distort scoring.
+    Caps dividend_yield at 20% and scales dps_last down to match.
+    Sets stock['special_dividend_flag'] = True when triggered.
     Non-triggered stocks get special_dividend_flag = False.
     """
     ticker        = stock.get('ticker', 'UNKNOWN')
@@ -204,16 +161,7 @@ def _detect_and_cap_special_dividend(stock: dict, warnings: list) -> None:
 # ── Core validator ────────────────────────────────────────────
 
 def validate_stock(stock: dict) -> dict:
-    """
-    Validates a single stock dict from build_stock_dict_from_db().
-
-    Returns a ValidationResult dict with:
-      'valid'        — True if the stock can be passed to the scoring engine
-      'completeness' — 0.0–1.0 fraction of scored fields that are populated
-      'errors'       — list of hard-stop messages (present when valid=False)
-      'warnings'     — list of suspicious-value messages
-      'missing_fields' — list of field names that are None/empty
-    """
+    """Validates a single stock dict. Returns ValidationResult with valid, completeness, errors, warnings."""
     ticker   = stock.get('ticker', 'UNKNOWN')
     errors   = []
     warnings = []
@@ -413,21 +361,7 @@ def validate_stock(stock: dict) -> dict:
 
 
 def validate_all(stocks: list) -> tuple[list, list]:
-    """
-    Validates a list of stock dicts.
-    Returns (valid_stocks, validation_results).
-
-    valid_stocks       — only the stocks that passed validation
-    validation_results — one ValidationResult per input stock (for logging)
-
-    Usage:
-        valid, results = validate_all(raw_stocks)
-        for r in results:
-            if r['warnings']:
-                for w in r['warnings']:
-                    print(f"  WARN  {w}")
-        # Use valid list for scoring
-    """
+    """Validates a list of stock dicts. Returns (valid_stocks, validation_results)."""
     valid_stocks = []
     results      = []
 
@@ -474,82 +408,34 @@ def print_validation_summary(results: list) -> None:
 
 if __name__ == '__main__':
     print("=" * 55)
-    print("  PSE Quant SaaS — Validator Self-Test")
+    print("  PSE Quant SaaS -- Validator Self-Test")
     print("=" * 55)
 
     test_cases = [
-        # ── Valid stock (DMC-like)
-        {
-            'ticker': 'DMC',  'name': 'DMCI Holdings',
-            'sector': 'Holdings', 'is_reit': False, 'is_bank': False,
-            'current_price': 9.65,
-            'dividend_yield': 9.95, 'dividend_cagr_5y': 6.3,
-            'payout_ratio': 80.0, 'dps_last': 0.96,
-            'dividends_5y': [0.96, 0.90, 0.85, 0.80, 0.75],
-            'eps_3y': [1.20, 1.13, 0.98], 'eps_5y': [1.20, 1.13, 0.98, 0.90, 0.85],
-            'net_income_3y': [16000, 15000, 13000], 'roe': 13.3,
-            'operating_cf': 22000, 'fcf_coverage': 1.38, 'fcf_yield': 13.78,
-            'fcf_per_share': 1.33, 'fcf_3y': [18000, 16200, 14500],
-            'pe': 8.04, 'pb': 1.09, 'ev_ebitda': 7.03,
-            'revenue_cagr': 8.65, 'revenue_5y': [85000, 80000, 72000, 65000, 60000],
-            'de_ratio': 0.50, 'interest_coverage': None, 'avg_daily_value_6m': None,
-        },
-        # ── Missing current_price (hard error)
-        {
-            'ticker': 'NOPR', 'name': 'No Price Co',
-            'current_price': None,
-            'eps_3y': [1.0, 0.9, 0.8], 'net_income_3y': [100, 90, 80],
-        },
-        # ── No earnings data (hard error)
-        {
-            'ticker': 'NOEP', 'name': 'No EPS Co',
-            'current_price': 10.0,
-            'eps_3y': [], 'net_income_3y': [],
-        },
-        # ── Suspiciously high yield (warning only)
-        {
-            'ticker': 'HYLD', 'name': 'High Yield Co',
-            'sector': 'Services', 'is_reit': False, 'is_bank': False,
-            'current_price': 5.00,
-            'dividend_yield': 35.0,   # suspicious
-            'dps_last': 1.75, 'dividends_5y': [1.75, 1.50, 1.20, 0.90, 0.60],
-            'dividend_cagr_5y': 24.0, 'payout_ratio': 70.0,
-            'eps_3y': [2.50, 2.20, 2.00], 'net_income_3y': [5000, 4500, 4000],
-            'roe': 18.0, 'operating_cf': 6000, 'fcf_coverage': 2.0,
-            'fcf_yield': 8.0, 'fcf_per_share': 0.40, 'fcf_3y': [5000, 4500, 4000],
-            'pe': 2.0, 'pb': 1.2, 'ev_ebitda': 5.0,
-            'revenue_cagr': 10.0, 'de_ratio': 0.30,
-            'interest_coverage': None, 'avg_daily_value_6m': None,
-        },
-        # ── Very sparse data (below 25% completeness)
-        {
-            'ticker': 'SPRS', 'name': 'Sparse Data Co',
-            'current_price': 10.0,
-            'eps_3y': [0.50],
-            'net_income_3y': None,
-        },
-        # ── Special dividend (EMP-like: 332% yield, DPS > 3× EPS)
-        {
-            'ticker': 'SPEC', 'name': 'Special Dividend Co',
-            'sector': 'Services', 'is_reit': False, 'is_bank': False,
-            'current_price': 15.34,
-            'dividend_yield': 332.0,   # EMP-like
-            'dps_last': 51.0,          # large special/property dividend
-            'dividends_5y': [51.0, 0.35, 0.30, 0.25, 0.20],
-            'dividend_cagr_5y': None,  'payout_ratio': None,
-            'eps_3y': [0.40, 0.56, 0.38], 'net_income_3y': [6322, 8705, 5900],
-            'roe': 6.4, 'operating_cf': 9000, 'fcf_coverage': 0.8,
-            'fcf_yield': 2.0, 'fcf_per_share': 0.31, 'fcf_3y': [8000, 7500, 7000],
-            'pe': 38.4, 'pb': 1.5, 'ev_ebitda': 12.0,
-            'revenue_cagr': 5.0, 'de_ratio': 0.80,
-            'interest_coverage': None, 'avg_daily_value_6m': None,
-            'special_dividend_flag': False,
-        },
+        # Valid stock (DMC-like)
+        {'ticker': 'DMC', 'name': 'DMCI Holdings', 'sector': 'Holdings',
+         'is_reit': False, 'is_bank': False, 'current_price': 9.65,
+         'dividend_yield': 9.95, 'dividend_cagr_5y': 6.3, 'payout_ratio': 80.0,
+         'dps_last': 0.96, 'dividends_5y': [0.96, 0.90, 0.85, 0.80, 0.75],
+         'eps_3y': [1.20, 1.13, 0.98], 'net_income_3y': [16000, 15000, 13000],
+         'roe': 13.3, 'operating_cf': 22000, 'fcf_coverage': 1.38,
+         'fcf_yield': 13.78, 'fcf_per_share': 1.33,
+         'pe': 8.04, 'pb': 1.09, 'ev_ebitda': 7.03,
+         'revenue_cagr': 8.65, 'de_ratio': 0.50},
+        # Missing current_price (hard error)
+        {'ticker': 'NOPR', 'current_price': None,
+         'eps_3y': [1.0, 0.9, 0.8], 'net_income_3y': [100, 90, 80]},
+        # No earnings data (hard error)
+        {'ticker': 'NOEP', 'current_price': 10.0, 'eps_3y': [], 'net_income_3y': []},
+        # Special dividend cap (332% yield)
+        {'ticker': 'SPEC', 'name': 'Special Dividend Co', 'sector': 'Services',
+         'is_reit': False, 'is_bank': False, 'current_price': 15.34,
+         'dividend_yield': 332.0, 'dps_last': 51.0,
+         'eps_3y': [0.40, 0.56, 0.38], 'net_income_3y': [6322, 8705, 5900],
+         'roe': 6.4, 'fcf_coverage': 0.8, 'fcf_yield': 2.0, 'fcf_per_share': 0.31,
+         'pe': 38.4, 'pb': 1.5, 'ev_ebitda': 12.0, 'revenue_cagr': 5.0, 'de_ratio': 0.80},
     ]
 
     valid_stocks, results = validate_all(test_cases)
     print_validation_summary(results)
-
     print(f"\nStocks passed to engine: {len(valid_stocks)}")
-    for s in valid_stocks:
-        print(f"  {s['ticker']:6}  completeness={next(r['completeness'] for r in results if r['ticker']==s['ticker']):.0%}")

@@ -4,30 +4,10 @@
 # ============================================================
 # Reruns the scoring model for each historical year using only
 # the annual financials available at that point in time.
-# Prices are taken from the latest DB entry (no time-travel on
-# prices — we don't have a multi-year price archive).
+# Uses current prices (no multi-year price archive).
+# Educational only — not a price-return backtest.
 #
-# This is a FUNDAMENTAL QUALITY backtest, not a price-return
-# backtest.  It answers: "Were the stocks our model selects
-# today already fundamentally strong 1-3 years ago?"
-#
-# Limitations:
-#   - Uses current price for price-based ratios (PE, PB, yield)
-#   - Only tickers with price data in the DB are included
-#   - Coverage is sparse before 2023 (<30 tickers with history)
-#   - No actual stock return data — this is NOT a performance claim
-#
-# Disclaimer: This analysis is educational and statistical.
-# Past fundamental quality does not guarantee future returns.
-# All figures are mathematical estimates, not investment advice.
-#
-# CLI:
-#   py backtester.py
-#   py backtester.py --portfolio pure_dividend
-#   py backtester.py --portfolio dividend_growth
-#   py backtester.py --portfolio value
-#   py backtester.py --portfolio pure_dividend --years 2022 2023 2024
-#   py backtester.py --summary-only
+# CLI: py backtester.py --portfolio pure_dividend --years 2022 2023 2024 2025
 # ============================================================
 
 import sys
@@ -78,12 +58,7 @@ DEFAULT_YEARS = [2022, 2023, 2024, 2025]
 # ── Metric builder (historical) ───────────────────────────────
 
 def _build_metrics_as_of(ticker: str, as_of_year: int, conn) -> dict | None:
-    """
-    Builds a stock metrics dict using only financials from years
-    <= as_of_year. Uses current (latest) price for price-based ratios.
-
-    Returns None if insufficient data for this ticker at that year.
-    """
+    """Builds stock metrics dict using financials up to as_of_year + current price."""
     stock_row = conn.execute(
         "SELECT ticker, name, sector, is_reit, is_bank FROM stocks WHERE ticker = ?",
         (ticker,)
@@ -277,15 +252,7 @@ def _rank_map(results: list) -> dict:
 
 
 def analyse_consistency(simulations: dict) -> dict:
-    """
-    Analyses rank consistency across simulation years.
-
-    Returns:
-      - top5_by_year    : {year: [ticker, ...]}  top-5 tickers each year
-      - consistent_top5 : [ticker, ...]  appeared in top-5 every year
-      - turnover_by_year: {year: float}  % of top-5 that changed vs prior year
-      - rank_corr       : {year_pair: float}  Spearman correlation between years
-    """
+    """Analyses rank consistency. Returns top5_by_year, consistent_top5, turnover, rank_corr."""
     years = sorted(simulations.keys())
     if not years:
         return {}
@@ -359,9 +326,7 @@ def _grade(score: float) -> str:
 
 
 def print_report(simulations: dict, portfolio_type: str, summary_only: bool = False):
-    """
-    Prints the full backtest report to stdout.
-    """
+    """Prints the full backtest report to stdout."""
     years = sorted(simulations.keys())
     label = portfolio_type.replace('_', ' ').upper()
     w     = 65
@@ -496,24 +461,10 @@ def main():
     parser = argparse.ArgumentParser(
         description='PSE Quant SaaS — Fundamental Backtest Simulator'
     )
-    parser.add_argument(
-        '--portfolio',
-        choices=['pure_dividend', 'dividend_growth', 'value'],
-        default='pure_dividend',
-        help='Portfolio strategy to backtest (default: pure_dividend)'
-    )
-    parser.add_argument(
-        '--years',
-        nargs='+',
-        type=int,
-        default=DEFAULT_YEARS,
-        help='Years to simulate (default: 2022 2023 2024 2025)'
-    )
-    parser.add_argument(
-        '--summary-only',
-        action='store_true',
-        help='Skip year-by-year rankings, show only consistency analysis'
-    )
+    parser.add_argument('--portfolio',
+        choices=['pure_dividend', 'dividend_growth', 'value'], default='pure_dividend')
+    parser.add_argument('--years', nargs='+', type=int, default=DEFAULT_YEARS)
+    parser.add_argument('--summary-only', action='store_true')
     args = parser.parse_args()
 
     db.init_db()

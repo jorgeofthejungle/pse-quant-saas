@@ -4,9 +4,9 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'engine'))
 
 from filters import (
-    filter_dividend_portfolio,
+    filter_pure_dividend_portfolio   as filter_dividend_portfolio,
     filter_value_portfolio,
-    filter_hybrid_portfolio,
+    filter_dividend_growth_portfolio as filter_hybrid_portfolio,
 )
 
 # ============================================================
@@ -78,7 +78,7 @@ for portfolio_name, filter_func in portfolios:
     print("=" * 55)
     for stock in stocks:
         eligible, reason = filter_func(stock)
-        status = "✓ PASS" if eligible else "✗ FAIL"
+        status = "PASS" if eligible else "FAIL"
         print(f"  {status}  |  {reason}")
 
 print()

@@ -15,9 +15,6 @@ sys.path.insert(0, str(ROOT / 'discord'))
 sys.path.insert(0, str(ROOT / 'db'))
 sys.path.insert(0, str(ROOT / 'scraper'))
 
-from mos          import (calc_ddm, calc_two_stage_ddm, calc_eps_pe, calc_dcf,
-                          calc_mos_price, calc_mos_pct, calc_hybrid_intrinsic,
-                          apply_conglomerate_discount, _sector_median_pe)
 from pdf_generator import generate_report
 from publisher    import WEBHOOKS, send_report, send_rescore_notice, send_sentiment_signal, send_shortlist_change
 import database as db
@@ -32,12 +29,10 @@ from scheduler_data import (
     SCRAPER_AVAILABLE, _load_stocks,
 )
 
-# Portfolio-specific IV blend weights: (DDM, EPS-PE, DCF)
-_IV_WEIGHTS = {
-    'pure_dividend':   (0.50, 0.25, 0.25),
-    'dividend_growth': (0.40, 0.30, 0.30),
-    'value':           (0.20, 0.40, 0.40),
-}
+try:
+    from engine.pipeline import score_and_rank as _pipeline_score_and_rank
+except ImportError:
+    from pipeline import score_and_rank as _pipeline_score_and_rank
 
 # Scraper import for price updates
 try:
@@ -47,67 +42,11 @@ except ImportError:
 
 
 def _score_and_rank(stocks: list, portfolio_type: str) -> list:
-    """
-    Filters, scores, and ranks stocks for a given portfolio.
-    Returns sorted list with score, intrinsic value, and MoS added.
-    """
+    """Filters, scores, and ranks stocks for a given portfolio."""
     filter_fn = FILTERS[portfolio_type]
     score_fn  = SCORERS[portfolio_type]
-
-    passed = [s for s in stocks if filter_fn(s)[0]]
-
-    # Pre-compute sector PE medians (cached per sector) from full stock universe
-    sector_pe_cache = {}
-    iv_weights = _IV_WEIGHTS.get(portfolio_type, (0.40, 0.40, 0.20))
-
-    result = []
-    for stock in passed:
-        score, breakdown = score_fn(stock)
-
-        sector = stock.get('sector', '')
-        if sector not in sector_pe_cache:
-            sector_pe_cache[sector] = _sector_median_pe(sector, stocks)
-        sector_pe = sector_pe_cache[sector]
-
-        # DDM: Two-Stage for dividend_growth (explicit 5yr + terminal), Gordon Growth for others
-        if portfolio_type == 'dividend_growth':
-            ddm_val, _ = calc_two_stage_ddm(
-                stock.get('dps_last'),
-                stock.get('revenue_cagr'),
-            )
-        else:
-            ddm_val, _ = calc_ddm(
-                stock.get('dps_last'),
-                stock.get('dividend_cagr_5y'),
-            )
-
-        eps_val, _ = calc_eps_pe(
-            stock.get('eps_3y', []),
-            target_pe=sector_pe,
-            roe=stock.get('roe'),
-        )
-        dcf_val, _ = calc_dcf(
-            stock.get('fcf_per_share'),
-            stock.get('revenue_cagr'),
-        )
-
-        iv, _ = calc_hybrid_intrinsic(ddm_val, eps_val, dcf_val, weights=iv_weights)
-        iv = apply_conglomerate_discount(iv, sector)
-
-        mos_price = calc_mos_price(iv, portfolio_type)
-        mos_pct   = calc_mos_pct(iv, stock.get('current_price'))
-
-        result.append({
-            **stock,
-            'score':           score,
-            'score_breakdown': breakdown,
-            'intrinsic_value': iv,
-            'mos_price':       mos_price,
-            'mos_pct':         mos_pct,
-        })
-
-    result.sort(key=lambda x: x['score'], reverse=True)
-    return result
+    passed    = [s for s in stocks if filter_fn(s)[0]]
+    return _pipeline_score_and_rank(passed, portfolio_type, score_fn, all_stocks=stocks)
 
 
 def _top5_changed(old_top5: list, new_top5: list) -> bool:

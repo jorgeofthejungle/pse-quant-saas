@@ -192,8 +192,8 @@ def run_pipeline(portfolio_type, dry_run=False):
     for i, s in enumerate(ranked[:5], 1):
         print(f"       #{i}  {s['ticker']:6}  {s['score']}/100")
 
-    # ── Step 3b: Sentiment enrichment (top 10 only — shown in PDF) ──
-    _try_enrich_with_sentiment(ranked[:10])
+    # ── Step 3b: Sentiment enrichment (all ranked stocks — shown in PDF) ──
+    _try_enrich_with_sentiment(ranked)
 
     # ── Step 4: Generate PDF ──
     print(f"\n[4/5]  Generating PDF report...")

@@ -106,9 +106,7 @@ def start_scheduler():
     print("  Press Ctrl+C to stop")
     print("=" * 55)
 
-    for job in scheduler.get_jobs():
-        print(f"  [{job.name}]  next: {job.next_run_time}")
-    print()
+    print("  Scheduler active — waiting for jobs to trigger...")
 
     try:
         scheduler.start()

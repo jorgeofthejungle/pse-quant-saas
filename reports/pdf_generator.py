@@ -140,7 +140,7 @@ def generate_report(
     elements.append(Spacer(1, 6 * mm))
     elements.append(PageBreak())
     elements.append(Paragraph(
-        'DETAILED STOCK ANALYSIS - TOP 10',
+        f'DETAILED STOCK ANALYSIS — ALL {len(ranked_stocks)} QUALIFYING STOCKS',
         styles['SectionHeader']
     ))
     elements.append(HRFlowable(
@@ -148,7 +148,7 @@ def generate_report(
         color=GOLD, spaceAfter=8
     ))
 
-    for i, stock in enumerate(ranked_stocks[:10]):
+    for i, stock in enumerate(ranked_stocks):
         if i > 0:
             elements.append(PageBreak())
         elements += build_stock_detail(styles, stock, i + 1, portfolio_type)

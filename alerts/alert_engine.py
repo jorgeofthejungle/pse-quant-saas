@@ -72,6 +72,27 @@ def _save_disclosure(ticker: str, date: str, disc_type: str,
     conn.close()
 
 
+def _claim_disclosure(ticker: str, date: str, disc_type: str,
+                      title: str, url: str) -> bool:
+    """
+    Atomically inserts a disclosure record.
+    Returns True if the record was new (this process claimed it),
+    False if it already existed (duplicate — skip the send).
+    Using INSERT OR IGNORE + rowcount prevents duplicate sends even
+    when two scheduler processes run at the same time.
+    """
+    conn = db.get_connection()
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO disclosures (ticker, date, type, title, url) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (ticker, date, disc_type, title, url),
+    )
+    conn.commit()
+    inserted = cur.rowcount > 0
+    conn.close()
+    return inserted
+
+
 def _get_ranked_tickers() -> list:
     """
     Returns all tickers from the most recent scores run joined with
@@ -162,8 +183,16 @@ def check_price_alerts(dry_run: bool = False) -> int:
                 continue
 
             url_key = f"PRICE_ALERT:{portfolio_type}:{today}"
-            if url_key in _get_seen_urls(ticker):
-                continue
+
+            # Atomically claim this alert slot before sending.
+            # If another process already claimed it, skip (prevents duplicates).
+            if dry_run:
+                if url_key in _get_seen_urls(ticker):
+                    continue
+            else:
+                if not _claim_disclosure(ticker, today, 'price_alert',
+                                         f"Price at MoS: {portfolio_type}", url_key):
+                    continue
 
             print(f"  [price_alert] {ticker} ({portfolio_type}): "
                   f"PHP{current_price:.2f} <= MoS PHP{mos_price:.2f}")
@@ -175,8 +204,6 @@ def check_price_alerts(dry_run: bool = False) -> int:
                     intrinsic_value=iv, portfolio_type=portfolio_type,
                     score=score,
                 )
-            _save_disclosure(ticker, today, 'price_alert',
-                             f"Price at MoS: {portfolio_type}", url_key)
             sent += 1
 
     return sent

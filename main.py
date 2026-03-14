@@ -1,28 +1,29 @@
 # ============================================================
-# main.py — PSE Quant SaaS Pipeline Orchestrator
-# PSE Quant SaaS — Phase 3
+# main.py — PSE Quant SaaS Pipeline Orchestrator (v2)
+# PSE Quant SaaS — Phase 9B
 # ============================================================
-# Runs the full pipeline:
-#   Load stocks → Validate → Filter → Score → MoS → PDF → Discord
+# Runs the unified 4-layer fundamental pipeline:
+#   Load → Validate → Health Filter → Score (4 layers) → MoS → PDF → Discord
+#
+# Replaces the old 3-portfolio system with a single unified ranking
+# using: Health (25%) + Improvement (30%) + Acceleration (15%) +
+#        Persistence (30%)
 #
 # Data source (auto-selected):
-#   1. Real data  — loads from SQLite DB via pse_scraper.load_stocks_from_db()
-#      Populate DB first: py scraper/pse_edge_scraper.py --ticker DMC
-#   2. Sample data — used automatically if DB is empty (for testing)
+#   1. Real data  — loads from SQLite DB
+#   2. Sample data — used if DB is empty (for testing)
 #
 # Usage:
-#   py main.py                          # run all 3 portfolios
-#   py main.py --portfolio pure_dividend # run one portfolio
-#   py main.py --portfolio all --dry-run # generate PDFs only, no Discord
+#   py main.py                  # run unified pipeline
+#   py main.py --dry-run        # generate PDF only, no Discord
 # ============================================================
 
-import argparse
 import os
 import sys
+import argparse
 from datetime import datetime
 from pathlib import Path
 
-# ── Path setup ────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / 'engine'))
 sys.path.insert(0, str(ROOT / 'reports'))
@@ -30,81 +31,70 @@ sys.path.insert(0, str(ROOT / 'discord'))
 sys.path.insert(0, str(ROOT / 'scraper'))
 sys.path.insert(0, str(ROOT / 'db'))
 
-from filters      import (filter_pure_dividend_portfolio,
-                          filter_dividend_growth_portfolio,
-                          filter_value_portfolio)
-from scorer       import score_pure_dividend, score_dividend_growth, score_value
-from pipeline     import score_and_rank
-from validator    import validate_all, print_validation_summary
-from pdf_generator import generate_report
-from publisher    import WEBHOOKS, send_report
+import database as db
+
+from engine.filters_v2    import filter_unified_batch
+from engine.scorer_v2     import rank_stocks_v2
+from engine.sector_stats  import compute_sector_stats
+from validator            import validate_all, print_validation_summary
+from pdf_generator        import generate_report
+from publisher            import WEBHOOKS, send_report
+from mos import (calc_ddm, calc_eps_pe, calc_dcf,
+                  calc_hybrid_intrinsic, calc_mos_pct)
 
 
-# ── Pipeline maps ─────────────────────────────────────────
-FILTERS = {
-    'pure_dividend':   filter_pure_dividend_portfolio,
-    'dividend_growth': filter_dividend_growth_portfolio,
-    'value':           filter_value_portfolio,
-}
-
-SCORERS = {
-    'pure_dividend':   score_pure_dividend,
-    'dividend_growth': score_dividend_growth,
-    'value':           score_value,
-}
+# ── MoS weights for unified ranking ───────────────────────────
+# Balanced blend: 30% DDM, 35% EPS-PE, 35% DCF
+_IV_WEIGHTS = (0.30, 0.35, 0.35)
 
 
-# ── Data loader ────────────────────────────────────────────
-# Tries live DB data first; falls back to sample data if DB is empty.
-# Sample data lives in scheduler_data.py (single source of truth).
+# ── Data loader ───────────────────────────────────────────────
 
 def load_stocks():
-    """
-    Returns stock data for pipeline processing.
-    Tries live DB first; falls back to sample data for testing.
-    """
+    """Loads stock data from DB; falls back to sample data if empty."""
     try:
         from pse_scraper import load_stocks_from_db
         live = load_stocks_from_db()
         if live:
             print(f"       Using live DB data: {len(live)} stock(s)")
             return live
-        else:
-            print("       DB empty — using sample data")
+        print("       DB empty — using sample data")
     except Exception as e:
         print(f"       DB load failed ({e}) — using sample data")
-
     from scheduler_data import load_sample_stocks
     return load_sample_stocks()
 
 
-# ── Pipeline steps ─────────────────────────────────────────
+# ── MoS enrichment ────────────────────────────────────────────
 
-def filter_stocks(stocks, portfolio_type):
-    """
-    Runs each stock through the portfolio's eligibility filter.
-    Returns (passed_list, rejected_list).
-    rejected_list contains (ticker, reason) tuples for logging.
-    """
-    filter_fn = FILTERS[portfolio_type]
-    passed   = []
-    rejected = []
+def _enrich_mos(stocks: list) -> list:
+    """Adds intrinsic_value, mos_price, mos_pct to each stock dict."""
     for stock in stocks:
-        eligible, reason = filter_fn(stock)
-        if eligible:
-            passed.append(stock)
-        else:
-            rejected.append((stock.get('ticker', '?'), reason))
-    return passed, rejected
+        try:
+            fins   = db.get_financials(stock['ticker'], years=3)
+            eps_3y = [f['eps'] for f in fins if f.get('eps') is not None][:3]
+            ddm_iv,  _ = calc_ddm(stock.get('dps_last'),
+                                   stock.get('dividend_cagr_5y'))
+            eps_iv,  _ = calc_eps_pe(eps_3y)
+            dcf_iv,  _ = calc_dcf(stock.get('fcf_per_share'),
+                                   stock.get('revenue_cagr'))
+            is_holding = (stock.get('sector', '') == 'Holding Firms')
+            iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
+                                               weights=_IV_WEIGHTS)
+            if is_holding and iv:
+                iv = round(iv * 0.80, 2)  # 20% conglomerate discount
+        except Exception:
+            iv = None
+        price = stock.get('current_price')
+        stock['intrinsic_value'] = iv
+        stock['mos_price']       = round(iv * 0.70, 2) if iv else None
+        stock['mos_pct']         = calc_mos_pct(iv, price) if iv and price else None
+    return stocks
 
 
-# ── Sentiment helpers ──────────────────────────────────────
+# ── Sentiment enrichment ──────────────────────────────────────
 
 def _try_enrich_with_sentiment(stocks):
-    """
-    Enriches stock dicts in-place with 'sentiment_data' key.
-    Silently skips if ANTHROPIC_API_KEY is missing or fetch fails.
-    """
     try:
         from sentiment_engine import enrich_with_sentiment
         enrich_with_sentiment(stocks)
@@ -112,19 +102,15 @@ def _try_enrich_with_sentiment(stocks):
         if enriched:
             print(f"       [sentiment] enriched {enriched} stock(s) with news data")
         else:
-            print(f"       [sentiment] no headlines found (API key set? News sources reachable?)")
+            print(f"       [sentiment] no headlines found")
     except Exception as e:
         print(f"       [sentiment] skipped — {e}")
 
 
 def _send_opportunistic_alerts(ranked_stocks):
-    """
-    Sends opportunistic watch alerts to Discord for any ranked stock
-    that has opportunistic_flag=1 in its sentiment data.
-    """
     try:
         from publisher import send_opportunistic_alert
-        alerts_webhook = WEBHOOKS.get('alerts', '')
+        alerts_url = WEBHOOKS.get('alerts', '')
         opp_stocks = [
             s for s in ranked_stocks
             if s.get('sentiment_data', {}) and
@@ -136,29 +122,29 @@ def _send_opportunistic_alerts(ranked_stocks):
                 stock['ticker'],
                 stock.get('name', stock['ticker']),
                 sd.get('summary', ''),
-                alerts_webhook,
+                alerts_url,
             )
     except Exception as e:
         print(f"       [sentiment] opportunistic alerts failed — {e}")
 
 
-# ── Main pipeline ──────────────────────────────────────────
+# ── Main pipeline ─────────────────────────────────────────────
 
-def run_pipeline(portfolio_type, dry_run=False):
+def run_pipeline(dry_run: bool = False) -> bool:
     """
-    Runs the full pipeline for one portfolio type.
-    Returns True if the run completed successfully, False otherwise.
+    Runs the full unified v2 pipeline.
+    Returns True if completed successfully.
     """
     print(f"\n{'='*55}")
-    print(f"  PSE QUANT SAAS — {portfolio_type.upper()} PORTFOLIO")
+    print(f"  PSE QUANT SAAS — Unified Rankings")
+    print(f"  {datetime.now().strftime('%Y-%m-%d  %H:%M')}")
     print(f"{'='*55}")
 
-    # ── Step 1: Load ──
+    # ── Step 1: Load & validate ───────────────────────────────
     print("\n[1/5]  Loading stock data...")
     all_stocks = load_stocks()
     print(f"       {len(all_stocks)} stocks loaded")
 
-    # ── Step 1b: Validate ──
     all_stocks, val_results = validate_all(all_stocks)
     blocked = sum(1 for r in val_results if not r['valid'])
     warned  = sum(1 for r in val_results if r['warnings'])
@@ -171,117 +157,112 @@ def run_pipeline(portfolio_type, dry_run=False):
     print(f"       {len(all_stocks)} stock(s) passed validation")
 
     if not all_stocks:
-        print(f"\n  No stocks passed validation.")
+        print("  No stocks passed validation.")
         return False
 
-    # ── Step 2: Filter ──
-    print(f"\n[2/5]  Filtering for {portfolio_type} portfolio...")
-    passed, rejected = filter_stocks(all_stocks, portfolio_type)
-    print(f"       Passed : {len(passed)}")
-    print(f"       Skipped: {len(rejected)}")
-    for ticker, reason in rejected:
-        print(f"         SKIP  {reason}")
+    # ── Step 2: Compute sector medians ────────────────────────
+    print("\n[2/5]  Computing sector statistics...")
+    sector_stats = compute_sector_stats(all_stocks)
+    print(f"       Sector medians computed for {len(sector_stats)} sector(s)")
 
-    if not passed:
-        print(f"\n  No stocks passed the {portfolio_type} filters.")
+    # ── Step 3: Health filter + score ─────────────────────────
+    print("\n[3/5]  Filtering and scoring...")
+    eligible, rejected = filter_unified_batch(all_stocks)
+    print(f"       Eligible : {len(eligible)} stock(s)")
+    print(f"       Rejected : {len(rejected)} stock(s)")
+    for r in rejected:
+        print(f"         SKIP  {r['reason']}")
+
+    if not eligible:
+        print("  No stocks passed health filters.")
         return False
 
-    # ── Step 3: Score & rank ──
-    print(f"\n[3/5]  Scoring and ranking {len(passed)} stock(s)...")
-    ranked = score_and_rank(passed, portfolio_type, SCORERS[portfolio_type], all_stocks=all_stocks)
-    for i, s in enumerate(ranked[:5], 1):
-        print(f"       #{i}  {s['ticker']:6}  {s['score']}/100")
+    # Build financials history map for ROE delta (Layer 2)
+    fins_map = {}
+    for stock in eligible:
+        try:
+            fins_map[stock['ticker']] = db.get_financials(stock['ticker'], years=10)
+        except Exception:
+            fins_map[stock['ticker']] = []
 
-    # ── Step 3b: Sentiment enrichment (all ranked stocks — shown in PDF) ──
-    _try_enrich_with_sentiment(ranked)
+    ranked = rank_stocks_v2(eligible, sector_stats=sector_stats,
+                             financials_map=fins_map)
+    print(f"\n  Top 10 ranked stocks:")
+    for s in ranked[:10]:
+        cat = s.get('category', '')
+        print(f"    #{s['rank']:2}  {s['ticker']:6}  {s['score']:.1f}  [{cat}]")
 
-    # ── Step 4: Generate PDF ──
+    # ── Step 3b: MoS enrichment ───────────────────────────────
+    ranked = _enrich_mos(ranked)
+
+    # ── Step 3c: Sentiment enrichment (top 10 only) ───────────
+    _try_enrich_with_sentiment(ranked[:10])
+
+    # ── Step 4: Generate PDF ──────────────────────────────────
     print(f"\n[4/5]  Generating PDF report...")
-    # Save to Desktop (always writable, easy to find)
-    # Phase 3: move to REPORTS_DIR once the data pipeline is set up
     DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
     run_date = datetime.now().strftime('%Y-%m-%d')
-    filename = f"PSE_{portfolio_type.upper()}_REPORT_{run_date}.pdf"
+    filename = f"PSE_UNIFIED_RANKINGS_{run_date}.pdf"
     pdf_path = os.path.join(DESKTOP, filename)
 
     generate_report(
-        portfolio_type        = portfolio_type,
+        portfolio_type        = 'unified',
         ranked_stocks         = ranked,
         output_path           = pdf_path,
         total_stocks_screened = len(all_stocks),
     )
     print(f"       Saved: {pdf_path}")
 
-    # ── Step 5: Send to Discord ──
+    # ── Step 5: Send to Discord (#pse-value webhook) ──────────
     print(f"\n[5/5]  Discord delivery...")
     if dry_run:
-        print(f"\n  [DRY RUN] Skipping Discord delivery.")
+        print("  [DRY RUN] Skipping Discord delivery.")
         return True
 
-    webhook_url = WEBHOOKS.get(portfolio_type, '')
+    webhook_url = WEBHOOKS.get('value', '')
     if not webhook_url:
-        print(f"\n  No Discord webhook set for '{portfolio_type}'. "
-              f"Add DISCORD_WEBHOOK_{portfolio_type.upper()} to .env to enable delivery.")
+        print("  No Discord webhook set. Add DISCORD_WEBHOOK_VALUE to .env")
         return True
 
-    print(f"\n  Sending to Discord #{portfolio_type}...")
     success = send_report(
         webhook_url    = webhook_url,
         pdf_path       = pdf_path,
-        portfolio_type = portfolio_type,
+        portfolio_type = 'unified',
         ranked_stocks  = ranked,
     )
     if success:
-        print(f"  Delivered to #{portfolio_type} channel.")
+        print("  Delivered to #pse-value channel.")
     else:
-        print(f"  Discord delivery failed. PDF saved locally at:\n  {pdf_path}")
+        print(f"  Discord delivery failed. PDF saved at: {pdf_path}")
 
-    # ── Step 5b: Opportunistic alerts ──
     _send_opportunistic_alerts(ranked)
-
     return True
 
 
-# ── Entry point ────────────────────────────────────────────
+# ── Entry point ───────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description='PSE Quant SaaS — Portfolio Report Generator',
+        description='PSE Quant SaaS — Unified 4-Layer Rankings',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             'Examples:\n'
-            '  py main.py                           # run all 3 portfolios\n'
-            '  py main.py --portfolio dividend      # dividend only\n'
-            '  py main.py --portfolio all --dry-run # generate PDFs, no Discord\n'
+            '  py main.py            # run unified pipeline\n'
+            '  py main.py --dry-run  # generate PDF, no Discord\n'
         )
-    )
-    parser.add_argument(
-        '--portfolio',
-        choices=['pure_dividend', 'dividend_growth', 'value', 'all'],
-        default='all',
-        help='Portfolio to run (default: all)',
     )
     parser.add_argument(
         '--dry-run',
         action='store_true',
-        help='Generate PDF reports but do not send to Discord',
+        help='Generate PDF but do not send to Discord',
     )
     args = parser.parse_args()
 
-    portfolios = (
-        ['pure_dividend', 'dividend_growth', 'value']
-        if args.portfolio == 'all'
-        else [args.portfolio]
-    )
-
-    if args.dry_run:
-        print("\nDRY RUN mode — PDFs will be generated but NOT sent to Discord.")
-
-    for portfolio in portfolios:
-        run_pipeline(portfolio, dry_run=args.dry_run)
+    db.init_db()
+    run_pipeline(dry_run=args.dry_run)
 
     print(f"\n{'='*55}")
-    print(f"  All done.")
+    print(f"  Done.  {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*55}\n")
 
 

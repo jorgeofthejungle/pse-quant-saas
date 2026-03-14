@@ -20,10 +20,8 @@ from config import (DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE,
 settings_bp = Blueprint('settings', __name__)
 
 _WEBHOOK_KEYS = {
-    'pure_dividend':   'DISCORD_WEBHOOK_DIVIDEND',
-    'dividend_growth': 'DISCORD_WEBHOOK_HYBRID',
-    'value':           'DISCORD_WEBHOOK_VALUE',
-    'alerts':          'DISCORD_WEBHOOK_ALERTS',
+    'stockpilot_picks': 'DISCORD_WEBHOOK_VALUE',
+    'alerts':           'DISCORD_WEBHOOK_ALERTS',
 }
 
 

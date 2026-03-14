@@ -8,6 +8,7 @@
 # ============================================================
 
 import sys
+import subprocess
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -111,3 +112,55 @@ def _do_alerts(dry_run: bool):
         from alert_engine import run_alert_check
     run_alert_check(dry_run=dry_run)
     return 'Alert check complete'
+
+
+# ── Scheduler process management ─────────────────────────────
+
+_scheduler_proc = None
+_scheduler_lock = threading.Lock()
+
+
+def start_scheduler() -> tuple[bool, str]:
+    """Starts py scheduler.py as a subprocess. Returns (ok, message)."""
+    global _scheduler_proc
+    with _scheduler_lock:
+        if _scheduler_proc and _scheduler_proc.poll() is None:
+            return False, 'Scheduler is already running.'
+        try:
+            _scheduler_proc = subprocess.Popen(
+                ['py', str(ROOT / 'scheduler.py')],
+                cwd=str(ROOT),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            log_activity('pipeline', 'scheduler_start',
+                         f'PID {_scheduler_proc.pid}', status='ok')
+            return True, f'Scheduler started (PID {_scheduler_proc.pid}).'
+        except Exception as e:
+            return False, f'Failed to start scheduler: {e}'
+
+
+def stop_scheduler() -> tuple[bool, str]:
+    """Terminates the scheduler subprocess."""
+    global _scheduler_proc
+    with _scheduler_lock:
+        if not _scheduler_proc or _scheduler_proc.poll() is not None:
+            _scheduler_proc = None
+            return False, 'Scheduler is not running.'
+        try:
+            _scheduler_proc.terminate()
+            _scheduler_proc.wait(timeout=5)
+        except Exception:
+            _scheduler_proc.kill()
+        pid = _scheduler_proc.pid
+        _scheduler_proc = None
+        log_activity('pipeline', 'scheduler_stop', f'PID {pid}', status='ok')
+        return True, 'Scheduler stopped.'
+
+
+def get_scheduler_status() -> dict:
+    """Returns {running: bool, pid: int|None}."""
+    with _scheduler_lock:
+        if _scheduler_proc and _scheduler_proc.poll() is None:
+            return {'running': True, 'pid': _scheduler_proc.pid}
+        return {'running': False, 'pid': None}

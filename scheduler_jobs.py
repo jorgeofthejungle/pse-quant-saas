@@ -3,8 +3,10 @@
 # PSE Quant SaaS — scheduler sub-module
 # ============================================================
 
+import json
 import os
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +26,16 @@ try:
 except ImportError:
     SCORE_CHANGE_THRESHOLD = 5.0
 
+# ── State file paths ─────────────────────────────────────────
+# Stored in AppData (same dir as the DB) — Python can write there freely.
+# Documents\ is write-restricted on this machine (see CLAUDE.md §16).
+_STATE_DIR         = Path.home() / 'AppData' / 'Local' / 'pse_quant'
+_PENDING_PDF_PATH  = _STATE_DIR / 'pending_pdf.json'
+_SIGNAL_CACHE_PATH = _STATE_DIR / 'last_signals.json'
+
+# Lock prevents concurrent runs of the scoring pipeline
+_rescore_lock = threading.Lock()
+
 from scheduler_data import (
     FILTERS, SCORERS, PORTFOLIO_NAMES,
     SCRAPER_AVAILABLE, _load_stocks,
@@ -34,11 +46,14 @@ try:
 except ImportError:
     from pipeline import score_and_rank as _pipeline_score_and_rank
 
-# Scraper import for price updates
+# Scraper import for price updates (PSE Edge — replaces pse.com.ph which 403s)
 try:
-    from pse_scraper import scrape_and_save
+    from scraper.pse_edge_scraper import scrape_daily_prices
 except ImportError:
-    scrape_and_save = None
+    try:
+        from pse_edge_scraper import scrape_daily_prices
+    except ImportError:
+        scrape_daily_prices = None
 
 
 def _score_and_rank(stocks: list, portfolio_type: str) -> list:
@@ -51,11 +66,12 @@ def _score_and_rank(stocks: list, portfolio_type: str) -> list:
 
 def _top5_changed(old_top5: list, new_top5: list) -> bool:
     """
-    Returns True if the SET of top-5 tickers has changed —
-    i.e. a stock entered or left the top 5.
-    Order within the top 5 does not trigger a resend.
+    Returns True if the top-5 changed in composition OR rank position.
+    List equality is position-aware: [A,B,C,D,E] != [B,A,C,D,E].
+    A rank swap within the top 5 (e.g. #1 and #2 swap) is meaningful
+    and warrants a new report.
     """
-    return set(old_top5) != set(new_top5)
+    return old_top5 != new_top5
 
 
 def _significant_score_change(
@@ -183,76 +199,224 @@ def _build_shortlist_changes(
     return changes
 
 
-def run_daily_job():
+# ── Sentiment dedup helpers ──────────────────────────────────
+
+def _load_signal_cache() -> dict:
+    """Loads last-sent sentiment signals from disk. Returns {} on any error."""
+    try:
+        with open(_SIGNAL_CACHE_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_signal_cache(cache: dict):
+    """Persists the sentiment signal cache to disk."""
+    try:
+        _SIGNAL_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_SIGNAL_CACHE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f"  [signal cache] save failed: {e}")
+
+
+def _signal_is_new(cache: dict, ticker: str, signal: str, score: float) -> bool:
     """
-    The full daily pipeline — called by the scheduler at 4:00 PM PHT.
-
-    For each portfolio:
-    1. Get last top-5 (before this run) from DB
-    2. Load and score all stocks
-    3. Compare top-5 sets → send PDF if changed
-    4. Detect rank/score changes → send rescore notice to #pse-alerts
-    5. Save new scores to DB
+    Returns True if this signal should be sent.
+    Skips if the same signal was already sent AND the sentiment score
+    hasn't shifted more than 0.15 (on a -1.0 to 1.0 scale).
     """
-    today = datetime.now().strftime('%Y-%m-%d')
-    now   = datetime.now().strftime('%H:%M')
+    prev = cache.get(ticker, {})
+    if prev.get('signal') != signal:
+        return True
+    return abs((prev.get('score') or 0.0) - score) >= 0.15
 
-    print(f"\n{'='*55}")
-    print(f"  PSE QUANT SAAS — Daily Run  {today}  {now}")
-    print(f"{'='*55}")
 
-    # ── Step 1: Scrape latest prices ──
-    print("\n[1/3]  Scraping latest prices...")
-    if SCRAPER_AVAILABLE and scrape_and_save:
-        prices = scrape_and_save()
-        if prices:
-            print(f"  {len(prices)} prices updated.")
-        else:
-            print("  Scrape returned no data — using existing DB prices.")
-    else:
-        print("  Scraper not available — skipping price update.")
+# ── Pending PDF helpers ───────────────────────────────────────
 
-    # ── Step 2: Load stocks ──
-    print("\n[2/3]  Loading stock data...")
-    all_stocks = _load_stocks()
-    print(f"  {len(all_stocks)} stocks available.")
+def _write_pending_pdf(ranked: list, reason: str, today: str):
+    """Records that a PDF should be sent at the 6 PM report run."""
+    try:
+        _PENDING_PDF_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            'date':   today,
+            'reason': reason,
+            'tickers': [s['ticker'] for s in ranked],
+        }
+        with open(_PENDING_PDF_PATH, 'w', encoding='utf-8') as f:
+            json.dump(payload, f)
+    except Exception as e:
+        print(f"  [pending pdf] write failed: {e}")
 
-    if not all_stocks:
-        print("  No stock data available. Aborting run.")
+
+def _read_pending_pdf() -> dict | None:
+    """Returns pending PDF info if it exists and was written today."""
+    try:
+        with open(_PENDING_PDF_PATH, encoding='utf-8') as f:
+            data = json.load(f)
+        today = datetime.now().strftime('%Y-%m-%d')
+        if data.get('date') == today:
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _clear_pending_pdf():
+    try:
+        _PENDING_PDF_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+# ── Shared scoring pipeline ───────────────────────────────────
+
+def _run_score_pipeline() -> tuple[list, list, list, list]:
+    """
+    Loads stocks, applies unified filter, scores, enriches sentiment.
+    Returns (ranked, all_stocks, old_top5, old_scores).
+    Raises on critical failure.
+    """
+    from engine.filters_v2   import filter_unified_batch
+    from engine.scorer_v2    import rank_stocks_v2
+    from engine.sector_stats import compute_sector_stats
+
+    all_stocks   = _load_stocks()
+    sector_stats = compute_sector_stats(all_stocks)
+    eligible, _  = filter_unified_batch(all_stocks)
+
+    fins_map = {}
+    for stock in eligible:
+        try:
+            fins_map[stock['ticker']] = db.get_financials(stock['ticker'], years=10)
+        except Exception:
+            fins_map[stock['ticker']] = []
+
+    ranked = rank_stocks_v2(eligible, sector_stats=sector_stats,
+                             financials_map=fins_map)
+
+    old_top5   = db.get_last_top5('unified')
+    old_scores = db.get_last_scores('unified')
+    return ranked, all_stocks, old_top5, old_scores
+
+
+def run_daily_score():
+    """
+    Phase 1 — called by the scheduler at 4:00 PM PHT.
+
+    1. Scrape latest prices
+    2. Filter + score all stocks using unified 4-layer model
+    3. Compare with previous run — detect rank/score changes
+    4. Send rescore notices to #pse-alerts (Discord)
+    5. Enrich top-10 with sentiment, send signals (deduped)
+    6. Save scores to DB
+    7. Write pending_pdf.json if a PDF should be sent at 6 PM
+
+    Does NOT generate or send the PDF — that is run_daily_report().
+    """
+    if not _rescore_lock.acquire(blocking=False):
+        print("  [run_daily_score] Already running — skipped.")
         return
 
-    # ── Step 3: Score and compare for each portfolio ──
-    print("\n[3/3]  Scoring portfolios and checking for changes...")
+    try:
+        today = datetime.now().strftime('%Y-%m-%d')
+        now   = datetime.now().strftime('%H:%M')
 
-    for portfolio_type in ['pure_dividend', 'dividend_growth', 'value']:
-        name = PORTFOLIO_NAMES[portfolio_type]
-        print(f"\n  -- {name} --")
+        print(f"\n{'='*55}")
+        print(f"  PSE QUANT SAAS — 4 PM Scoring Run  {today}  {now}")
+        print(f"{'='*55}")
 
-        old_top5   = db.get_last_top5(portfolio_type)
-        old_scores = db.get_last_scores(portfolio_type)
+        # ── Step 1: Scrape latest prices (from PSE Edge) ──────
+        print("\n[1/3]  Scraping latest prices...")
+        if scrape_daily_prices:
+            prices = scrape_daily_prices()
+            if prices:
+                print(f"  {len(prices)} prices updated.")
+            else:
+                print("  Scrape returned no data — using existing DB prices.")
+        else:
+            print("  Scraper not available — skipping price update.")
 
-        ranked = _score_and_rank(all_stocks, portfolio_type)
-        if not ranked:
-            print(f"  No stocks passed {name} filters. Skipping.")
-            continue
+        # ── Step 2: Load + score ───────────────────────────────
+        print("\n[2/3]  Loading and scoring stocks...")
+        all_stocks = _load_stocks()
+        print(f"  {len(all_stocks)} stocks available.")
+        if not all_stocks:
+            print("  No stock data available. Aborting run.")
+            return
 
-        # Sentiment enrichment (top 10 only — shown in PDF)
+        try:
+            ranked, all_stocks, old_top5, old_scores = _run_score_pipeline()
+        except Exception as e:
+            print(f"  Scoring failed: {e}")
+            return
+
+        print(f"  Ranked {len(ranked)} stock(s).")
+
+        # ── Step 3: Detect changes ─────────────────────────────
+        print("\n[3/3]  Checking for changes...")
+        new_top5 = [s['ticker'] for s in ranked[:5]]
+        print(f"  New top 5: {', '.join(new_top5)}")
+        if old_top5:
+            print(f"  Old top 5: {', '.join(old_top5)}")
+        else:
+            print("  Old top 5: (no previous run)")
+
+        is_first_run = not old_top5
+        top5_changed = _top5_changed(old_top5, new_top5)
+        score_moved  = bool(old_scores and _significant_score_change(old_scores, ranked))
+        should_send  = is_first_run or top5_changed or score_moved
+
+        if should_send:
+            if is_first_run:
+                reason = 'first run'
+            elif top5_changed:
+                reason = 'top-5 changed'
+            else:
+                reason = f'score change >= {SCORE_CHANGE_THRESHOLD} pts in top-10'
+            print(f"  PDF queued for 6 PM ({reason}).")
+            _write_pending_pdf(ranked, reason, today)
+        else:
+            print("  No significant changes — no PDF queued.")
+            _clear_pending_pdf()
+
+        # ── Rank/score change notices ──────────────────────────
+        if old_scores:
+            changes = _build_changes(ranked, old_scores)
+            if changes:
+                print(f"  {len(changes)} rank/score change(s) detected.")
+                alerts_url = WEBHOOKS.get('alerts', '')
+                if alerts_url:
+                    send_rescore_notice(alerts_url, 'unified', changes)
+                    print("  Rescore notice sent to #pse-alerts.")
+                else:
+                    for c in changes:
+                        print(f"    {c['ticker']}: #{c['old_rank']} -> "
+                              f"#{c['new_rank']}  "
+                              f"({c['old_score']:.1f} -> {c['new_score']:.1f})")
+            else:
+                print("  No significant rank changes.")
+
+        # ── Sentiment enrichment + deduped signal alerts ───────
         try:
             from sentiment_engine import enrich_with_sentiment, classify_signal
             enrich_with_sentiment(ranked[:10])
+            alerts_url   = WEBHOOKS.get('alerts', '')
+            signal_cache = _load_signal_cache()
+            updated_cache = dict(signal_cache)
 
-            # Classify and send educational signals for enriched stocks
-            alerts_url = WEBHOOKS.get('alerts', '')
             for stock in ranked[:10]:
                 sd = stock.get('sentiment_data')
                 if not sd:
                     continue
-                sig = classify_signal(
-                    sd,
-                    stock.get('mos_pct'),
-                    stock.get('score', 0),
-                )
+                sig   = classify_signal(sd, stock.get('mos_pct'), stock.get('score', 0))
                 if sig['signal'] == 'monitor':
+                    continue
+                sent_score = sd.get('score') or 0.0
+                if not _signal_is_new(signal_cache, stock['ticker'],
+                                      sig['signal'], sent_score):
+                    print(f"  [{sig['label']}] unchanged for "
+                          f"{stock['ticker']} — skipped (dedup)")
                     continue
                 if alerts_url:
                     send_sentiment_signal(
@@ -265,102 +429,109 @@ def run_daily_job():
                         key_events        = sd.get('key_events', []),
                         mos_pct           = stock.get('mos_pct'),
                         overall_score     = stock.get('score', 0),
-                        portfolio_type    = portfolio_type,
+                        portfolio_type    = 'unified',
                     )
-                    print(f"  [{sig['label']}] signal sent for {stock['ticker']}")
-                else:
-                    print(f"  [{sig['label']}] {stock['ticker']} — no alerts webhook set")
+                updated_cache[stock['ticker']] = {
+                    'signal': sig['signal'],
+                    'score':  sent_score,
+                }
+                print(f"  [{sig['label']}] signal sent for {stock['ticker']}")
+
+            _save_signal_cache(updated_cache)
         except Exception as e:
-            print(f"  [sentiment] skipped for {name} — {e}")
+            print(f"  [sentiment] skipped — {e}")
 
-        # ── Shortlist membership change alert ──
-        if old_scores:
-            shortlist_changes = _build_shortlist_changes(
-                old_scores, ranked, all_stocks, portfolio_type
-            )
-            if shortlist_changes:
-                alerts_url = WEBHOOKS.get('alerts', '')
-                if alerts_url:
-                    send_shortlist_change(alerts_url, portfolio_type, shortlist_changes)
-                    print(f"  Shortlist change alert sent ({len(shortlist_changes)} change(s)).")
-                else:
-                    for c in shortlist_changes:
-                        sym = 'X' if c['type'] == 'exit' else '+'
-                        print(f"    [{sym}] {c['ticker']}: {c.get('reason', 'new entry')}")
-
-        new_top5 = [s['ticker'] for s in ranked[:5]]
-
-        print(f"  Ranked {len(ranked)} stock(s).")
-        print(f"  New top 5: {', '.join(new_top5)}")
-        if old_top5:
-            print(f"  Old top 5: {', '.join(old_top5)}")
-        else:
-            print(f"  Old top 5: (no previous run)")
-
-        is_first_run      = not old_top5
-        top5_changed      = _top5_changed(old_top5, new_top5)
-        score_moved       = old_scores and _significant_score_change(old_scores, ranked)
-        should_send       = is_first_run or top5_changed or score_moved
-
-        if should_send:
-            if is_first_run:
-                reason = 'first run'
-            elif top5_changed:
-                reason = 'top-5 changed'
-            else:
-                reason = f'score change >= {SCORE_CHANGE_THRESHOLD} pts in top-10'
-            print(f"  PDF TRIGGER ({reason}) — generating PDF...")
-
-            DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
-            filename = f"PSE_{portfolio_type.upper()}_REPORT_{today}.pdf"
-            pdf_path = os.path.join(DESKTOP, filename)
-
-            generate_report(
-                portfolio_type        = portfolio_type,
-                ranked_stocks         = ranked,
-                output_path           = pdf_path,
-                total_stocks_screened = len(all_stocks),
-            )
-
-            webhook_url = WEBHOOKS.get(portfolio_type, '')
-            if webhook_url:
-                print(f"  Sending to Discord #{portfolio_type}...")
-                send_report(
-                    webhook_url    = webhook_url,
-                    pdf_path       = pdf_path,
-                    portfolio_type = portfolio_type,
-                    ranked_stocks  = ranked,
-                )
-            else:
-                print(f"  No webhook for {portfolio_type} — PDF saved at: {pdf_path}")
-        else:
-            print(f"  Top-5 unchanged — no PDF sent.")
-
-        if old_scores:
-            changes = _build_changes(ranked, old_scores)
-            if changes:
-                print(f"  {len(changes)} rank/score change(s) detected.")
-                alerts_url = WEBHOOKS.get('alerts', '')
-                if alerts_url:
-                    send_rescore_notice(alerts_url, portfolio_type, changes)
-                    print(f"  Rescore notice sent to #pse-alerts.")
-                else:
-                    print(f"  No alerts webhook set — rescore notice skipped.")
-                    for c in changes:
-                        print(f"    {c['ticker']}: #{c['old_rank']} -> #{c['new_rank']}  "
-                              f"({c['old_score']:.1f} -> {c['new_score']:.1f})")
-            else:
-                print(f"  No significant rank changes.")
-
+        # ── Save scores ────────────────────────────────────────
         try:
-            db.save_scores(today, ranked, portfolio_type)
-            print(f"  Scores saved to DB ({portfolio_type}).")
+            db.save_scores(today, ranked, 'unified')
+            print("  Scores saved to DB.")
         except Exception as e:
             print(f"  DB save error: {e}")
 
+        print(f"\n{'='*55}")
+        print(f"  4 PM scoring complete.  {datetime.now().strftime('%H:%M:%S')}")
+        print(f"{'='*55}\n")
+
+    finally:
+        _rescore_lock.release()
+
+
+def run_daily_report():
+    """
+    Phase 2 — called by the scheduler at 6:00 PM PHT.
+
+    Reads pending_pdf.json written by run_daily_score().
+    If present and from today, generates the PDF and sends to Discord.
+    If nothing is pending, prints a note and exits silently.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    now   = datetime.now().strftime('%H:%M')
+
     print(f"\n{'='*55}")
-    print(f"  Daily run complete.  {datetime.now().strftime('%H:%M:%S')}")
+    print(f"  PSE QUANT SAAS — 6 PM Report Run  {today}  {now}")
+    print(f"{'='*55}")
+
+    pending = _read_pending_pdf()
+    if not pending:
+        print("  No pending PDF — rankings unchanged since 4 PM. Nothing sent.")
+        print(f"{'='*55}\n")
+        return
+
+    reason = pending.get('reason', 'rankings changed')
+    print(f"  Pending PDF found ({reason}) — generating report...")
+
+    # Re-load ranked data from DB (fresh from the 4 PM save)
+    old_scores = db.get_last_scores('unified')
+    if not old_scores:
+        print("  No scored stocks in DB. Aborting report.")
+        return
+
+    # Rebuild ranked list from DB scores for PDF generation
+    # (We need the full enriched stock dicts, so re-run a light score)
+    try:
+        ranked, all_stocks, _, _ = _run_score_pipeline()
+    except Exception as e:
+        print(f"  Could not rebuild rankings for PDF: {e}")
+        return
+
+    DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
+    filename = f"PSE_UNIFIED_RANKINGS_{today}.pdf"
+    pdf_path = os.path.join(DESKTOP, filename)
+
+    generate_report(
+        portfolio_type        = 'unified',
+        ranked_stocks         = ranked,
+        output_path           = pdf_path,
+        total_stocks_screened = len(all_stocks),
+    )
+
+    webhook_url = WEBHOOKS.get('value', '')
+    if webhook_url:
+        print("  Sending PDF to Discord #pse-value...")
+        send_report(
+            webhook_url    = webhook_url,
+            pdf_path       = pdf_path,
+            portfolio_type = 'unified',
+            ranked_stocks  = ranked,
+        )
+    else:
+        print(f"  No webhook set — PDF saved at: {pdf_path}")
+
+    _clear_pending_pdf()
+
+    print(f"\n{'='*55}")
+    print(f"  6 PM report complete.  {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*55}\n")
+
+
+def run_daily_job():
+    """
+    Backward-compatible entry point: runs scoring + report immediately.
+    Used by run_weekly_scrape() and CLI --run-now.
+    For the live scheduler, use run_daily_score() (4 PM) + run_daily_report() (6 PM).
+    """
+    run_daily_score()
+    run_daily_report()
 
 
 def run_weekly_scrape():
@@ -378,24 +549,24 @@ def run_weekly_scrape():
     print(f"  PSE QUANT SAAS — Weekly Financial Scrape  {today}  {now}")
     print(f"{'='*55}")
 
-    if not SCRAPER_AVAILABLE or not scrape_and_save:
+    if not SCRAPER_AVAILABLE:
         print("  Scraper not available — weekly refresh skipped.")
         print(f"{'='*55}\n")
         return
 
     print("\n[1/2]  Running full financial scrape (this may take several hours)...")
     try:
-        # Full scrape — updates prices AND full financials for all stocks
-        results = scrape_and_save(full=True)
-        count = len(results) if results else 0
-        print(f"  Full scrape complete: {count} stock(s) updated.")
-    except TypeError:
-        # Scraper may not support full=True flag — fall back to standard call
+        from scraper.pse_edge_scraper import scrape_all_and_save
+        scrape_all_and_save()
+        count = len(db.get_all_tickers())
+        print(f"  Full scrape complete: {count} stock(s) in DB.")
+    except ImportError:
         try:
-            results = scrape_and_save()
-            count = len(results) if results else 0
-            print(f"  Scrape complete (standard mode): {count} stock(s) updated.")
-        except Exception as e:
+            from pse_edge_scraper import scrape_all_and_save
+            scrape_all_and_save()
+            count = len(db.get_all_tickers())
+            print(f"  Full scrape complete: {count} stock(s) in DB.")
+        except ImportError as e:
             print(f"  Scrape failed: {e}")
             print(f"{'='*55}\n")
             return

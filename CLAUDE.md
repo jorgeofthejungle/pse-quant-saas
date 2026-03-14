@@ -421,7 +421,17 @@ Fundamental Momentum layer added to all 3 portfolio scorers.
 - CLI: `py backtester.py --portfolio pure_dividend --years 2022 2023 2024 2025`
 - Includes educational disclaimer per CLAUDE.md 7A
 
-### Phase 8 — Next (Backlog)
+### Phase 8 — Stability & Bug Fixes ✅ COMPLETE (2026-03-09)
+- [x] PDF report now shows ALL qualifying stocks (not capped at 10)
+  - `reports/pdf_generator.py`: removed `[:10]` slice; heading shows "ALL N QUALIFYING STOCKS"
+  - `main.py`: `_try_enrich_with_sentiment(ranked)` enriches full list (no slice)
+- [x] Duplicate Discord alert fix — atomic dedup via `_claim_disclosure()`
+  - `alerts/alert_engine.py`: `_claim_disclosure()` uses `INSERT OR IGNORE` + `rowcount`
+    to atomically claim each alert slot BEFORE sending — prevents duplicates even
+    when multiple `py scheduler.py` processes run simultaneously
+- [x] Production readiness audit passed — all 50+ files present, all under 500 lines
+
+### Phase 9 — Next (Backlog)
 - [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
 - [ ] REIT FFO-based FCF coverage exemption in dividend filters
 - [ ] Export rankings to CSV/Excel from dashboard
@@ -597,6 +607,6 @@ The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
 
 ---
 
-*Last updated: Phase 7 complete — backtester done (2026-03-08)*
+*Last updated: Phase 8 complete — stability fixes, full PDF coverage, atomic alert dedup (2026-03-09)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

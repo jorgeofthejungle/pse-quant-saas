@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 import database as db
 from dashboard.background import (
     run_scoring, run_alerts, get_status, is_running,
+    start_scheduler, stop_scheduler, get_scheduler_status,
 )
 from config import DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE
 
@@ -37,21 +38,21 @@ def index():
     except Exception:
         recent_runs = []
 
-    # Latest top-5 per portfolio
+    # Latest unified rankings (top 10)
     rankings = {}
-    for pt in ['pure_dividend', 'dividend_growth', 'value']:
-        top5 = db.get_last_top5(pt) or []
-        scores_raw = db.get_last_scores(pt) or []
-        scores_map = {s['ticker']: s['score'] for s in scores_raw}
-        rankings[pt] = [
-            {'ticker': t, 'score': round(scores_map.get(t, 0), 1)}
-            for t in top5
-        ]
+    top5       = db.get_last_top5('unified') or []
+    scores_raw = db.get_last_scores('unified') or []
+    scores_map = {s['ticker']: s['score'] for s in scores_raw}
+    rankings['unified'] = [
+        {'ticker': t, 'score': round(scores_map.get(t, 0), 1)}
+        for t in top5
+    ]
 
     return render_template('pipeline.html',
                            job=job,
                            recent_runs=recent_runs,
                            rankings=rankings,
+                           scheduler=get_scheduler_status(),
                            alert_time=f"{DAILY_ALERT_HOUR:02d}:{DAILY_ALERT_MINUTE:02d}",
                            now=datetime.now().strftime('%Y-%m-%d %H:%M'))
 
@@ -76,6 +77,23 @@ def trigger_alerts():
 def job_status():
     """JSON: current background job state (polled by frontend)."""
     return jsonify(get_status())
+
+
+@pipeline_bp.route('/scheduler/start', methods=['POST'])
+def scheduler_start():
+    ok, msg = start_scheduler()
+    return jsonify({'ok': ok, 'message': msg})
+
+
+@pipeline_bp.route('/scheduler/stop', methods=['POST'])
+def scheduler_stop():
+    ok, msg = stop_scheduler()
+    return jsonify({'ok': ok, 'message': msg})
+
+
+@pipeline_bp.route('/scheduler/status')
+def scheduler_status():
+    return jsonify(get_scheduler_status())
 
 
 @pipeline_bp.route('/history')

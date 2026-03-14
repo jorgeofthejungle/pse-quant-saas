@@ -58,6 +58,7 @@ __all__ = [
     'scrape_stock_data', 'scrape_dividend_history',
     'get_annual_report_edge_nos', 'scrape_financial_reports_page',
     'scrape_company_full', 'scrape_one', 'scrape_all_and_save',
+    'scrape_daily_prices',
 ]
 
 
@@ -143,6 +144,7 @@ def _save_company(company_info: dict, stock_data: dict):
         is_bank      = company_info.get('is_bank', False),
         last_scraped = datetime.now().isoformat(),
         status       = 'active',
+        cmpy_id      = company_info.get('cmpy_id'),
     )
 
     if stock_data.get('current_price'):
@@ -308,6 +310,95 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
             print(f"  SUSPENDED: {t} not found on PSE Edge for {STALE_SCRAPE_SUSPEND_DAYS}+ days")
         db.log_activity('scraper', 'tickers_suspended',
                         f"Suspended: {', '.join(r['ticker'] for r in stale_rows)}", 'warn')
+
+
+def scrape_daily_prices(tickers: list = None) -> list:
+    """
+    Fetches today's closing prices from PSE Edge for all active tickers
+    (or a specified subset). Saves results to the prices DB table.
+
+    Uses stored cmpy_id from the stocks table for speed. Falls back to
+    autocomplete lookup for any ticker not yet in the DB.
+
+    Skips tickers that already have a price record for today.
+
+    Returns list of {'ticker', 'close', 'market_cap', 'date'} dicts saved.
+    """
+    from datetime import datetime as _dt
+    today   = _dt.now().strftime('%Y-%m-%d')
+    session = make_session()
+
+    # Get all stored cmpy_ids from DB
+    stored_ids = db.get_all_cmpy_ids()
+
+    # Determine which tickers to update
+    if tickers:
+        target = tickers
+    else:
+        target = db.get_all_tickers(active_only=True)
+
+    # Skip tickers that already have today's price
+    conn = db.get_connection()
+    already_today = {
+        r['ticker'] for r in conn.execute(
+            "SELECT ticker FROM prices WHERE date = ?", (today,)
+        ).fetchall()
+    }
+    conn.close()
+
+    to_fetch = [t for t in target if t not in already_today]
+    if not to_fetch:
+        print(f"  All {len(target)} tickers already have prices for {today}.")
+        return []
+
+    print(f"  Fetching prices from PSE Edge for {len(to_fetch)} tickers...")
+    saved = []
+
+    for ticker in to_fetch:
+        cmpy_id = stored_ids.get(ticker)
+
+        if not cmpy_id:
+            # First-time lookup — resolve and persist
+            info = lookup_company_info(session, ticker)
+            if not info:
+                print(f"    {ticker}: cmpy_id not found, skipping")
+                time.sleep(SCRAPE_DELAY_SECS)
+                continue
+            cmpy_id = info['cmpy_id']
+            # Persist so we don't need to look it up again
+            conn2 = db.get_connection()
+            conn2.execute(
+                "UPDATE stocks SET cmpy_id = ? WHERE ticker = ?",
+                (cmpy_id, ticker)
+            )
+            conn2.commit()
+            conn2.close()
+            stored_ids[ticker] = cmpy_id
+            time.sleep(SCRAPE_DELAY_SECS)
+
+        data = scrape_stock_data(session, cmpy_id)
+        if not data or not data.get('close'):
+            print(f"    {ticker}: no price data")
+            time.sleep(SCRAPE_DELAY_SECS)
+            continue
+
+        db.upsert_price(
+            ticker     = ticker,
+            date       = today,
+            close      = data['close'],
+            market_cap = data.get('market_cap'),
+        )
+        saved.append({
+            'ticker':     ticker,
+            'close':      data['close'],
+            'market_cap': data.get('market_cap'),
+            'date':       today,
+        })
+        print(f"    {ticker}: PHP {data['close']:.2f}")
+        time.sleep(SCRAPE_DELAY_SECS)
+
+    print(f"  Saved {len(saved)}/{len(to_fetch)} prices to database.")
+    return saved
 
 
 # ── CLI entry point ───────────────────────────────────────────

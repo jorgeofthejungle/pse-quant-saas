@@ -33,10 +33,14 @@ def index():
     expiring_soon = get_expiring_soon(days=7)
     activity      = get_recent_activity(limit=20)
 
-    # Latest top-5 for each portfolio
-    portfolios = {}
-    for pt in ['pure_dividend', 'dividend_growth', 'value']:
-        portfolios[pt] = db.get_last_top5(pt) or []
+    # Latest unified rankings (top 10)
+    top10      = db.get_last_top5('unified') or []
+    scores_raw = db.get_last_scores('unified') or []
+    scores_map = {s['ticker']: s['score'] for s in scores_raw}
+    unified_rankings = [
+        {'ticker': t, 'score': round(scores_map.get(t, 0), 1)}
+        for t in top10
+    ]
 
     # Pricing for quick payment link card
     pm_configured = bool(os.getenv('PAYMONGO_SECRET_KEY', ''))
@@ -46,14 +50,14 @@ def index():
                                      os.getenv('ANNUAL_PRICE_CENTAVOS', 299900))) / 100
 
     context = {
-        'member_stats':   member_stats,
-        'expiring_soon':  expiring_soon,
-        'activity':       activity,
-        'portfolios':     portfolios,
-        'now':            datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'pm_configured':  pm_configured,
-        'pm_monthly':     pm_monthly,
-        'pm_annual':      pm_annual,
+        'member_stats':      member_stats,
+        'expiring_soon':     expiring_soon,
+        'activity':          activity,
+        'unified_rankings':  unified_rankings,
+        'now':               datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'pm_configured':     pm_configured,
+        'pm_monthly':        pm_monthly,
+        'pm_annual':         pm_annual,
     }
     return render_template('home.html', **context)
 

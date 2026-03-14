@@ -37,9 +37,13 @@ WEEKLY_REPORT_DAY  = 'sun'
 WEEKLY_REPORT_HOUR = 8
 WEEKLY_REPORT_TZ   = 'Asia/Manila'
 
-# Daily alert check: every weekday at 6:30 AM
-DAILY_ALERT_HOUR   = 6
-DAILY_ALERT_MINUTE = 30
+# Daily alert check: every weekday at 9:00 AM
+DAILY_ALERT_HOUR   = 9
+DAILY_ALERT_MINUTE = 0
+
+# Daily report: send PDF at 6 PM if rankings changed since 4 PM score run
+DAILY_REPORT_HOUR   = 18
+DAILY_REPORT_MINUTE = 0
 
 # ── PSE Edge Settings ──────────────────────────────────────
 PSE_EDGE_BASE_URL   = 'https://edge.pse.com.ph'

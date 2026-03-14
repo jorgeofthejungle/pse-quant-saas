@@ -119,8 +119,9 @@ def calc_ddm(
     if dividend_cagr > 1:
         dividend_cagr = dividend_cagr / 100
 
-    # Cap growth rate to prevent model explosion
-    g = min(dividend_cagr, DDM_MAX_GROWTH_RATE)
+    # Cap growth rate to prevent model explosion; floor at 0 so shrinking
+    # dividends don't inflate the DDM denominator (negative g widens r-g)
+    g = max(min(dividend_cagr, DDM_MAX_GROWTH_RATE), 0.0)
 
     # Growth rate must be below required return
     if g >= required_return:

@@ -91,9 +91,23 @@ def get_financials(ticker: str, years: int = 5) -> list:
     return [dict(r) for r in rows]
 
 
+def get_all_cmpy_ids() -> dict:
+    """
+    Returns {ticker: cmpy_id} for all active stocks that have a stored cmpy_id.
+    Used by the daily price scraper to avoid per-ticker autocomplete lookups.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT ticker, cmpy_id FROM stocks WHERE cmpy_id IS NOT NULL AND status = 'active'"
+    ).fetchall()
+    conn.close()
+    return {r['ticker']: r['cmpy_id'] for r in rows}
+
+
 def upsert_stock(ticker: str, name: str, sector: str,
                  is_reit: bool = False, is_bank: bool = False,
-                 last_scraped: str = None, status: str = None):
+                 last_scraped: str = None, status: str = None,
+                 cmpy_id: str = None):
     """
     Inserts or updates a stock's identity record.
 
@@ -111,34 +125,35 @@ def upsert_stock(ticker: str, name: str, sector: str,
     params = [name, sector, int(is_reit), int(is_bank), now]
 
     if last_scraped is not None:
-        extra_set += ", last_scraped = excluded.last_scraped"
         params_insert = [ticker, name, sector, int(is_reit), int(is_bank),
-                         now, last_scraped, status or 'active']
+                         now, last_scraped, status or 'active', cmpy_id]
         conn.execute("""
             INSERT INTO stocks
                 (ticker, name, sector, is_reit, is_bank, last_updated,
-                 last_scraped, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 last_scraped, status, cmpy_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ticker) DO UPDATE SET
                 name         = excluded.name,
                 sector       = excluded.sector,
                 is_reit      = excluded.is_reit,
                 is_bank      = excluded.is_bank,
                 last_updated = excluded.last_updated,
-                last_scraped = excluded.last_scraped
+                last_scraped = excluded.last_scraped,
+                cmpy_id      = COALESCE(excluded.cmpy_id, cmpy_id)
         """, params_insert)
     else:
         conn.execute("""
             INSERT INTO stocks
-                (ticker, name, sector, is_reit, is_bank, last_updated, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'active')
+                (ticker, name, sector, is_reit, is_bank, last_updated, status, cmpy_id)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
             ON CONFLICT(ticker) DO UPDATE SET
                 name         = excluded.name,
                 sector       = excluded.sector,
                 is_reit      = excluded.is_reit,
                 is_bank      = excluded.is_bank,
-                last_updated = excluded.last_updated
-        """, (ticker, name, sector, int(is_reit), int(is_bank), now))
+                last_updated = excluded.last_updated,
+                cmpy_id      = COALESCE(excluded.cmpy_id, cmpy_id)
+        """, (ticker, name, sector, int(is_reit), int(is_bank), now, cmpy_id))
 
     if status is not None:
         conn.execute(

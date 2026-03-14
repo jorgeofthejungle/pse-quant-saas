@@ -16,7 +16,7 @@ def explain_roe(value):
         return (
             f"ROE of {value:.1f}% -- excellent management performance. "
             f"For every PHP100 of equity, the company earns PHP{value:.0f}. "
-            f"Warren Buffett looks for ROE above 15% consistently."
+            f"Our rule-based model prioritizes ROE above 15% as a quality indicator."
         )
     elif value >= 15:
         return (

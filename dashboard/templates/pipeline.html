@@ -17,17 +17,40 @@
   </span>
 </div>
 
+<!-- Scheduler Control -->
+<div class="card full-width" style="margin-bottom:1.25rem;border-top:3px solid {% if scheduler.running %}var(--green){% else %}var(--text-muted){% endif %};">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+    <div>
+      <h2 style="margin-bottom:0.25rem;">Scheduler</h2>
+      <div style="font-size:0.85rem;color:var(--text-muted);">
+        Runs all jobs automatically on schedule — daily scoring, alerts, disclosure monitor, and weekly scrape.
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;">
+        <span class="status-dot {% if not scheduler.running %}status-error{% endif %}" id="sched-dot"></span>
+        <span id="sched-status-text">{% if scheduler.running %}Running (PID {{ scheduler.pid }}){% else %}Stopped{% endif %}</span>
+      </div>
+      <div id="sched-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
+      <button class="btn {% if scheduler.running %}btn-danger{% else %}btn-primary{% endif %}"
+              id="btn-sched"
+              onclick="controlScheduler('{% if scheduler.running %}stop{% else %}start{% endif %}')">
+        {% if scheduler.running %}Stop Scheduler{% else %}Start Scheduler{% endif %}
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Run Controls -->
 <div class="card-row">
   <div class="card">
     <h2>Scoring Pipeline</h2>
-    <p>Filters and scores all 223 stocks across all three portfolios.
-       Generates PDF reports and sends to Discord if top-5 changed.</p>
+    <p>Filters and scores all stocks. Generates PDF report and sends to Discord if rankings changed.</p>
     <div id="scoring-result" class="result-box" style="display:none"></div>
     <button class="btn btn-primary" id="btn-scoring" onclick="triggerJob('scoring')">
       Run Scoring Now
     </button>
-    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 16:00 PHT</span>
+    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 17:30 PHT</span>
   </div>
 
   <div class="card">
@@ -38,36 +61,29 @@
     <button class="btn btn-secondary" id="btn-alerts" onclick="triggerJob('alerts')">
       Run Alert Check Now
     </button>
-    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 06:30 PHT</span>
+    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 09:00 PHT</span>
   </div>
 </div>
 
 <!-- Latest Rankings -->
 <div class="card full-width">
   <h2>Latest Rankings</h2>
-  <div class="portfolio-grid">
-    {% for pt, stocks in rankings.items() %}
-    <div>
-      <h4>{{ pt.replace('_', ' ').title() }}</h4>
-      {% if stocks %}
-      <table class="data-table">
-        <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
-        <tbody>
-          {% for s in stocks %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td><strong>{{ s.ticker }}</strong></td>
-            <td>{{ s.score }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <p class="text-muted">No data — run pipeline first.</p>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
+  {% if rankings.get('unified') %}
+  <table class="data-table">
+    <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
+    <tbody>
+      {% for s in rankings['unified'] %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ s.ticker }}</strong></td>
+        <td>{{ s.score }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No data — run pipeline first.</p>
+  {% endif %}
 </div>
 
 <!-- Recent Run Dates -->
@@ -86,8 +102,8 @@
 {% block scripts %}
 <script>
 function triggerJob(type) {
-  const url     = type === 'scoring' ? '/pipeline/run' : '/pipeline/alerts';
-  const btn     = document.getElementById('btn-' + type);
+  const url      = type === 'scoring' ? '/pipeline/run' : '/pipeline/alerts';
+  const btn      = document.getElementById('btn-' + type);
   const resultEl = document.getElementById(type + '-result');
 
   btn.disabled = true;
@@ -137,7 +153,38 @@ function showJobBanner(show, msg) {
   msgEl.textContent = msg;
 }
 
-// Check if a job is already running on page load
+function controlScheduler(action) {
+  const btn      = document.getElementById('btn-sched');
+  const resultEl = document.getElementById('sched-result');
+  const dot      = document.getElementById('sched-dot');
+  const statusTx = document.getElementById('sched-status-text');
+
+  btn.disabled = true;
+  btn.textContent = action === 'start' ? 'Starting...' : 'Stopping...';
+
+  fetch('/pipeline/scheduler/' + action, {method: 'POST', body: new FormData()})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.style.display = 'block';
+      if (d.ok) {
+        const running = action === 'start';
+        resultEl.className = 'result-box result-success';
+        resultEl.textContent = d.message;
+        dot.className = 'status-dot' + (running ? '' : ' status-error');
+        statusTx.textContent = d.message;
+        btn.className = 'btn ' + (running ? 'btn-danger' : 'btn-primary');
+        btn.textContent = running ? 'Stop Scheduler' : 'Start Scheduler';
+        btn.onclick = function() { controlScheduler(running ? 'stop' : 'start'); };
+      } else {
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = d.message;
+        btn.textContent = action === 'start' ? 'Start Scheduler' : 'Stop Scheduler';
+      }
+      btn.disabled = false;
+    });
+}
+
+// Check if a pipeline job is already running on page load
 fetch('/pipeline/status').then(r => r.json()).then(d => {
   if (d.running) {
     showJobBanner(true, d.type + ' job running since ' + d.started + '...');

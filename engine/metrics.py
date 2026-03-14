@@ -35,7 +35,7 @@ def calculate_roe(net_income: float, equity: float):
     """
     Return on Equity.
     How efficiently the company makes profit from your money.
-    Buffett looks for ROE above 15%.
+    ROE above 15% is considered a quality threshold.
     Example: Net Income=15, Equity=100 → ROE = 15%
     """
     if net_income is None or equity is None or equity <= 0:

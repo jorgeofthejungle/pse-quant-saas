@@ -49,29 +49,51 @@
     <table class="info-table">
       <tr><td>Last Score Run</td><td id="sys-last-run">Loading...</td></tr>
       <tr><td>DB Size</td><td id="sys-db-size">Loading...</td></tr>
-      <tr><td>Next Alert Check</td><td>Weekdays 06:30 PHT</td></tr>
-      <tr><td>Next Score Run</td><td>Weekdays 16:00 PHT</td></tr>
+      <tr><td>Next Alert Check</td><td>Weekdays 09:00 PHT</td></tr>
+      <tr><td>Next Score Run</td><td>Weekdays 17:30 PHT</td></tr>
     </table>
     <div style="margin-top:1rem">
       <a href="{{ url_for('pipeline.index') }}" class="btn btn-primary">Go to Pipeline</a>
     </div>
   </div>
 
-  <!-- Top 5 per Portfolio -->
+  <!-- Unified Top Rankings -->
   <div class="card">
-    <h2>Current Top 5</h2>
-    {% for pt, tickers in portfolios.items() %}
-    <div class="mini-portfolio">
-      <h4>{{ pt.replace('_', ' ').title() }}</h4>
-      {% if tickers %}
-        {% for t in tickers %}
-          <span class="ticker-badge">{{ loop.index }}. {{ t }}</span>
+    <h2>Stockpilot PH Rankings</h2>
+    {% if unified_rankings %}
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
+      <tbody>
+        {% for s in unified_rankings %}
+        <tr>
+          <td style="color:var(--text-muted);">{{ loop.index }}</td>
+          <td>
+            <a href="{{ url_for('stocks.index') }}?ticker={{ s.ticker }}"
+               style="font-weight:700;color:var(--navy);text-decoration:none;">
+              {{ s.ticker }}
+            </a>
+          </td>
+          <td>
+            {% if s.score >= 80 %}
+              <span style="color:#27AE60;font-weight:600;">{{ s.score }}</span>
+            {% elif s.score >= 65 %}
+              <span style="color:#2563A0;font-weight:600;">{{ s.score }}</span>
+            {% elif s.score >= 50 %}
+              <span style="color:#F39C12;font-weight:600;">{{ s.score }}</span>
+            {% else %}
+              <span style="color:#E74C3C;font-weight:600;">{{ s.score }}</span>
+            {% endif %}
+          </td>
+        </tr>
         {% endfor %}
-      {% else %}
-        <span class="text-muted">No data — run pipeline first</span>
-      {% endif %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No data — run pipeline first.</p>
+    {% endif %}
+    <div style="margin-top:0.75rem;">
+      <a href="{{ url_for('stocks.index') }}" class="btn btn-sm btn-secondary">Stock Lookup →</a>
     </div>
-    {% endfor %}
   </div>
 </div>
 

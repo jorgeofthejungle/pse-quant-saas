@@ -18,7 +18,8 @@ from db.db_prices     import upsert_price, get_latest_price
 from db.db_scores     import save_scores, get_last_top5, get_last_scores
 from db.db_financials import (upsert_financials, get_financials,
                                upsert_stock, get_all_tickers,
-                               mark_stock_status, get_stale_financials_tickers)
+                               mark_stock_status, get_stale_financials_tickers,
+                               get_all_cmpy_ids)
 from db.db_sentiment  import upsert_sentiment, get_sentiment
 from db.db_settings   import get_setting, set_setting, get_all_settings
 
@@ -41,7 +42,7 @@ __all__ = [
     'upsert_price', 'get_latest_price',
     'save_scores', 'get_last_top5', 'get_last_scores',
     'upsert_financials', 'get_financials', 'upsert_stock', 'get_all_tickers',
-    'mark_stock_status', 'get_stale_financials_tickers',
+    'mark_stock_status', 'get_stale_financials_tickers', 'get_all_cmpy_ids',
     'upsert_sentiment', 'get_sentiment',
     'get_setting', 'set_setting', 'get_all_settings',
     'add_member', 'get_member', 'get_all_members', 'update_member',

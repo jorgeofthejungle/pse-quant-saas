@@ -192,8 +192,8 @@ def build_news_overview_section(ranked_stocks) -> list:
     ))
     elements.append(Paragraph(
         'Headlines sourced from Yahoo Finance, BusinessWorld, and Inquirer Business. '
-        'Sentiment is classified by AI (Claude Haiku) for informational purposes only. '
-        'It does not affect numerical scores.',
+        'Sentiment analysis is for informational context only. '
+        'It does not affect the numerical scores or rankings.',
         ParagraphStyle('NewsSNote', fontSize=8, textColor=DARK_GREY,
                        fontName='Helvetica-Oblique', leading=12, spaceAfter=6)
     ))

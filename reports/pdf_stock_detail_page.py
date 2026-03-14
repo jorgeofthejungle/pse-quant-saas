@@ -13,11 +13,9 @@ from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reports.pdf_styles import (
     NAVY, GOLD, BLUE_LIGHT, LIGHT_GREY, MID_GREY, DARK_GREY, WHITE, BLACK,
     CONTENT_WIDTH, MOS_EXPLAIN,
-    score_color, score_bg, grade, grade_label, mos_signal,
+    score_color, score_bg, grade, grade_label, mos_signal, get_stock_profiles,
 )
 from reports.pdf_rankings_table import generate_overall_assessment
-from reports.pdf_sentiment import build_sentiment_panel
-from reports.pdf_momentum import build_momentum_panel
 
 
 def build_stock_detail(styles, stock, rank, portfolio_type):
@@ -132,6 +130,38 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     ]))
     elements.append(badges)
 
+    # ── Investment profile tags ──
+    profiles = get_stock_profiles(stock)
+    if profiles:
+        elements.append(Spacer(1, 2 * mm))
+        tag_cells = []
+        for label, txt_col, bg_col in profiles:
+            tag_cells.append(Paragraph(
+                f'  {label}  ',
+                ParagraphStyle(
+                    f'Tag_{label}', fontSize=7.5, textColor=txt_col,
+                    fontName='Helvetica-Bold', alignment=TA_CENTER,
+                    backColor=bg_col,
+                )
+            ))
+        # Pad to fill the row (up to 5 tags max)
+        col_w = CONTENT_WIDTH / max(len(tag_cells), 1)
+        tag_tbl = Table(
+            [tag_cells],
+            colWidths=[col_w] * len(tag_cells)
+        )
+        tag_tbl.setStyle(TableStyle([
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+            ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+            *[('BACKGROUND', (i, 0), (i, 0), profiles[i][2])
+              for i in range(len(profiles))],
+        ]))
+        elements.append(tag_tbl)
+
     # ── Signal explanation ──
     if sig_desc:
         elements.append(Spacer(1, 2 * mm))
@@ -214,6 +244,28 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
              f"{stock.get('de_ratio', 0):.2f}x",
              'How much debt vs assets (lower = safer)'],
         ]
+    if portfolio_type == 'unified':
+        roe_val  = stock.get('roe')
+        de_val   = stock.get('de_ratio')
+        rev_cagr = stock.get('revenue_cagr')
+        dy_val   = stock.get('dividend_yield')
+        price_data += [
+            ['ROE',
+             f"{roe_val:.1f}%" if roe_val is not None else 'N/A',
+             'Return on equity — management efficiency (>15% = strong)'],
+            ['DEBT / EQUITY',
+             f"{de_val:.2f}x" if de_val is not None else 'N/A',
+             'How much the company relies on borrowed money (lower = safer)'],
+            ['REVENUE GROWTH',
+             f"{rev_cagr:.1f}%" if rev_cagr is not None else 'N/A',
+             '3-5 year compound annual revenue growth rate'],
+        ]
+        if dy_val and dy_val > 0:
+            price_data.append([
+                'DIVIDEND YIELD',
+                f"{dy_val:.2f}%",
+                'Annual cash income per P100 invested (0% = no dividend paid)',
+            ])
 
     price_rows = []
     for label, value, explain in price_data:
@@ -335,10 +387,5 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
 
             elements.append(Spacer(1, 1 * mm))
 
-    # ── Momentum analysis panel (after score breakdown, before sentiment) ──
-    elements += build_momentum_panel(stock, styles)
-
-    # ── Sentiment panel ──
-    elements += build_sentiment_panel(stock)
 
     return elements

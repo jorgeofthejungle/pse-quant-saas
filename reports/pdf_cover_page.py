@@ -18,7 +18,7 @@ from reports.pdf_styles import (
 )
 
 
-def _build_brand_header(portfolio_name):
+def _build_brand_header(portfolio_name, portfolio_type=''):
     """Full-width dark navy header with bar-chart icon + title + sub-banner."""
     elements = []
 
@@ -68,9 +68,12 @@ def _build_brand_header(portfolio_name):
     ))
 
     # Portfolio sub-banner
+    _banner = (f'{portfolio_name} REPORT'
+               if portfolio_type == 'unified'
+               else f'{portfolio_name} PORTFOLIO REPORT')
     sub_tbl = Table(
         [[Paragraph(
-            f'{portfolio_name} PORTFOLIO REPORT',
+            _banner,
             ParagraphStyle(
                 'SubBanner', fontSize=11, textColor=NAVY,
                 alignment=TA_CENTER, fontName='Helvetica-Bold'
@@ -92,7 +95,7 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
                      run_date, total_stocks, eligible_stocks):
     elements = []
 
-    elements += _build_brand_header(portfolio_name)
+    elements += _build_brand_header(portfolio_name, portfolio_type)
     elements.append(Spacer(1, 8 * mm))
 
     p_title, p_desc = PORTFOLIO_EXPLAIN.get(
@@ -153,7 +156,9 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
             ],
             [
                 Paragraph('Total PSE stocks analyzed', styles['SmallMuted']),
-                Paragraph('Met all portfolio criteria', styles['SmallMuted']),
+                Paragraph('Met health filter criteria'
+                          if portfolio_type == 'unified'
+                          else 'Met all portfolio criteria', styles['SmallMuted']),
                 Paragraph('Data as of this date',       styles['SmallMuted']),
             ],
         ],
@@ -271,15 +276,15 @@ def build_disclaimer_page(styles):
          'Every stock is evaluated using a fixed, deterministic formula. '
          'Each financial metric is converted to a sub-score between 0 and 100, '
          'then multiplied by its assigned weight. The sub-scores are added together '
-         'to produce the final score. There is no randomness and no AI in the scoring. '
+         'to produce the final score. '
          'If you run the same data through the model twice, you will always get '
          'the same result.'),
         ('What is Margin of Safety?',
-         'Margin of Safety is a concept pioneered by Benjamin Graham, the father '
-         'of value investing. It is the percentage gap between what we calculate '
+         'Margin of Safety is the percentage gap between what we calculate '
          'a business is worth (intrinsic value) and what the market is currently '
          'charging you to buy it. A larger margin means more room for error in '
-         'our estimates and more protection against unexpected bad news.'),
+         'our estimates and more protection against unexpected bad news. '
+         'It is a key principle in disciplined investing.'),
         ('How Intrinsic Value is Calculated',
          'We use three separate valuation methods and combine the results. '
          '(1) Dividend Discount Model: projects future dividends and discounts '

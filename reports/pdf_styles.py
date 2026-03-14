@@ -89,10 +89,18 @@ PORTFOLIO_EXPLAIN = {
     'value': (
         'What is a Value Portfolio?',
         'This portfolio hunts for great businesses that are selling at a price below '
-        'what they are truly worth. Inspired by the principles of Warren Buffett and '
-        'Benjamin Graham, it uses multiple valuation tools to estimate fair value '
-        'and only includes stocks trading at a meaningful discount. The goal is '
-        'capital growth as the market eventually recognises the true value of the business.'
+        'what they are truly worth. Using deterministic, rule-based analysis, it employs '
+        'multiple valuation metrics to estimate fair value and only includes stocks trading '
+        'at a meaningful discount. The goal is capital growth as the market eventually '
+        'recognises the true value of the business.'
+    ),
+    'unified': (
+        'About StockPilot PH Rankings',
+        'Rule-based rankings of PSE-listed stocks using a 4-factor fundamental score: '
+        '<b>Financial Health</b> · <b>Business Improvement</b> · '
+        '<b>Growth Acceleration</b> · <b>Consistency</b>. '
+        'Stocks are ranked highest to lowest. Higher score = stronger, more durable fundamentals. '
+        'Scores are deterministic — same data always produces the same result.'
     ),
 }
 
@@ -176,6 +184,47 @@ def mos_signal(mos_pct):
     elif mos_pct >= 15:  return 'BUY ZONE'
     elif mos_pct >= 0:   return 'FAIRLY VALUED'
     else:                return 'ABOVE IV'
+
+
+# ── Investment Profile Tags ──────────────────────────────────
+# Returns a list of (label, text_color, bg_color) tuples.
+# Multiple tags may apply to the same stock.
+
+def get_stock_profiles(stock: dict) -> list[tuple[str, object, object]]:
+    """
+    Classify a stock into one or more investment profile tags.
+
+    Rules:
+      REIT     — is_reit flag
+      BANK     — is_bank flag
+      HIGH INCOME — dividend_yield >= 4%
+      VALUE    — mos_pct >= 15% (trading below intrinsic value)
+      GROWTH   — revenue_cagr >= 8% AND (payout_ratio is None OR <= 60%)
+
+    Returns: [(label, text_color, bg_color), ...]
+    """
+    tags = []
+
+    if stock.get('is_reit'):
+        tags.append(('REIT', WHITE, NAVY_LIGHT))
+    elif stock.get('is_bank'):
+        tags.append(('BANK', WHITE, NAVY_LIGHT))
+
+    dy = stock.get('dividend_yield') or 0.0
+    if dy >= 4.0:
+        tags.append(('HIGH INCOME', BLACK, GOLD_LIGHT))
+
+    mos = stock.get('mos_pct')
+    if mos is not None and mos >= 15.0:
+        tags.append(('VALUE', WHITE, GREEN))
+
+    cagr = stock.get('revenue_cagr')
+    pr   = stock.get('payout_ratio')
+    if cagr is not None and cagr >= 8.0:
+        if pr is None or pr <= 60.0:
+            tags.append(('GROWTH', WHITE, BLUE))
+
+    return tags
 
 
 # ── Stockpilot Bar Chart Icon ────────────────────────────────

@@ -253,16 +253,59 @@ def _fetch_dividend_declarations(session, cmpy_id: str) -> list:
     return results
 
 
+def _get_alert_baseline_date(ticker: str) -> str | None:
+    """
+    Returns the stored baseline date for a ticker's dividend alerts.
+    Dividends with ex-dates on or before this date are treated as
+    historical (no alert). Returns None if no baseline is set yet.
+    """
+    conn = db.get_connection()
+    row  = conn.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (f'div_baseline:{ticker}',)
+    ).fetchone()
+    conn.close()
+    return row['value'] if row else None
+
+
+def _set_alert_baseline_date(ticker: str, date_str: str):
+    """Saves the dividend alert baseline date for a ticker."""
+    now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+        (f'div_baseline:{ticker}', date_str, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def _parse_ex_date(ex_date_str: str) -> str | None:
+    """
+    Normalises a PSE Edge ex-date string to YYYY-MM-DD.
+    PSE Edge formats: 'MM/DD/YYYY', 'MMM DD, YYYY', 'YYYY-MM-DD'.
+    Returns None if parsing fails.
+    """
+    for fmt in ('%m/%d/%Y', '%b %d, %Y', '%Y-%m-%d', '%B %d, %Y'):
+        try:
+            return datetime.strptime(ex_date_str.strip(), fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
 def check_dividend_alerts(dry_run: bool = False) -> int:
     """
     Checks PSE Edge dividend declarations for all ranked tickers.
-    On first run for a ticker, records existing history as 'seen'
-    without alerting (prevents historical spam).
+    Uses a per-ticker baseline date (stored in settings table) to
+    distinguish pre-existing history from genuinely new declarations.
+    Dividends with ex-dates strictly after the baseline date are alerted.
     Returns the number of new alerts sent.
     """
     alerts_url = WEBHOOKS.get('alerts', '')
     session    = make_session()
     sent       = 0
+    today      = datetime.now().strftime('%Y-%m-%d')
 
     for row in _get_ranked_tickers():
         ticker = row['ticker']
@@ -273,19 +316,40 @@ def check_dividend_alerts(dry_run: bool = False) -> int:
 
         divs = _fetch_dividend_declarations(session, info['cmpy_id'])
         if not divs:
+            time.sleep(SCRAPE_DELAY_SECS)
             continue
 
-        seen          = _get_seen_urls(ticker)
-        is_first_seen = not any(u.startswith('DIV:') for u in seen)
+        baseline = _get_alert_baseline_date(ticker)
+        seen     = _get_seen_urls(ticker)
+
+        if baseline is None:
+            # First time we've ever checked this ticker.
+            # Set baseline = today. Any dividend declared before today
+            # is historical. We save it as 'seen' but never alert.
+            # Dividends declared AFTER today will alert on next check.
+            _set_alert_baseline_date(ticker, today)
+            for entry in divs[:6]:
+                _save_disclosure(ticker, entry['ex_date'], 'dividend_seen',
+                                 f"Baseline DPS {entry['dps']}", entry['url_key'])
+            print(f"  [div_alert] {ticker}: baseline set ({len(divs[:6])} "
+                  f"historical dividends recorded, no alert sent).")
+            time.sleep(SCRAPE_DELAY_SECS)
+            continue
 
         for entry in divs[:6]:
             url_key = entry['url_key']
-            if is_first_seen:
-                _save_disclosure(ticker, entry['ex_date'], 'dividend_seen',
-                                 f"Baseline DPS {entry['dps']}", url_key)
-                continue
             if url_key in seen:
+                continue  # already alerted or already baseline
+
+            ex_date_norm = _parse_ex_date(entry['ex_date'])
+            if ex_date_norm and ex_date_norm <= baseline:
+                # Dividend existed before our monitoring started — save as seen,
+                # do not alert. This handles the JFC-style historical dividend.
+                _save_disclosure(ticker, entry['ex_date'], 'dividend_seen',
+                                 f"Pre-baseline DPS {entry['dps']}", url_key)
                 continue
+
+            # Genuinely new dividend — ex-date is after our baseline.
             print(f"  [div_alert] NEW: {ticker}  "
                   f"DPS=PHP{entry['dps']:.4f}  ex={entry['ex_date']}")
             if not dry_run and alerts_url:

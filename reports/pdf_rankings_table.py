@@ -56,6 +56,11 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                    'P/E', 'ROE', 'MoS%', 'Buy Price', 'Signal']
         col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
                    14*mm, 14*mm, 12*mm, 18*mm, 26*mm]
+    elif portfolio_type == 'unified':
+        headers = ['#', 'Ticker', 'Company', 'Score', 'Category',
+                   'Hlth', 'Impr', 'Accel', 'Prst', 'MoS%', 'Signal']
+        col_w   = [7*mm, 13*mm, 37*mm, 13*mm, 21*mm,
+                   12*mm, 12*mm, 11*mm, 12*mm, 11*mm, 25*mm]
     else:
         headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
                    'Yield', 'P/E', 'MoS%', 'Buy Price', 'Signal']
@@ -109,6 +114,25 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 if stock.get('mos_price') else 'N/A',
                 sig,
             ]
+        elif portfolio_type == 'unified':
+            layers = stock.get('breakdown', {}).get('layers', {})
+            h_s = layers.get('health',       {}).get('score')
+            i_s = layers.get('improvement',  {}).get('score')
+            a_s = layers.get('acceleration', {}).get('score')
+            p_s = layers.get('persistence',  {}).get('score')
+            cat = stock.get('category', '')
+            cols = [
+                str(i+1), stock.get('ticker', ''),
+                stock.get('name', ''),
+                f"{sc:.0f}/100",
+                cat,
+                f"{h_s:.0f}" if h_s is not None else 'N/A',
+                f"{i_s:.0f}" if i_s is not None else 'N/A',
+                f"{a_s:.0f}" if a_s is not None else '-',
+                f"{p_s:.0f}" if p_s is not None else 'N/A',
+                f"{mp:.1f}%" if mp is not None else 'N/A',
+                sig,
+            ]
         else:
             cols = [
                 str(i+1), stock.get('ticker', ''),
@@ -141,6 +165,9 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         bg = LIGHT_GREY if i % 2 == 0 else WHITE
         tbl_style.append(('BACKGROUND', (0, i), (-1, i), bg))
 
+    mos_col_idx = 9  if portfolio_type == 'unified' else 7
+    sig_col_idx = 10 if portfolio_type == 'unified' else 9
+
     for i, stock in enumerate(ranked_stocks):
         sc  = stock.get('score', 0)
         mp  = stock.get('mos_pct', None)
@@ -150,11 +177,21 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         tbl_style.append(('BACKGROUND', (3, i+1), (3, i+1), score_bg(sc)))
         if mp is not None:
             mc = GREEN if mp >= 15 else ORANGE if mp >= 0 else RED
-            tbl_style.append(('TEXTCOLOR', (7, i+1), (7, i+1), mc))
-            tbl_style.append(('FONTNAME',  (7, i+1), (7, i+1), 'Helvetica-Bold'))
+            tbl_style.append(('TEXTCOLOR', (mos_col_idx, i+1), (mos_col_idx, i+1), mc))
+            tbl_style.append(('FONTNAME',  (mos_col_idx, i+1), (mos_col_idx, i+1), 'Helvetica-Bold'))
         sig_col, _ = MOS_EXPLAIN.get(sig, (DARK_GREY, ''))
-        tbl_style.append(('TEXTCOLOR', (9, i+1), (9, i+1), sig_col))
-        tbl_style.append(('FONTNAME',  (9, i+1), (9, i+1), 'Helvetica-Bold'))
+        tbl_style.append(('TEXTCOLOR', (sig_col_idx, i+1), (sig_col_idx, i+1), sig_col))
+        tbl_style.append(('FONTNAME',  (sig_col_idx, i+1), (sig_col_idx, i+1), 'Helvetica-Bold'))
+
+        # Unified: color each layer score column by its score
+        if portfolio_type == 'unified':
+            layers = stock.get('breakdown', {}).get('layers', {})
+            for col_idx, lname in [(5, 'health'), (6, 'improvement'),
+                                   (7, 'acceleration'), (8, 'persistence')]:
+                ls = layers.get(lname, {}).get('score')
+                if ls is not None:
+                    tbl_style.append(('TEXTCOLOR', (col_idx, i+1), (col_idx, i+1), score_color(ls)))
+                    tbl_style.append(('FONTNAME',  (col_idx, i+1), (col_idx, i+1), 'Helvetica-Bold'))
 
     tbl.setStyle(TableStyle(tbl_style))
     elements.append(tbl)
@@ -357,7 +394,7 @@ def generate_overall_assessment(stock, score, portfolio_type):
     if roe >= 15:
         strengths.append(
             f"an ROE of {roe:.1f}%. Management is generating strong returns on "
-            f"shareholder capital. Warren Buffett considers 15% and above a positive signal"
+            f"shareholder capital. Our rule-based model prioritizes 15% and above as a quality threshold"
         )
     elif roe < 8:
         concerns.append(
@@ -389,6 +426,68 @@ def generate_overall_assessment(stock, score, portfolio_type):
             f"Inconsistent earnings make it harder to predict whether dividends "
             f"or growth targets can be sustained"
         )
+
+    # Unified: use 4-layer breakdown for the assessment text
+    if portfolio_type == 'unified':
+        breakdown = stock.get('breakdown', {})
+        layers    = breakdown.get('layers', {})
+        category  = breakdown.get('category', '')
+        h_s = layers.get('health',       {}).get('score', 0) or 0
+        i_s = layers.get('improvement',  {}).get('score', 0) or 0
+        a_s = layers.get('acceleration', {}).get('score')
+        p_s = layers.get('persistence',  {}).get('score', 0) or 0
+
+        u_lines = [f"{ticker} earns a unified score of {score:.0f}/100 "
+                   f"and is classified as: {category}."]
+        u_str = []
+        u_con = []
+
+        if h_s >= 70:
+            u_str.append(f"strong financial health ({h_s:.0f}/100)")
+        elif h_s < 45:
+            u_con.append(f"below-average financial health ({h_s:.0f}/100)")
+
+        if i_s >= 65:
+            u_str.append(f"clearly improving fundamentals ({i_s:.0f}/100)")
+        elif i_s < 40:
+            u_con.append(f"limited fundamental improvement ({i_s:.0f}/100)")
+
+        if a_s is not None:
+            if a_s >= 65:
+                u_str.append(f"accelerating momentum ({a_s:.0f}/100)")
+            elif a_s < 40:
+                u_con.append(f"slowing momentum ({a_s:.0f}/100)")
+
+        if p_s >= 70:
+            u_str.append(f"highly consistent multi-year improvement ({p_s:.0f}/100)")
+        elif p_s < 40:
+            u_con.append(f"inconsistent track record ({p_s:.0f}/100)")
+
+        if u_str:
+            u_lines.append(f"Strengths: {'; '.join(u_str)}.")
+        if u_con:
+            u_lines.append(f"Areas of concern: {'; '.join(u_con)}.")
+
+        iv = stock.get('intrinsic_value')
+        cp = stock.get('current_price')
+        mp = stock.get('mos_pct')
+        if iv and cp and mp is not None:
+            if mp >= 15:
+                u_lines.append(
+                    f"At PHP {cp:.2f}, this stock trades {mp:.1f}% below our intrinsic "
+                    f"value estimate of PHP {iv:.2f} — a meaningful margin of safety."
+                )
+            elif mp >= 0:
+                u_lines.append(
+                    f"At PHP {cp:.2f}, the stock is near our intrinsic value estimate of "
+                    f"PHP {iv:.2f}. It appears fairly priced at current levels."
+                )
+            else:
+                u_lines.append(
+                    f"At PHP {cp:.2f}, the stock trades {abs(mp):.1f}% ABOVE our intrinsic "
+                    f"value estimate of PHP {iv:.2f}. Patient investors may prefer to wait."
+                )
+        return "  ".join(u_lines)
 
     _display = {
         'pure_dividend':   'Pure Dividend',

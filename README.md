@@ -50,7 +50,7 @@ the current market price. A larger margin means more cushion if our estimates ar
 > Intrinsic value is a mathematical reference point — not a price prediction or target.
 
 ### 4. Enriches with News Sentiment (Optional)
-For the top 10 ranked stocks per portfolio, the system fetches recent news headlines
+For all qualifying stocks per portfolio, the system fetches recent news headlines
 from Yahoo Finance and Philippine business news sources, then uses **Claude Haiku**
 (an AI model by Anthropic) to classify the tone as Positive, Neutral, or Negative.
 
@@ -63,7 +63,7 @@ To activate this feature, add your `ANTHROPIC_API_KEY` to the `.env` file.
 Each portfolio run produces a professional A4 PDF report containing:
 - Cover page with methodology overview
 - Rankings table (all qualifying stocks, ranked by score)
-- Per-stock detail page with:
+- Individual detail page for **every qualifying stock** (not capped at 10):
   - Score breakdown by metric (with weights and plain-English explanations)
   - Intrinsic value calculation and Margin of Safety
   - News sentiment summary (if enabled)
@@ -88,7 +88,9 @@ The alert engine monitors PSE Edge continuously for:
 - **Price triggers** — notifies when a stock drops below its calculated buy price
 
 Alerts are delivered to a `#pse-alerts` Discord channel.
-The system prevents duplicate alerts — each event is only notified once.
+The system prevents duplicate alerts — each event is only notified once, using
+atomic database writes that prevent duplicates even if multiple scheduler
+instances run simultaneously.
 
 ### 8. Runs on a Schedule
 The scheduler runs two jobs automatically:
@@ -123,7 +125,7 @@ Scoring engine (0-100 weighted multi-factor score)
     ↓
 Margin of Safety calculator (DDM / DCF / EPS×PE)
     ↓
-News enrichment (Claude Haiku, top 10 only)
+News enrichment (Claude Haiku, all qualifying stocks)
     ↓
 PDF report generator (ReportLab)
     ↓
@@ -142,39 +144,45 @@ Alert engine (dividend, earnings, price triggers)
 
 ## Scoring Methodology
 
-### Pure Dividend Score (weighted average of sub-scores)
+### Pure Dividend Score (v4 — includes Fundamental Momentum)
 | Factor | Weight | What It Measures |
 |--------|--------|-----------------|
-| Dividend Yield | 20% | Income return relative to price |
-| FCF Yield | 15% | Free cash flow as % of market cap |
-| Quality Composite | 20% | ROE (50%) + Cash Flow Quality (50%) |
-| EPS Stability | 15% | Consistency of earnings over time |
-| Leverage + Coverage | 15% | D/E, FCF coverage, interest coverage blend |
-| Relative Valuation | 15% | P/E and EV/EBITDA blend |
+| Dividend Yield | 18% | Income return relative to price |
+| FCF Yield | 14% | Free cash flow as % of market cap |
+| Quality Composite | 18% | ROE (50%) + Cash Flow Quality (50%) |
+| EPS Stability | 14% | Consistency of earnings over time |
+| Leverage + Coverage | 14% | D/E, FCF coverage, interest coverage blend |
+| Relative Valuation | 12% | P/E and EV/EBITDA blend |
+| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
 
-Cash Flow Quality = Operating CF / Net Income. Ratio >= 1.0 means reported earnings are fully backed by real cash.
-
-### Dividend Growth Score
+### Dividend Growth Score (v4 — includes Fundamental Momentum)
 | Factor | Weight | What It Measures |
 |--------|--------|-----------------|
-| Dividend CAGR | 20% | How fast dividends are growing per year |
-| Growth Composite | 20% | EPS Growth (60%) + Growth Consistency (40%) |
-| Quality Composite | 15% | ROE (50%) + Cash Flow Quality (50%) |
-| Dividend Yield | 15% | Current income yield |
-| Payout Headroom | 15% | Room to raise dividends further |
-| Leverage Stability | 15% | D/E and FCF coverage blend |
+| Growth Composite | 18% | EPS Growth (60%) + Growth Consistency (40%) |
+| Dividend CAGR | 17% | How fast dividends are growing per year |
+| Quality Composite | 14% | ROE (50%) + Cash Flow Quality (50%) |
+| Dividend Yield | 14% | Current income yield |
+| Payout Headroom | 14% | Room to raise dividends further |
+| Leverage Stability | 13% | D/E and FCF coverage blend |
+| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
 
+### Value Score (v4 — includes Fundamental Momentum)
+| Factor | Weight | What It Measures |
+|--------|--------|-----------------|
+| Valuation Composite | 27% | P/E + EV/EBITDA + FCF Yield + Earnings Yield vs Bonds (25% each) |
+| Quality Composite | 27% | ROE (40%) + EPS Stability (30%) + Cash Flow Quality (30%) |
+| Growth Composite | 17% | Revenue CAGR (60%) + Growth Consistency (40%) |
+| Leverage Risk | 19% | D/E and interest coverage blend |
+| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
+
+**Fundamental Momentum** measures whether a company's key financial metrics are
+accelerating or decelerating. It splits the historical data series into two halves
+and compares the more recent half against the earlier half. Improving trends score
+higher; deteriorating trends score lower. Missing data reduces its weight gracefully.
+
+Cash Flow Quality = Operating CF / Net Income. Ratio ≥ 1.0 means earnings are backed by real cash.
+Earnings Yield vs Bonds = stock earnings yield minus PH 10Y bond rate (6.5%). Positive spread means the stock out-earns risk-free bonds.
 Growth Consistency penalizes erratic revenue/EPS patterns (high coefficient of variation).
-
-### Value Score
-| Factor | Weight | What It Measures |
-|--------|--------|-----------------|
-| Valuation Composite | 30% | P/E + EV/EBITDA + FCF Yield + Earnings Yield vs Bonds (25% each) |
-| Quality Composite | 30% | ROE (40%) + EPS Stability (30%) + Cash Flow Quality (30%) |
-| Growth Composite | 20% | Revenue CAGR (60%) + Growth Consistency (40%) |
-| Leverage Risk | 20% | D/E and interest coverage blend |
-
-Earnings Yield vs Bonds = stock earnings yield minus PH 10Y bond rate (6.5%). Positive spread means the stock earns more than risk-free bonds.
 
 > Weights and thresholds are fixed and deterministic. They are never modified
 > without explicit instruction from the project owner.
@@ -338,4 +346,4 @@ Sentiment analysis powered by Claude (Anthropic), for informational purposes onl
 ---
 
 *PSE Quant SaaS — Built for the Philippine retail investor.*
-*Version: Phase 5 Complete | Last updated: 2026-03-07*
+*Version: Phase 8 (production) | Last updated: 2026-03-09*

@@ -19,6 +19,7 @@
       <li><a href="{{ url_for('members.index') }}"    class="{{ 'active' if request.blueprint == 'members' }}">Members</a></li>
       <li><a href="{{ url_for('analytics.index') }}"  class="{{ 'active' if request.blueprint == 'analytics' }}">Analytics</a></li>
       <li><a href="{{ url_for('settings.index') }}"   class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a></li>
+      <li><a href="{{ url_for('stocks.index') }}"    class="{{ 'active' if request.blueprint == 'stocks' }}">Stock Lookup</a></li>
     </ul>
     <div class="sidebar-footer">
       <span>v1.0 &bull; Local</span>

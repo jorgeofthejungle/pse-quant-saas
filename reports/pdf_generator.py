@@ -15,6 +15,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, HRFlowable, PageBreak
 )
+from reportlab.platypus.flowables import CondPageBreak
 from reportlab.pdfgen import canvas as _canvas_mod
 from datetime import datetime
 import os
@@ -28,10 +29,6 @@ from reports.pdf_styles import (
 from reports.pdf_cover_page import build_cover_page, build_disclaimer_page
 from reports.pdf_rankings_table import build_rankings_table, generate_overall_assessment
 from reports.pdf_stock_detail_page import build_stock_detail
-from reports.pdf_sentiment import (
-    build_sentiment_panel, build_news_overview_section,
-    SENTIMENT_COLORS, SENTIMENT_BGS,
-)
 
 PAGE_W, PAGE_H = A4
 
@@ -94,9 +91,7 @@ __all__ = [
     'build_styles', 'build_cover_page', 'build_disclaimer_page',
     'build_rankings_table', 'generate_overall_assessment',
     'build_stock_detail',
-    'build_sentiment_panel', 'build_news_overview_section',
     'score_color', 'score_bg', 'grade', 'grade_label', 'mos_signal',
-    'SENTIMENT_COLORS', 'SENTIMENT_BGS',
 ]
 
 
@@ -110,6 +105,7 @@ def generate_report(
         'pure_dividend':   'PURE DIVIDEND',
         'dividend_growth': 'DIVIDEND GROWTH',
         'value':           'VALUE',
+        'unified':         'UNIFIED STOCK RANKINGS',
     }
     portfolio_name = names.get(portfolio_type, 'PORTFOLIO')
     run_date       = datetime.now().strftime('%B %d, %Y')
@@ -136,7 +132,6 @@ def generate_report(
         run_date, total_stocks_screened, eligible
     )
     elements += build_rankings_table(styles, ranked_stocks, portfolio_type)
-    elements += build_news_overview_section(ranked_stocks)
     elements.append(Spacer(1, 6 * mm))
     elements.append(PageBreak())
     elements.append(Paragraph(
@@ -150,7 +145,12 @@ def generate_report(
 
     for i, stock in enumerate(ranked_stocks):
         if i > 0:
-            elements.append(PageBreak())
+            # CondPageBreak avoids a blank page when the previous stock's
+            # content exactly fills the page (which would make a plain
+            # PageBreak() fire as the first item on a fresh page).
+            # 180mm threshold: if less than 180mm remains, break to new page;
+            # if ≥ 180mm remains (i.e. we're already at the top), do nothing.
+            elements.append(CondPageBreak(180 * mm))
         elements += build_stock_detail(styles, stock, i + 1, portfolio_type)
 
     elements += build_disclaimer_page(styles)

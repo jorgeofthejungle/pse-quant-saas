@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Stock Lookup{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Stock Lookup</h1>
+  <span class="timestamp">Analyse any PSE-listed stock</span>
+</div>
+
+<!-- Search bar with autocomplete -->
+<form method="GET" action="{{ url_for('stocks.index') }}" class="inline-form full-width"
+      style="margin-bottom:1.25rem;" autocomplete="off" onsubmit="return true;">
+  <div style="position:relative;display:inline-block;">
+    <input type="text" id="stock-search" name="ticker"
+           value="{{ query if query else ticker }}"
+           class="form-input" placeholder="Ticker or company name e.g. DMC, Jollibee"
+           style="width:300px;" autocomplete="off" autofocus
+           oninput="onSearchInput(this.value)"
+           onkeydown="onSearchKey(event)">
+    <div id="search-dropdown" style="
+      display:none; position:absolute; top:100%; left:0; width:100%;
+      background:var(--white); border:1px solid var(--border); border-top:none;
+      border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+      z-index:100; max-height:260px; overflow-y:auto;">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Analyse</button>
+  {% if ticker or query %}
+    <a href="{{ url_for('stocks.index') }}" class="btn btn-secondary">Clear</a>
+  {% endif %}
+</form>
+
+{% if ticker and result %}
+  {% if result.error %}
+    <div class="banner banner-error">{{ result.error }}</div>
+  {% else %}
+    {% set stock = result.stock %}
+    {% set bd    = result.breakdown %}
+
+    <!-- ── Header card ── -->
+    <div class="card full-width" style="margin-bottom:1.25rem;border-top:4px solid var(--navy);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+        <div>
+          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <span style="font-size:1.6rem;font-weight:700;color:var(--navy);">{{ stock.ticker }}</span>
+            <span style="font-size:1rem;color:var(--text-muted);">{{ stock.name }}</span>
+            <span class="badge badge-pipeline">{{ stock.sector }}</span>
+            {% if stock.is_reit %}<span class="badge badge-member">REIT</span>{% endif %}
+            {% if stock.is_bank %}<span class="badge badge-system">BANK</span>{% endif %}
+          </div>
+          <div style="margin-top:0.5rem;color:var(--text-muted);font-size:0.85rem;">
+            Price as of {{ stock.price_date if stock.price_date else '—' }}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:2rem;font-weight:700;color:var(--navy);">₱{{ '%.2f'|format(stock.current_price) }}</div>
+          <div style="font-size:0.8rem;color:var(--text-muted);">Current Price</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Score + MoS + Filter row ── -->
+    <div class="stats-row" style="margin-bottom:1.25rem;">
+      <!-- Score -->
+      {% set score = result.score %}
+      {% if score >= 80 %}{% set score_col = '#27AE60' %}{% set grade = 'A' %}
+      {% elif score >= 65 %}{% set score_col = '#2563A0' %}{% set grade = 'B' %}
+      {% elif score >= 50 %}{% set score_col = '#F39C12' %}{% set grade = 'C' %}
+      {% else %}{% set score_col = '#E74C3C' %}{% set grade = 'D' %}{% endif %}
+      <div class="stat-card" style="border-top-color:{{ score_col }};">
+        <div class="stat-value" style="color:{{ score_col }};">{{ score }}<span style="font-size:1rem;color:var(--text-muted);">/100</span></div>
+        <div class="stat-label">Score — Grade {{ grade }}</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;">{{ bd.category }}</div>
+      </div>
+      <!-- MoS -->
+      {% set mc = result.mos_color %}
+      {% if mc == 'green' %}{% set mos_css = '#27AE60' %}
+      {% elif mc == 'blue' %}{% set mos_css = '#2563A0' %}
+      {% elif mc == 'orange' %}{% set mos_css = '#F39C12' %}
+      {% elif mc == 'red' %}{% set mos_css = '#E74C3C' %}
+      {% else %}{% set mos_css = 'var(--text-muted)' %}{% endif %}
+      <div class="stat-card" style="border-top-color:{{ mos_css }};">
+        <div class="stat-value" style="color:{{ mos_css }};">
+          {% if result.mos_pct is not none %}{{ result.mos_pct }}%{% else %}N/A{% endif %}
+        </div>
+        <div class="stat-label">Margin of Safety</div>
+        <div style="font-size:0.8rem;color:{{ mos_css }};margin-top:0.25rem;font-weight:600;">{{ result.mos_signal }}</div>
+      </div>
+      <!-- Intrinsic Value -->
+      <div class="stat-card">
+        <div class="stat-value" style="font-size:1.4rem;">
+          {% if result.iv %}₱{{ '%.2f'|format(result.iv) }}{% else %}N/A{% endif %}
+        </div>
+        <div class="stat-label">Intrinsic Value (est.)</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">
+          MoS Buy Price: {% if result.mos_price %}₱{{ '%.2f'|format(result.mos_price) }}{% else %}N/A{% endif %}
+        </div>
+      </div>
+      <!-- Filter -->
+      <div class="stat-card" style="border-top-color:{% if result.eligible %}var(--green){% else %}var(--red){% endif %};">
+        <div style="font-size:1.5rem;">{% if result.eligible %}✅{% else %}❌{% endif %}</div>
+        <div class="stat-label">Health Filter</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">{{ result.filter_reason }}</div>
+      </div>
+    </div>
+
+    <div class="card-row" style="margin-bottom:1.25rem;">
+      <!-- ── 4-Layer score breakdown ── -->
+      <div class="card" style="flex:2;">
+        <h2>4-Layer Score Breakdown</h2>
+        {% set layers = [
+          ('health',       'Financial Health',    '25%', 'Is the company financially healthy today?'),
+          ('improvement',  'Business Improvement','30%', 'Are fundamentals improving over 3+ years?'),
+          ('acceleration', 'Growth Acceleration', '15%', 'Is the improvement speeding up?'),
+          ('persistence',  'Consistency',         '30%', 'Are improvements sustained year over year?'),
+        ] %}
+        {% for key, label, weight, desc in layers %}
+          {% set layer = bd.layers[key] %}
+          {% set ls = layer.score %}
+          {% if ls is none %}
+            {% set bar_pct = 0 %}{% set bar_col = '#BDC3C7' %}
+          {% elif ls >= 70 %}
+            {% set bar_pct = ls %}{% set bar_col = '#27AE60' %}
+          {% elif ls >= 50 %}
+            {% set bar_pct = ls %}{% set bar_col = '#F39C12' %}
+          {% else %}
+            {% set bar_pct = ls %}{% set bar_col = '#E74C3C' %}
+          {% endif %}
+          <div style="margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+              <div>
+                <span style="font-weight:600;color:var(--navy);font-size:0.9rem;">{{ label }}</span>
+                <span style="color:var(--text-muted);font-size:0.78rem;margin-left:0.4rem;">{{ weight }} weight — {{ desc }}</span>
+              </div>
+              <span style="font-weight:700;color:{{ bar_col }};font-size:0.95rem;">
+                {% if ls is not none %}{{ '%.0f'|format(ls) }}/100{% else %}N/A{% endif %}
+              </span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;">
+              <div style="height:8px;width:{{ bar_pct|int }}%;background:{{ bar_col }};border-radius:4px;transition:width 0.4s;"></div>
+            </div>
+            <!-- Factor sub-scores -->
+            {% if layer.factors %}
+              <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
+                {% for fname, fdata in layer.factors.items() %}
+                  {% set fs = fdata.score %}
+                  {% if fs is not none %}
+                    {% if fs >= 70 %}{% set fc = '#27AE60' %}{% elif fs >= 50 %}{% set fc = '#F39C12' %}{% else %}{% set fc = '#E74C3C' %}{% endif %}
+                    <span style="font-size:0.72rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.5rem;color:{{ fc }};">
+                      {{ fname.replace('_',' ').title() }}: {{ '%.0f'|format(fs) }}
+                    </span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- ── Key metrics ── -->
+      <div class="card" style="flex:1;">
+        <h2>Key Metrics</h2>
+        <table class="info-table">
+          <tr><td>P/E Ratio</td><td><strong>{% if stock.pe %}{{ '%.1f'|format(stock.pe) }}x{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>P/B Ratio</td><td><strong>{% if stock.pb %}{{ '%.2f'|format(stock.pb) }}x{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>ROE</td><td><strong>{% if stock.roe %}{{ '%.1f'|format(stock.roe) }}%{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>Debt / Equity</td><td><strong>{% if stock.de_ratio is not none %}{{ '%.2f'|format(stock.de_ratio) }}x{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>Dividend Yield</td><td><strong>{% if stock.dividend_yield %}{{ '%.2f'|format(stock.dividend_yield) }}%{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>Div CAGR (5Y)</td><td><strong>{% if stock.dividend_cagr_5y %}{{ '%.1f'|format(stock.dividend_cagr_5y) }}%{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>Payout Ratio</td><td><strong>{% if stock.payout_ratio %}{{ '%.1f'|format(stock.payout_ratio) }}%{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>FCF Yield</td><td><strong>{% if stock.fcf_yield %}{{ '%.1f'|format(stock.fcf_yield) }}%{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>EV/EBITDA</td><td><strong>{% if stock.ev_ebitda %}{{ '%.1f'|format(stock.ev_ebitda) }}x{% else %}N/A{% endif %}</strong></td></tr>
+          <tr><td>Revenue CAGR</td><td><strong>{% if stock.revenue_cagr %}{{ '%.1f'|format(stock.revenue_cagr) }}%{% else %}N/A{% endif %}</strong></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Financial history table ── -->
+    {% if result.financials %}
+    <div class="card full-width" style="margin-bottom:1.25rem;">
+      <h2>Financial History</h2>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Revenue (M)</th>
+              <th>Net Income (M)</th>
+              <th>EPS</th>
+              <th>DPS</th>
+              <th>ROE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in result.financials %}
+            <tr>
+              <td><strong>{{ f.year }}</strong></td>
+              <td>{% if f.revenue %}₱{{ '{:,.0f}'.format(f.revenue) }}{% else %}—{% endif %}</td>
+              <td>{% if f.net_income %}₱{{ '{:,.0f}'.format(f.net_income) }}{% else %}—{% endif %}</td>
+              <td>{% if f.eps %}{{ '%.2f'|format(f.eps) }}{% else %}—{% endif %}</td>
+              <td>{% if f.dps %}{{ '%.2f'|format(f.dps) }}{% else %}—{% endif %}</td>
+              <td>{% if f.roe %}{{ f.roe }}%{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Disclaimer ── -->
+    <div class="banner banner-info" style="font-size:0.8rem;">
+      For research purposes only. Scores are mathematical outputs from historical data — not investment advice.
+      Intrinsic value is an estimate, not a price target.
+    </div>
+
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _acTimer = null;
+let _acIndex = -1;
+let _acItems = [];
+
+function onSearchInput(val) {
+  clearTimeout(_acTimer);
+  if (val.length < 1) { hideDropdown(); return; }
+  _acTimer = setTimeout(() => fetchSuggestions(val), 160);
+}
+
+function fetchSuggestions(q) {
+  fetch('/api/stocks/search?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      _acItems = items;
+      _acIndex = -1;
+      const dd = document.getElementById('search-dropdown');
+      if (!items.length) { hideDropdown(); return; }
+      dd.innerHTML = items.map((it, i) =>
+        `<div class="ac-item" data-ticker="${it.ticker}" data-i="${i}"
+              style="padding:0.5rem 0.75rem;cursor:pointer;font-size:0.875rem;
+                     display:flex;gap:0.6rem;align-items:baseline;"
+              onmousedown="selectItem('${it.ticker}')"
+              onmouseenter="highlightItem(${i})">
+          <span style="font-weight:700;color:var(--navy);min-width:52px;">${it.ticker}</span>
+          <span style="color:var(--text-muted);font-size:0.82rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${it.name}</span>
+        </div>`
+      ).join('');
+      dd.style.display = 'block';
+    });
+}
+
+function highlightItem(i) {
+  _acIndex = i;
+  document.querySelectorAll('.ac-item').forEach((el, j) => {
+    el.style.background = j === i ? 'var(--bg)' : '';
+  });
+}
+
+function selectItem(ticker) {
+  document.getElementById('stock-search').value = ticker;
+  hideDropdown();
+  document.getElementById('stock-search').form.submit();
+}
+
+function hideDropdown() {
+  document.getElementById('search-dropdown').style.display = 'none';
+  _acItems = []; _acIndex = -1;
+}
+
+function onSearchKey(e) {
+  const dd = document.getElementById('search-dropdown');
+  if (dd.style.display === 'none') return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    highlightItem(Math.min(_acIndex + 1, _acItems.length - 1));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    highlightItem(Math.max(_acIndex - 1, 0));
+  } else if (e.key === 'Enter' && _acIndex >= 0) {
+    e.preventDefault();
+    selectItem(_acItems[_acIndex].ticker);
+  } else if (e.key === 'Escape') {
+    hideDropdown();
+  }
+}
+
+// Hide dropdown when clicking elsewhere
+document.addEventListener('click', e => {
+  if (!e.target.closest('#stock-search') && !e.target.closest('#search-dropdown'))
+    hideDropdown();
+});
+</script>
+{% endblock %}

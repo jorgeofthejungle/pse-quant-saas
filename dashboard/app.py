@@ -43,6 +43,7 @@ def create_app() -> Flask:
     from dashboard.routes_analytics import analytics_bp
     from dashboard.routes_settings import settings_bp
     from dashboard.routes_paymongo import paymongo_bp
+    from dashboard.routes_stocks   import stocks_bp
 
     app.register_blueprint(home_bp)
     app.register_blueprint(pipeline_bp,  url_prefix='/pipeline')
@@ -50,6 +51,7 @@ def create_app() -> Flask:
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
     app.register_blueprint(settings_bp,  url_prefix='/settings')
     app.register_blueprint(paymongo_bp,  url_prefix='/paymongo')
+    app.register_blueprint(stocks_bp)
 
     return app
 

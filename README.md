@@ -2,9 +2,10 @@
 ### A Deterministic Multi-Factor Philippine Equity Ranking Engine
 
 PSE Quant is a locally-run investment research tool for the Philippine Stock Exchange (PSE).
-It automatically ranks every publicly listed PSE company across three portfolio strategies,
-generates professional PDF research reports, delivers them to Discord, and alerts you
-when important financial events happen — all on a hands-free weekly schedule.
+It automatically ranks every publicly listed PSE company using a unified 4-layer fundamental
+scoring system, generates professional PDF research reports (StockPilot PH Rankings),
+delivers them to Discord, and alerts you when important financial events happen —
+all on a hands-free schedule.
 
 This is a **research and educational tool**. It does not provide investment advice.
 All reports are for informational purposes only.
@@ -23,17 +24,19 @@ The system connects to **PSE Edge** (the official PSE disclosure platform) and d
 Data is stored in a local SQLite database on your machine. Nothing is sent to external servers.
 
 ### 2. Scores Every PSE Stock
-Each stock is evaluated against three portfolio strategies. The scoring is **deterministic** —
-the same data always produces the same score, with no randomness or AI guessing.
+Every stock is scored using the **StockPilot PH Rankings** system — a unified 4-layer
+fundamental framework. The scoring is **deterministic** — the same data always produces
+the same score, with no randomness or AI guessing.
 
-| Portfolio | What It Looks For | Min Requirements |
-|-----------|-------------------|-----------------|
-| **Pure Dividend** | Stable, high-yield income stocks | Yield ≥ 3%, 4 of 5 dividend years paid, payout ≤ 90%, MoS ≥ 25% |
-| **Dividend Growth** | Companies consistently growing dividends | CAGR > 0%, payout ≤ 75%, MoS ≥ 20% |
-| **Value** | Underpriced businesses with strong fundamentals | P/E, P/B, ROE, CAGR screens, MoS ≥ 30% |
+| Layer | Weight | What It Measures |
+|-------|--------|-----------------|
+| **Health** | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) |
+| **Improvement** | 30% | Fundamentals improving over 3 years (Revenue, EPS, OCF, ROE deltas) |
+| **Acceleration** | 15% | Improvement getting stronger (2-year delta-of-delta) |
+| **Persistence** | 30% | Improvement consistent and reliable (consecutive positive YoY years) |
 
-Stocks that do not meet the minimum requirements are **filtered out before scoring**.
-Only qualifying stocks receive a 0–100 score.
+All 223 PSE stocks compete in one unified ranking. A minimum health filter removes
+companies with persistent losses, high debt, or insufficient data before scoring.
 
 ### 3. Calculates Margin of Safety
 For each stock, the system calculates an **intrinsic value** — a mathematical estimate
@@ -74,12 +77,10 @@ in plain language. No jargon is left undefined.
 
 ### 6. Delivers Reports to Discord
 After generating a PDF, the system automatically sends it to your designated
-Discord channels:
-- `#pse-dividend` — Pure dividend portfolio
-- `#pse-growth` — Dividend growth portfolio
-- `#pse-value` — Value portfolio
+Discord channel:
+- `#stockpilot-picks` (or any name) — Unified StockPilot PH Rankings PDF report
 
-It also sends a text summary with the top 5 ranked stocks per portfolio.
+It also sends a text summary with the top-ranked stocks.
 
 ### 7. Sends Real-Time Alerts
 The alert engine monitors PSE Edge continuously for:
@@ -94,15 +95,17 @@ instances run simultaneously.
 
 ### 8. Runs on a Schedule
 The scheduler runs two jobs automatically:
-- **06:30 PHT (weekdays)** — Alert check: scans PSE Edge for new events
-- **16:00 PHT (weekdays)** — Full scoring run: scrape → score → report → publish
+- **09:00 PHT (weekdays)** — Alert check: scans PSE Edge for new events
+- **17:30 PHT (weekdays)** — Full scoring run: scrape → score → report → publish
 
 You can also trigger any job manually via the dashboard or command line.
+The scheduler can be started and stopped directly from the Pipeline page in the dashboard.
 
 ### 9. Local Admin Dashboard
 A browser-based dashboard runs at `http://localhost:8080` and lets you:
-- **Overview** — See system status, member counts, recent activity
-- **Pipeline** — Trigger scoring runs or alert checks manually
+- **Overview** — See unified StockPilot PH Rankings, member counts, recent activity
+- **Pipeline** — Trigger scoring runs or alert checks manually; start/stop the scheduler
+- **Stock Lookup** — Search any PSE stock by ticker or company name; see score, MoS, IV, and 4-layer breakdown
 - **Members** — Add, edit, extend, and manage Discord member subscriptions
 - **Analytics** — Revenue charts, member growth, plan distribution
 - **Settings** — View webhook status, DB table sizes, configuration
@@ -144,45 +147,22 @@ Alert engine (dividend, earnings, price triggers)
 
 ## Scoring Methodology
 
-### Pure Dividend Score (v4 — includes Fundamental Momentum)
-| Factor | Weight | What It Measures |
-|--------|--------|-----------------|
-| Dividend Yield | 18% | Income return relative to price |
-| FCF Yield | 14% | Free cash flow as % of market cap |
-| Quality Composite | 18% | ROE (50%) + Cash Flow Quality (50%) |
-| EPS Stability | 14% | Consistency of earnings over time |
-| Leverage + Coverage | 14% | D/E, FCF coverage, interest coverage blend |
-| Relative Valuation | 12% | P/E and EV/EBITDA blend |
-| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
+### StockPilot PH Rankings — Unified 4-Layer Score
 
-### Dividend Growth Score (v4 — includes Fundamental Momentum)
-| Factor | Weight | What It Measures |
-|--------|--------|-----------------|
-| Growth Composite | 18% | EPS Growth (60%) + Growth Consistency (40%) |
-| Dividend CAGR | 17% | How fast dividends are growing per year |
-| Quality Composite | 14% | ROE (50%) + Cash Flow Quality (50%) |
-| Dividend Yield | 14% | Current income yield |
-| Payout Headroom | 14% | Room to raise dividends further |
-| Leverage Stability | 13% | D/E and FCF coverage blend |
-| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
+All 223 PSE stocks are scored on the same framework. No separate portfolios.
 
-### Value Score (v4 — includes Fundamental Momentum)
-| Factor | Weight | What It Measures |
-|--------|--------|-----------------|
-| Valuation Composite | 27% | P/E + EV/EBITDA + FCF Yield + Earnings Yield vs Bonds (25% each) |
-| Quality Composite | 27% | ROE (40%) + EPS Stability (30%) + Cash Flow Quality (30%) |
-| Growth Composite | 17% | Revenue CAGR (60%) + Growth Consistency (40%) |
-| Leverage Risk | 19% | D/E and interest coverage blend |
-| Fundamental Momentum | 10% | Revenue + EPS + Operating CF trend acceleration |
+| Layer | Weight | What It Measures |
+|-------|--------|-----------------|
+| **Health** | 25% | ROE, operating margin/OCF quality, D/E, FCF yield, EPS stability |
+| **Improvement** | 30% | Revenue delta, EPS delta, OCF delta, ROE delta (3-year smoothed) |
+| **Acceleration** | 15% | 2-year delta-of-delta for Revenue, EPS, OCF |
+| **Persistence** | 30% | Consecutive positive YoY years for Revenue, EPS, OCF + direction consistency |
 
-**Fundamental Momentum** measures whether a company's key financial metrics are
-accelerating or decelerating. It splits the historical data series into two halves
-and compares the more recent half against the earlier half. Improving trends score
-higher; deteriorating trends score lower. Missing data reduces its weight gracefully.
-
-Cash Flow Quality = Operating CF / Net Income. Ratio ≥ 1.0 means earnings are backed by real cash.
-Earnings Yield vs Bonds = stock earnings yield minus PH 10Y bond rate (6.5%). Positive spread means the stock out-earns risk-free bonds.
-Growth Consistency penalizes erratic revenue/EPS patterns (high coefficient of variation).
+**Health filter** (pass/fail before scoring):
+- Minimum 3 years of EPS, Revenue, and OCF data
+- 3-year normalized EPS must be positive
+- No persistent negative OCF (2+ consecutive years)
+- D/E ≤ 2.5× (non-bank) or ≤ 10× (bank)
 
 > Weights and thresholds are fixed and deterministic. They are never modified
 > without explicit instruction from the project owner.
@@ -251,10 +231,9 @@ Create a `.env` file in the project root:
 PSE_EDGE_EMAIL=your@email.com
 PSE_EDGE_PASSWORD=yourpassword
 
-DISCORD_WEBHOOK_PURE_DIVIDEND=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_DIVIDEND_GROWTH=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...
+# Discord (2 webhooks only)
+DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...      # StockPilot Picks channel
+DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...     # Alerts channel
 
 # Optional — enables AI news sentiment
 ANTHROPIC_API_KEY=sk-ant-...
@@ -267,19 +246,21 @@ ANNUAL_PRICE_CENTAVOS=299900
 
 ### Running the System
 ```bash
-# Run the full pipeline once
+# Run the full unified pipeline once
 py main.py
 
+# Dry run (generates report but skips Discord publish)
+py main.py --dry-run
+
 # Start the scheduler (runs on schedule automatically)
+# Alert check: weekdays 09:00 PHT | Scoring: weekdays 17:30 PHT
 py scheduler.py
 
-# Open the admin dashboard
+# Open the admin dashboard (scheduler can also be started/stopped from here)
 py dashboard/app.py
 # Then open http://localhost:8080 in your browser
 
 # Manual pipeline controls
-py main.py --portfolio pure_dividend
-py main.py --dry-run                  # generates report but skips Discord
 py scheduler.py --run-now             # trigger scoring immediately
 py scheduler.py --run-alerts          # trigger alert check immediately
 ```
@@ -296,8 +277,8 @@ pse-quant-saas/
 │
 ├── engine/             Scoring and calculation logic
 │   ├── metrics.py      Financial ratio calculations
-│   ├── filters.py      Portfolio eligibility filters
-│   ├── scorer.py       0-100 scoring engine
+│   ├── filters_v2.py   Unified health filter (pass/fail)
+│   ├── scorer_v2.py    Unified 4-layer scorer (Health/Improvement/Acceleration/Persistence)
 │   ├── mos.py          Margin of Safety calculator
 │   ├── validator.py    Data quality checks
 │   └── sentiment_engine.py  AI news sentiment (Claude Haiku)
@@ -320,8 +301,10 @@ pse-quant-saas/
 │
 ├── dashboard/          Local admin dashboard (Flask)
 │   ├── app.py          Entry point — runs on localhost:8080
+│   ├── background.py   Pipeline threads + scheduler process control
+│   ├── routes_stocks.py  Stock Lookup page + autocomplete API
 │   ├── db_members.py   Member management DB operations
-│   └── templates/      HTML templates for dashboard pages
+│   └── templates/      HTML templates for dashboard pages (8 files)
 │
 └── tests/              Unit tests for all engine components
 ```
@@ -346,4 +329,4 @@ Sentiment analysis powered by Claude (Anthropic), for informational purposes onl
 ---
 
 *PSE Quant SaaS — Built for the Philippine retail investor.*
-*Version: Phase 8 (production) | Last updated: 2026-03-09*
+*Version: Phase 9 (production) | Last updated: 2026-03-14*

@@ -35,20 +35,24 @@ Never hardcode model strings. Always import from `config.py`.
 **What this system does:**
 - Scrapes financial data from PSE Edge (edge.pse.com.ph)
 - Parses and stores data in a local SQLite database
-- Scores every PSE stock across 3 portfolio strategies
+- Scores every PSE stock using a unified 4-layer fundamental framework
 - Calculates Margin of Safety (intrinsic value vs current price)
 - Enriches top stocks with AI-powered news sentiment (Claude Haiku)
-- Generates professional PDF reports
-- Delivers reports to Discord automatically on a schedule
+- Generates professional PDF reports (StockPilot PH Rankings)
+- Delivers reports to a single Discord channel automatically on a schedule
 - Sends real-time alerts for new dividends, earnings, and price triggers
 - Provides a local Flask dashboard for admin and member management
 
-**Three portfolio strategies:**
-| Portfolio | Focus | Key Metrics |
-|-----------|-------|-------------|
-| PURE DIVIDEND | Passive income, yield ≥ 3% | Yield, FCF Yield, Quality (ROE+CF Quality), EPS Stability |
-| DIVIDEND GROWTH | Dividend growers, CAGR > 0% | CAGR, payout ≤ 75%, MoS 20% |
-| VALUE | Undervalued businesses | P/E, P/B, EV/EBITDA, ROE, Revenue CAGR, MoS 30% |
+**Unified scoring system (StockPilot PH Rankings):**
+| Layer | Weight | What It Measures |
+|-------|--------|-----------------|
+| Health | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) |
+| Improvement | 30% | Fundamentals improving over 3 years (Revenue, EPS, OCF, ROE deltas) |
+| Acceleration | 15% | Improvement getting stronger (2-year window delta-of-delta) |
+| Persistence | 30% | Improvement consistent and reliable (consecutive positive YoY years) |
+
+Dividends are a bonus signal within the score — not a filter requirement.
+All 223 PSE stocks compete in one unified ranking.
 
 **Architecture pipeline:**
 ```
@@ -75,11 +79,19 @@ pse-quant-saas/
 │
 ├── engine/                 ← Core calculation logic (DETERMINISTIC)
 │   ├── metrics.py          ← Financial ratio calculators ✅
-│   ├── filters.py          ← Portfolio eligibility filters ✅
-│   ├── scorer.py           ← 0-100 scoring engine ✅ (facade)
+│   ├── filters.py          ← Legacy portfolio eligibility filters ✅ (archived)
+│   ├── filters_v2.py       ← Unified health filter (pass/fail) ✅
+│   ├── scorer.py           ← Legacy scoring engine ✅ (archived facade)
 │   │   ├── scorer_utils.py
 │   │   ├── scorer_explanations.py
 │   │   └── scorer_momentum.py  ← Fundamental momentum composite ✅
+│   ├── scorer_v2.py        ← Unified 4-layer scorer ✅
+│   │   ├── scorer_health.py         ← Layer 1: Health
+│   │   ├── scorer_improvement.py    ← Layer 2: Improvement
+│   │   ├── scorer_acceleration.py   ← Layer 3: Acceleration
+│   │   ├── scorer_persistence.py    ← Layer 4: Persistence
+│   │   └── scorer_explanations_value.py
+│   ├── sector_stats.py     ← Dynamic sector median computation ✅
 │   ├── mos.py              ← Margin of Safety calculator ✅
 │   ├── validator.py        ← Data validation layer ✅
 │   └── sentiment_engine.py ← Claude Haiku news sentiment ✅
@@ -120,15 +132,16 @@ pse-quant-saas/
 │
 ├── dashboard/              ← Local Flask admin dashboard ✅
 │   ├── app.py              ← Flask app factory, runs on :8080
-│   ├── background.py       ← Thread-based pipeline runner
+│   ├── background.py       ← Thread-based pipeline runner + scheduler process control
 │   ├── db_members.py       ← Members/subscriptions DB operations
-│   ├── routes_home.py      ← Overview page + /api/status
-│   ├── routes_pipeline.py  ← Pipeline controls + status polling
+│   ├── routes_home.py      ← Overview page + /api/status (unified rankings)
+│   ├── routes_pipeline.py  ← Pipeline controls + scheduler start/stop
 │   ├── routes_members.py   ← Member CRUD + extend/cancel
 │   ├── routes_analytics.py ← Chart data JSON endpoints
-│   ├── routes_settings.py  ← Config display + webhook test
+│   ├── routes_settings.py  ← Config display + webhook test (2 webhooks only)
 │   ├── routes_paymongo.py  ← PayMongo payment link generation
-│   ├── templates/          ← Jinja2 HTML templates (7 files)
+│   ├── routes_stocks.py    ← Stock Lookup page + autocomplete API
+│   ├── templates/          ← Jinja2 HTML templates (8 files, incl. stocks.html)
 │   └── static/             ← CSS + JS (style.css, dashboard.js)
 │
 ├── scheduler.py            ← APScheduler facade ✅
@@ -163,53 +176,46 @@ Calculates: `pe, pb, roe, de, dividend_yield, payout_ratio,
 fcf, fcf_yield, fcf_coverage, cagr, ev_ebitda`
 All functions return `float | None`. Never raise on bad input.
 
-### engine/filters.py
+### engine/filters_v2.py
+Function: `filter_unified(stock)` → returns `(eligible: bool, reason: str)`
+Hard filters: min 3 years of EPS/Revenue/OCF data, 3Y normalized EPS > 0,
+no persistent negative OCF (2+ consecutive years), D/E ≤ 2.5x (non-bank) or ≤ 10x (bank).
+
+### engine/filters.py (archived — legacy 3-portfolio system)
 Functions: `filter_dividend_portfolio(stock)`,
 `filter_value_portfolio(stock)`, `filter_hybrid_portfolio(stock)`
-Each returns: `(eligible: bool, reason: str)`
-Bank and REIT sector exemptions are already implemented.
+Each returns: `(eligible: bool, reason: str)`. Kept for reference only.
 
-### engine/scorer.py (facade)
-Functions: `score_dividend(metrics)`, `score_value(metrics)`,
-`score_hybrid(metrics)` → each returns `(score: float, breakdown: dict)`
-Implementation split across `scorer_utils.py`, `scorer_explanations.py`,
-and `scorer_momentum.py`.
+### engine/scorer_v2.py (unified 4-layer scorer)
+Function: `score_unified(stock, financials_history)` → returns `(score: float, breakdown: dict)`
+Four layers: health (25%), improvement (30%), acceleration (15%), persistence (30%).
+
+**Layer breakdown:**
+| Layer | Weight | Key signals |
+|-------|--------|-------------|
+| Health | 25% | ROE, operating margin/OCF quality, D/E, FCF yield, EPS stability |
+| Improvement | 30% | Revenue delta, EPS delta, OCF delta, ROE delta (3Y smoothed) |
+| Acceleration | 15% | 2-year delta-of-delta for Revenue, EPS, OCF |
+| Persistence | 30% | Consecutive positive YoY years for Revenue, EPS, OCF + direction consistency |
 
 Breakdown dict format:
 ```python
 {
-  'metric_name': {
+  'layer_name': {
     'score':       float,   # 0-100 sub-score
     'weight':      float,   # e.g. 0.30
-    'value':       float,   # actual stock value
     'explanation': str,     # plain English specific to this stock
   }
 }
 ```
 
-**Current factor weights (v4 — includes Fundamental Momentum):**
-
-| Factor | Pure Dividend | Dividend Growth | Value |
-|--------|--------------|----------------|-------|
-| Dividend Yield | 18% | 14% | — |
-| FCF Yield | 14% | — | — |
-| Quality Composite (ROE+CFQ) | 18% | 14% | — |
-| EPS Stability | 14% | — | — |
-| Leverage / Coverage | 14% | 13% | 19% |
-| Relative Valuation | 12% | — | — |
-| Fundamental Momentum | 10% | 10% | 10% |
-| CAGR | — | 17% | — |
-| Growth Composite (EPS+Consistency) | — | 18% | 17% |
-| Payout Ratio | — | 14% | — |
-| Valuation Composite | — | — | 27% |
-| Quality Composite (ROE+EPS+CFQ) | — | — | 27% |
-
-**Momentum data fields required:** `revenue_5y` (newest first), `eps_5y` (newest first),
-`operating_cf_history` (newest first). Minimum 4 values per signal; `None` → weight redistributed.
-
 **CRITICAL: Do not change weights or normalisation thresholds
 without explicit instruction from the user. The scoring logic
 is deterministic by design.**
+
+### engine/scorer.py (archived — legacy 3-portfolio system)
+Functions: `score_dividend(metrics)`, `score_value(metrics)`,
+`score_hybrid(metrics)`. Kept for reference and backtester compatibility.
 
 ### engine/mos.py
 Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`,
@@ -242,9 +248,22 @@ CLI: `py alerts/alert_engine.py --dry-run`
 
 ### dashboard/app.py
 Flask app — run with `py dashboard/app.py`, open `http://localhost:8080`.
-5 pages: Overview, Pipeline, Members, Analytics, Settings.
+6 pages: Overview, Pipeline, Stock Lookup, Members, Analytics, Settings.
 PayMongo integration: generates payment links via API (manual confirmation).
 New DB tables: `members`, `subscriptions`, `activity_log`.
+
+### dashboard/routes_stocks.py
+Stock Lookup page at `/stocks`. Search by ticker OR company name with autocomplete.
+`_get_stock_analysis(ticker)` — runs filter, score, MoS and returns full analysis dict.
+`_resolve_ticker(query)` — resolves partial name/ticker to exact ticker via DB.
+Autocomplete endpoint: `GET /api/stocks/search?q=` — returns `[{ticker, name}]`.
+Individual stock API: `GET /api/stock/<ticker>` — returns full analysis as JSON.
+
+### dashboard/background.py
+Manages background pipeline threads AND the scheduler child process.
+`start_scheduler()` — launches `py scheduler.py` via `subprocess.Popen`.
+`stop_scheduler()` — terminates the child process.
+`get_scheduler_status()` — returns `{running: bool, pid: int|None}`.
 
 ---
 
@@ -398,7 +417,7 @@ news_fetcher.py, sentiment_engine.py.
 223 PSE stocks scraped. DB live at AppData/Local/pse_quant/.
 
 ### Phase 4 — Automation ✅ COMPLETE
-scheduler.py — daily scoring at 16:00 PHT, alert check at 06:30 PHT.
+scheduler.py — daily scoring at 17:30 PHT, alert check at 09:00 PHT.
 alert_engine.py — price, dividend, earnings alerts with first-run dedup.
 
 ### Phase 5 — Dashboard ✅ COMPLETE
@@ -431,7 +450,19 @@ Fundamental Momentum layer added to all 3 portfolio scorers.
     when multiple `py scheduler.py` processes run simultaneously
 - [x] Production readiness audit passed — all 50+ files present, all under 500 lines
 
-### Phase 9 — Next (Backlog)
+### Phase 9 — Unified Scoring System ✅ COMPLETE (2026-03-14)
+- [x] Unified 4-layer scoring engine (`engine/scorer_v2.py` + 4 sub-modules)
+- [x] Unified health filter (`engine/filters_v2.py`)
+- [x] Stock Lookup dashboard page (`dashboard/routes_stocks.py` + `templates/stocks.html`)
+  - Search by ticker OR company name with live autocomplete
+  - Shows score, letter grade, MoS, IV, 4-layer breakdown, key metrics, financial history
+- [x] Scheduler start/stop from Pipeline page (`dashboard/background.py`)
+- [x] Overview page shows unified StockPilot PH Rankings (single table)
+- [x] Schedule times updated: alert 09:00 PHT, scoring 17:30 PHT
+- [x] Discord webhooks simplified: `DISCORD_WEBHOOK_VALUE` (StockPilot Picks) + `DISCORD_WEBHOOK_ALERTS`
+- [x] PDF cover page "About" section shortened to 3-line summary
+
+### Phase 10 — Next (Backlog)
 - [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
 - [ ] REIT FFO-based FCF coverage exemption in dividend filters
 - [ ] Export rankings to CSV/Excel from dashboard
@@ -441,18 +472,15 @@ Fundamental Momentum layer added to all 3 portfolio scorers.
 ## 9. HOW TO RUN THE SYSTEM
 
 ```bash
-# Full pipeline (all portfolios)
+# Full unified pipeline
 py main.py
-
-# Single portfolio
-py main.py --portfolio pure_dividend
-py main.py --portfolio dividend_growth
-py main.py --portfolio value
 
 # Dry run (no Discord publish)
 py main.py --dry-run
 
-# Scheduler (continuous — runs jobs on schedule)
+# Scheduler (continuous — runs on schedule)
+# Alert check: weekdays 09:00 PHT
+# Scoring job: weekdays 17:30 PHT
 py scheduler.py
 
 # Run scoring job now
@@ -460,6 +488,8 @@ py scheduler.py --run-now
 
 # Run alert check now
 py scheduler.py --run-alerts
+
+# You can also start/stop the scheduler from the Pipeline page in the dashboard
 
 # Alerts only
 py alerts/alert_engine.py --dry-run
@@ -504,11 +534,9 @@ Install missing: `py -m pip install <package_name>`
 ## 11. ENVIRONMENT VARIABLES (.env)
 
 ```
-# Discord webhooks
-DISCORD_WEBHOOK_PURE_DIVIDEND=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_DIVIDEND_GROWTH=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...
+# Discord webhooks (only 2 needed now)
+DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...      # StockPilot Picks channel
+DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...     # Alerts channel
 
 # PSE Edge login
 PSE_EDGE_EMAIL=your@email.com
@@ -528,7 +556,7 @@ Load with:
 from dotenv import load_dotenv
 import os
 load_dotenv()
-webhook = os.getenv('DISCORD_WEBHOOK_PURE_DIVIDEND')
+webhook = os.getenv('DISCORD_WEBHOOK_VALUE')
 ```
 
 ---
@@ -571,12 +599,9 @@ Work through these in order. Complete and test each before moving on.
 
 ## 14. DISCORD SETUP
 
-Five channels needed:
-- `#pse-dividend` — Pure dividend portfolio reports
-- `#pse-growth` — Dividend growth portfolio reports
-- `#pse-value` — Value portfolio reports
-- `#pse-alerts` — Price / dividend / earnings alerts + opportunistic flags
-- `#pse-admin` — (optional) internal admin notifications
+Two channels needed:
+- `#stockpilot-picks` (or any name) — Unified rankings PDF report, mapped to `DISCORD_WEBHOOK_VALUE`
+- `#pse-alerts` — Price / dividend / earnings alerts + opportunistic flags, mapped to `DISCORD_WEBHOOK_ALERTS`
 
 To get a webhook URL:
 Discord → Channel Settings → Integrations → Webhooks → New Webhook → Copy URL
@@ -607,6 +632,6 @@ The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
 
 ---
 
-*Last updated: Phase 8 complete — stability fixes, full PDF coverage, atomic alert dedup (2026-03-09)*
+*Last updated: Phase 9 complete — unified scoring, stock lookup, scheduler control, simplified Discord (2026-03-14)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

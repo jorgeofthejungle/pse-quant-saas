@@ -15,13 +15,19 @@
 from db.db_connection import get_connection, DB_PATH
 from db.db_schema     import init_db
 from db.db_prices     import upsert_price, get_latest_price
-from db.db_scores     import save_scores, get_last_top5, get_last_scores
+from db.db_scores     import (save_scores, get_last_top5, get_last_scores,
+                               save_scores_v2, get_last_top5_v2, get_last_scores_v2)
 from db.db_financials import (upsert_financials, get_financials,
                                upsert_stock, get_all_tickers,
                                mark_stock_status, get_stale_financials_tickers,
                                get_all_cmpy_ids)
-from db.db_sentiment  import upsert_sentiment, get_sentiment
-from db.db_settings   import get_setting, set_setting, get_all_settings
+from db.db_sentiment    import upsert_sentiment, get_sentiment
+from db.db_settings     import get_setting, set_setting, get_all_settings
+from db.db_maintenance    import cleanup_stale_data
+from db.db_conglomerates  import (
+    upsert_segment, get_segments, get_latest_segments,
+    get_segment_years, delete_segment, get_all_segment_years,
+)
 
 try:
     from dashboard.db_members import (
@@ -41,10 +47,14 @@ __all__ = [
     'init_db',
     'upsert_price', 'get_latest_price',
     'save_scores', 'get_last_top5', 'get_last_scores',
+    'save_scores_v2', 'get_last_top5_v2', 'get_last_scores_v2',
     'upsert_financials', 'get_financials', 'upsert_stock', 'get_all_tickers',
     'mark_stock_status', 'get_stale_financials_tickers', 'get_all_cmpy_ids',
     'upsert_sentiment', 'get_sentiment',
     'get_setting', 'set_setting', 'get_all_settings',
+    'cleanup_stale_data',
+    'upsert_segment', 'get_segments', 'get_latest_segments',
+    'get_segment_years', 'delete_segment', 'get_all_segment_years',
     'add_member', 'get_member', 'get_all_members', 'update_member',
     'extend_member', 'cancel_member', 'record_payment',
     'get_member_subscriptions', 'get_expiring_soon',

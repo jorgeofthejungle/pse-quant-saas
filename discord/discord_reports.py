@@ -10,6 +10,106 @@ from discord.discord_core import (
     PORTFOLIO_COLOURS, PORTFOLIO_EMOJI, DISCLAIMER, MAX_FILE_BYTES,
 )
 
+# ── Educational grade + explanation helpers ───────────────────
+
+def _grade(score: float) -> str:
+    if score >= 80: return 'A'
+    if score >= 65: return 'B'
+    if score >= 50: return 'C'
+    if score >= 35: return 'D'
+    return 'F'
+
+
+def _grade_line(score: float) -> str:
+    """One-sentence beginner-friendly explanation based on score tier."""
+    if score >= 80:
+        return (
+            'Strong fundamentals — this company scores well on health, '
+            'growth trends, and consistency of improvement.'
+        )
+    if score >= 65:
+        return (
+            'Good fundamentals — above-average financial health with '
+            'solid and improving trends over recent years.'
+        )
+    if score >= 50:
+        return (
+            'Fair fundamentals — meets basic quality criteria but shows '
+            'some mixed signals in growth or consistency.'
+        )
+    return (
+        'Below-average fundamentals — some weaknesses in financial '
+        'health, growth trends, or consistency.'
+    )
+
+
+def _key_metrics_line(stock: dict) -> str:
+    """Returns a compact metrics string from whatever is available."""
+    parts = []
+    roe  = stock.get('roe')
+    de   = stock.get('de_ratio')
+    dy   = stock.get('dividend_yield')
+    cagr = stock.get('revenue_cagr')
+    if roe  is not None: parts.append(f'ROE {roe:.1f}%')
+    if de   is not None: parts.append(f'D/E {de:.2f}x')
+    if dy   is not None and dy > 0: parts.append(f'Yield {dy:.1f}%')
+    if cagr is not None: parts.append(f'Rev CAGR {cagr:.1f}%')
+    return '  ·  '.join(parts) if parts else 'Metrics not available'
+
+
+def _build_educational_embed(ranked_stocks: list, run_date: str) -> dict:
+    """
+    Builds a beginner-friendly embed showing the top 3 ranked stocks
+    with a 1-sentence plain-English explanation each.
+    Sent BEFORE the detailed PDF embed.
+    """
+    fields = []
+    for i, stock in enumerate(ranked_stocks[:3]):
+        ticker = stock.get('ticker', '?')
+        name   = stock.get('name', ticker)
+        score  = stock.get('score') or 0
+        grade  = _grade(score)
+
+        # Use breakdown category_description if available, else grade-based line
+        breakdown  = stock.get('breakdown') or {}
+        cat_desc   = breakdown.get('category_description', '')
+        explanation = cat_desc if cat_desc else _grade_line(score)
+
+        mos_pct = stock.get('mos_pct')
+        mos_str = f'MoS {mos_pct:+.1f}%' if mos_pct is not None else 'MoS N/A'
+
+        fields.append({
+            'name':  f'#{i + 1}  {ticker} — Grade {grade}  ({score:.1f}/100)',
+            'value': (
+                f'**{name}**\n'
+                f'{explanation}\n'
+                f'{_key_metrics_line(stock)}  ·  {mos_str}'
+            ),
+            'inline': False,
+        })
+
+    fields.append({
+        'name':  'What do these numbers mean?',
+        'value': (
+            '**Score** — 0-100 composite of health, improvement, acceleration & persistence.\n'
+            '**Grade A** = strong fundamentals · **B** = good · **C** = fair · **D/F** = weak\n'
+            '**MoS** = margin of safety — how far the price is below our estimated fair value.\n'
+            'A larger MoS means more cushion. It is a mathematical estimate, not a price target.'
+        ),
+        'inline': False,
+    })
+
+    return {
+        'title':       f'📚  StockPilot PH — Top 3 Explained Simply  ({run_date})',
+        'description': (
+            'Before the full report — here are today\'s top 3 stocks in plain English.\n'
+            'No jargon. Just what the numbers are saying.'
+        ),
+        'color':       0x1B4B6B,
+        'fields':      fields,
+        'footer':      {'text': DISCLAIMER},
+    }
+
 
 def send_report(
     webhook_url:    str,
@@ -92,6 +192,10 @@ def send_report(
         'fields':      fields,
         'footer':      {'text': DISCLAIMER},
     }
+
+    # ── Send educational embed first (top 3 explained simply) ──
+    edu_embed = _build_educational_embed(ranked_stocks, run_date)
+    _post_webhook(webhook_url, {'embeds': [edu_embed]})
 
     payload = {'embeds': [embed]}
 

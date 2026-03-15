@@ -20,14 +20,14 @@ from discord.discord_reports import send_report
 from discord.discord_alerts  import (
     send_dividend_alert, send_price_alert, send_earnings_alert,
     send_rescore_notice, send_opportunistic_alert, send_sentiment_signal,
-    send_shortlist_change,
+    send_shortlist_change, send_expiry_notification,
 )
 
 __all__ = [
     'send_report',
     'send_dividend_alert', 'send_price_alert', 'send_earnings_alert',
     'send_rescore_notice', 'send_opportunistic_alert', 'send_sentiment_signal',
-    'send_shortlist_change',
+    'send_shortlist_change', 'send_expiry_notification',
     'test_webhook',
     'WEBHOOKS', 'DISCLAIMER', 'SIGNAL_DISCLAIMER',
 ]

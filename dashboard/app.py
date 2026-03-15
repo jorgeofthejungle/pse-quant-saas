@@ -6,7 +6,9 @@
 # Open:      http://localhost:8080
 # ============================================================
 
+import os
 import sys
+import secrets
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +26,30 @@ load_dotenv(ROOT / '.env')
 
 import database as db
 
+# ── Secret key: load from .env or generate a stable per-session one ───
+# Set FLASK_SECRET_KEY in .env for a persistent key across restarts.
+_SECRET_KEY_PATH = Path.home() / 'AppData' / 'Local' / 'pse_quant' / '.flask_secret'
+
+
+def _get_or_create_secret_key() -> str:
+    """Returns a persistent secret key stored in AppData."""
+    key = os.getenv('FLASK_SECRET_KEY')
+    if key:
+        return key
+    # Try to read stored key
+    try:
+        return _SECRET_KEY_PATH.read_text().strip()
+    except FileNotFoundError:
+        pass
+    # Generate and persist a new key
+    new_key = secrets.token_hex(32)
+    try:
+        _SECRET_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SECRET_KEY_PATH.write_text(new_key)
+    except Exception:
+        pass
+    return new_key
+
 
 def create_app() -> Flask:
     app = Flask(
@@ -31,7 +57,8 @@ def create_app() -> Flask:
         static_folder='static',
         template_folder='templates',
     )
-    app.config['SECRET_KEY'] = 'pse-quant-local-dashboard'
+    app.config['SECRET_KEY'] = _get_or_create_secret_key()
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
 
     # Ensure DB tables exist (including new members/subscriptions/activity_log)
     db.init_db()
@@ -44,6 +71,8 @@ def create_app() -> Flask:
     from dashboard.routes_settings import settings_bp
     from dashboard.routes_paymongo import paymongo_bp
     from dashboard.routes_stocks   import stocks_bp
+    from dashboard.routes_portal        import portal_bp
+    from dashboard.routes_conglomerates import conglomerates_bp
 
     app.register_blueprint(home_bp)
     app.register_blueprint(pipeline_bp,  url_prefix='/pipeline')
@@ -52,6 +81,8 @@ def create_app() -> Flask:
     app.register_blueprint(settings_bp,  url_prefix='/settings')
     app.register_blueprint(paymongo_bp,  url_prefix='/paymongo')
     app.register_blueprint(stocks_bp)
+    app.register_blueprint(portal_bp,          url_prefix='/portal')
+    app.register_blueprint(conglomerates_bp,   url_prefix='/conglomerates')
 
     return app
 

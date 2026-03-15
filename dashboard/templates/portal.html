@@ -1,0 +1,487 @@
+{% extends "portal_base.html" %}
+{% block title %}PSE Stock Rankings by Fundamentals{% endblock %}
+
+{% block hero %}
+<section class="hero-section">
+  <div class="hero-glow"></div>
+  <div class="hero-inner">
+
+    <div class="hero-text">
+      <span class="hero-eyebrow">223 PSE Stocks · Updated Daily</span>
+      <h1>Stop Guessing.<br>Let the <span>Numbers</span> Decide.</h1>
+      <p>
+        StockPilot Philippines ranks every PSE-listed company using a
+        4-layer fundamental model — so Filipino investors get clear,
+        data-driven insights without the hours of research.
+        Spend less time on spreadsheets and more time on what matters.
+      </p>
+      <div class="hero-cta">
+        <a href="#sample" class="btn btn-gold">See Free Sample ↓</a>
+        <a href="#pricing" class="btn btn-outline-light">View Plans</a>
+      </div>
+    </div>
+
+    <!-- Mock score card -->
+    <div class="hero-mockup">
+      <div class="hm-header">
+        <div>
+          <div class="hm-ticker">DMC</div>
+          <div class="hm-name">DMCI Holdings</div>
+        </div>
+        <div class="hm-score-wrap">
+          <div class="hm-score">87.4</div>
+          <div class="hm-grade">Grade A</div>
+        </div>
+      </div>
+      <div class="hm-bar-row">
+        <span class="hm-bar-label">Health</span>
+        <div class="hm-bar-track"><div class="hm-bar-fill" style="width:78%"></div></div>
+        <span class="hm-bar-val">78</span>
+      </div>
+      <div class="hm-bar-row">
+        <span class="hm-bar-label">Improvement</span>
+        <div class="hm-bar-track"><div class="hm-bar-fill" style="width:92%"></div></div>
+        <span class="hm-bar-val">92</span>
+      </div>
+      <div class="hm-bar-row">
+        <span class="hm-bar-label">Acceleration</span>
+        <div class="hm-bar-track"><div class="hm-bar-fill" style="width:81%"></div></div>
+        <span class="hm-bar-val">81</span>
+      </div>
+      <div class="hm-bar-row">
+        <span class="hm-bar-label">Persistence</span>
+        <div class="hm-bar-track"><div class="hm-bar-fill" style="width:89%"></div></div>
+        <span class="hm-bar-val">89</span>
+      </div>
+      <div class="hm-mos">MoS +24.5% — BUY ZONE</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Trust strip -->
+<div class="trust-strip">
+  <div class="trust-inner">
+    <div class="trust-item">
+      <span class="trust-num">223</span>
+      <span class="trust-desc">PSE stocks tracked</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-num">4</span>
+      <span class="trust-desc">Scoring layers</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-num">3</span>
+      <span class="trust-desc">Valuation models</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-num">Daily</span>
+      <span class="trust-desc">Score updates</span>
+    </div>
+    <div class="trust-item">
+      <span class="trust-num">0</span>
+      <span class="trust-desc">Tips or guesswork</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- How It Works -->
+<div class="section-head">
+  <div class="section-label">The Process</div>
+  <h2>From Raw Data to Clear Ranking</h2>
+  <p>We do the research. You get the result.</p>
+</div>
+<div class="hiw-grid">
+  <div class="hiw-step">
+    <div class="hiw-num">1</div>
+    <strong>Collect Financial Data</strong>
+    <p>We pull income statements, cash flow, and balance sheets directly from PSE Edge for every listed company.</p>
+  </div>
+  <div class="hiw-step">
+    <div class="hiw-num">2</div>
+    <strong>Score Each Stock</strong>
+    <p>Each company earns a 0–100 score across 4 layers of fundamentals — no opinions, just math.</p>
+  </div>
+  <div class="hiw-step">
+    <div class="hiw-num">3</div>
+    <strong>Rank All 223 Stocks</strong>
+    <p>Every PSE stock competes in one unified list. No portfolios, no bias. The highest-scoring companies rise to the top.</p>
+  </div>
+  <div class="hiw-step">
+    <div class="hiw-num">4</div>
+    <strong>Calculate Fair Value</strong>
+    <p>We estimate each stock's intrinsic value using DDM, EPS-PE, and DCF models, then compute the margin of safety.</p>
+  </div>
+</div>
+
+<!-- Scoring Layers -->
+<div class="section-head">
+  <div class="section-label">The Scoring Model</div>
+  <h2>4 Layers. 1 Objective Score.</h2>
+  <p>Every stock is measured the same way — no favourites, no sector bias.</p>
+</div>
+<div class="layers-grid">
+  <div class="layer-card">
+    <div class="layer-pct">25%</div>
+    <div class="layer-name">Health</div>
+    <div class="layer-desc">Is the business strong right now? Measures profitability, debt levels, and cash flow quality today.</div>
+    <div class="layer-signals">
+      <span class="signal-pill">ROE</span>
+      <span class="signal-pill">Operating Margin</span>
+      <span class="signal-pill">Debt / Equity</span>
+      <span class="signal-pill">FCF Yield</span>
+      <span class="signal-pill">EPS Stability</span>
+    </div>
+  </div>
+  <div class="layer-card">
+    <div class="layer-pct">30%</div>
+    <div class="layer-name">Improvement</div>
+    <div class="layer-desc">Is the business getting better? Tracks whether revenue, earnings, and cash flow have grown over 3 years.</div>
+    <div class="layer-signals">
+      <span class="signal-pill">Revenue Growth</span>
+      <span class="signal-pill">EPS Growth</span>
+      <span class="signal-pill">OCF Growth</span>
+      <span class="signal-pill">ROE Trend</span>
+    </div>
+  </div>
+  <div class="layer-card">
+    <div class="layer-pct">15%</div>
+    <div class="layer-name">Acceleration</div>
+    <div class="layer-desc">Is the improvement speeding up? A company growing faster this year than last year is an early momentum signal.</div>
+    <div class="layer-signals">
+      <span class="signal-pill">Revenue Acceleration</span>
+      <span class="signal-pill">EPS Acceleration</span>
+      <span class="signal-pill">OCF Acceleration</span>
+    </div>
+  </div>
+  <div class="layer-card">
+    <div class="layer-pct">30%</div>
+    <div class="layer-name">Persistence</div>
+    <div class="layer-desc">Is the growth consistent? Counts consecutive positive years — rewards reliable compounders over one-time lucky years.</div>
+    <div class="layer-signals">
+      <span class="signal-pill">Consecutive Revenue ↑</span>
+      <span class="signal-pill">Consecutive EPS ↑</span>
+      <span class="signal-pill">Consecutive OCF ↑</span>
+      <span class="signal-pill">Direction Consistency</span>
+    </div>
+  </div>
+</div>
+
+<!-- Sample Analysis -->
+<div class="section-head" id="sample">
+  <div class="section-label">Free Sample</div>
+  <h2>See What a Full Analysis Looks Like</h2>
+  <p>This is a real analysis for Jollibee Foods (JFC), generated live from PSE Edge data.</p>
+</div>
+
+{% if analysis and not analysis.get('error') %}
+  {% set s = analysis.stock %}
+  {% set score = analysis.score %}
+  {% set grade = analysis.grade %}
+
+  {% if grade == 'A' %}
+    {% set gc = '#16a34a' %}{% set gbg = '#f0fdf4' %}{% set gborder = '#86efac' %}
+  {% elif grade == 'B' %}
+    {% set gc = '#2563eb' %}{% set gbg = '#eff6ff' %}{% set gborder = '#93c5fd' %}
+  {% elif grade == 'C' %}
+    {% set gc = '#d97706' %}{% set gbg = '#fffbeb' %}{% set gborder = '#fcd34d' %}
+  {% else %}
+    {% set gc = '#dc2626' %}{% set gbg = '#fef2f2' %}{% set gborder = '#fca5a5' %}
+  {% endif %}
+
+  {% if analysis.mos_color == 'green' %}{% set mc = '#16a34a' %}
+  {% elif analysis.mos_color == 'blue' %}{% set mc = '#2563eb' %}
+  {% elif analysis.mos_color == 'orange' %}{% set mc = '#d97706' %}
+  {% elif analysis.mos_color == 'red' %}{% set mc = '#dc2626' %}
+  {% else %}{% set mc = '#9CA3AF' %}{% endif %}
+
+  <div class="sample-badge">Sample Analysis — Free Tier</div>
+  <div class="card full-width" style="border-top:4px solid {{ gc }};">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;">
+      <div>
+        <div style="font-size:1.4rem;font-weight:800;color:#1B2D4F;">{{ s.ticker }} — {{ s.name }}</div>
+        <div style="color:#9CA3AF;font-size:0.86rem;margin-top:0.2rem;">{{ s.sector or 'Unknown Sector' }}</div>
+      </div>
+      <div style="text-align:right;">
+        <span class="score-big" style="color:{{ gc }};">{{ score }}</span>
+        <span class="grade-badge" style="background:{{ gbg }};color:{{ gc }};border:1px solid {{ gborder }};">{{ grade }}</span>
+        <div style="font-size:0.76rem;color:#9CA3AF;margin-top:0.3rem;">out of 100</div>
+      </div>
+    </div>
+
+    <div class="mos-panel">
+      <div class="mos-row">
+        <div>
+          <div class="mos-item-label">Current Price</div>
+          <div class="mos-item-val">₱{{ '%.2f'|format(s.current_price) if s.current_price else 'N/A' }}</div>
+        </div>
+        <div style="font-size:1.2rem;color:#E4E7EB;">→</div>
+        <div>
+          <div class="mos-item-label">Intrinsic Value (Est.)</div>
+          <div class="mos-item-val">₱{{ '%.2f'|format(analysis.iv) if analysis.iv else 'N/A' }}</div>
+        </div>
+        <div style="border-left:1px solid #E4E7EB;padding-left:1.5rem;">
+          <div class="mos-item-label">Margin of Safety</div>
+          <div style="font-size:1.15rem;font-weight:700;color:{{ mc }};">
+            {% if analysis.mos_pct is not none %}{{ '%+.1f'|format(analysis.mos_pct) }}%{% else %}N/A{% endif %}
+          </div>
+          <div style="font-size:0.8rem;color:{{ mc }};font-weight:600;">{{ analysis.mos_signal }}</div>
+        </div>
+      </div>
+      <div class="mos-note">
+        Intrinsic value is a <strong>mathematical estimate</strong>, not a price prediction. A positive margin of safety means the stock trades below this estimate.
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      {% if s.roe is not none %}<div class="metric-cell"><span class="mc-label">ROE</span><span class="mc-value">{{ '%.1f'|format(s.roe) }}%</span></div>{% endif %}
+      {% if s.de_ratio is not none %}<div class="metric-cell"><span class="mc-label">Debt / Equity</span><span class="mc-value">{{ '%.2f'|format(s.de_ratio) }}x</span></div>{% endif %}
+      {% if s.dividend_yield is not none and s.dividend_yield > 0 %}<div class="metric-cell"><span class="mc-label">Dividend Yield</span><span class="mc-value">{{ '%.2f'|format(s.dividend_yield) }}%</span></div>{% endif %}
+      {% if s.pe is not none %}<div class="metric-cell"><span class="mc-label">P/E Ratio</span><span class="mc-value">{{ '%.1f'|format(s.pe) }}x</span></div>{% endif %}
+      {% if s.fcf_yield is not none %}<div class="metric-cell"><span class="mc-label">FCF Yield</span><span class="mc-value">{{ '%.1f'|format(s.fcf_yield) }}%</span></div>{% endif %}
+      {% if s.revenue_cagr is not none %}<div class="metric-cell"><span class="mc-label">Revenue CAGR</span><span class="mc-value">{{ '%.1f'|format(s.revenue_cagr) }}%</span></div>{% endif %}
+    </div>
+
+    {% if analysis.layers %}
+    <div>
+      <div class="breakdown-label">4-Layer Score Breakdown</div>
+      {% set layer_labels = {
+        'health':       'Health (25%) — Is the business strong today?',
+        'improvement':  'Improvement (30%) — Is it getting better?',
+        'acceleration': 'Acceleration (15%) — Is improvement speeding up?',
+        'persistence':  'Persistence (30%) — Is it consistent?'
+      } %}
+      {% for lk, ld in analysis.layers.items() %}
+        {% if ld is mapping %}
+          {% set ls = (ld.score or 0)|round(1) %}
+          <div class="layer-bar-wrap">
+            <div class="layer-bar-row">
+              <span>{{ layer_labels.get(lk, lk|title) }}</span><span>{{ ls }}/100</span>
+            </div>
+            <div class="layer-bar-track"><div class="layer-bar-fill" style="width:{{ ls }}%;"></div></div>
+            {% if ld.explanation %}<div class="layer-expl">{{ ld.explanation }}</div>{% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="filter-status" style="
+      background:{{ '#f0fdf4' if analysis.eligible else '#fffbeb' }};
+      color:{{ '#166534' if analysis.eligible else '#92400e' }};
+      border:1px solid {{ '#86efac' if analysis.eligible else '#fcd34d' }};">
+      {% if analysis.eligible %}✅ Passes all fundamental quality filters
+      {% else %}⚠️ Filter note: {{ analysis.filter_reason }}{% endif %}
+    </div>
+
+    <div class="portal-disclaimer">
+      This analysis is generated automatically from PSE Edge financial data. It is for
+      <strong>educational purposes only</strong> and does not constitute investment advice.
+      Past performance does not guarantee future results. Always do your own research.
+    </div>
+  </div>
+
+{% else %}
+  <div class="card full-width" style="margin-bottom:1.5rem;">
+    <p style="color:#9CA3AF;font-size:0.9rem;">Sample analysis unavailable — run the scraper to populate stock data.</p>
+  </div>
+{% endif %}
+
+<!-- Pricing -->
+<div class="section-head" id="pricing">
+  <div class="section-label">Plans</div>
+  <h2>Simple, Transparent Pricing</h2>
+  <p>Start free. Upgrade when you're ready for the full rankings.</p>
+</div>
+
+<div class="pricing-toggle" id="billing-toggle">
+  <span class="toggle-label active" id="lbl-monthly">Monthly</span>
+  <button class="toggle-switch" id="toggle-btn" onclick="toggleBilling()">
+    <div class="toggle-knob"></div>
+  </button>
+  <span class="toggle-label" id="lbl-annual">Annual</span>
+  <span class="save-badge">Save ₱{{ '{:,}'.format(pricing.annual_save) }}</span>
+</div>
+
+<div class="pricing-grid">
+  <!-- Free -->
+  <div class="price-card">
+    <div class="price-tier">Free</div>
+    <div class="price-amount">₱0</div>
+    <div class="price-period">forever</div>
+    <div class="price-sub">&nbsp;</div>
+    <hr class="price-divider">
+    <ul class="price-features">
+      <li><span class="check">✓</span> Sample analysis (JFC)</li>
+      <li><span class="check">✓</span> Financial terms glossary</li>
+      <li><span class="check">✓</span> How the scoring model works</li>
+      <li><span class="cross">✗</span> Full 223-stock rankings</li>
+      <li><span class="cross">✗</span> Daily score updates</li>
+      <li><span class="cross">✗</span> Margin of safety data</li>
+      <li><span class="cross">✗</span> Discord alerts</li>
+      <li><span class="cross">✗</span> PDF reports</li>
+    </ul>
+    <a href="{{ url_for('portal.glossary') }}" class="btn-price-free">Explore Free Tier</a>
+  </div>
+
+  <!-- Paid -->
+  <div class="price-card featured">
+    <div class="featured-badge">Most Popular</div>
+    <div class="price-tier">Member</div>
+    <div class="price-amount" id="price-display">₱{{ pricing.monthly }}</div>
+    <div class="price-period" id="period-display">per month</div>
+    <div class="price-sub" id="sub-display">&nbsp;</div>
+    <hr class="price-divider">
+    <ul class="price-features">
+      <li><span class="check">✓</span> Full rankings — all 223 PSE stocks</li>
+      <li><span class="check">✓</span> Score + letter grade for every stock</li>
+      <li><span class="check">✓</span> Margin of safety estimates</li>
+      <li><span class="check">✓</span> Intrinsic value (DDM, EPS-PE, DCF)</li>
+      <li><span class="check">✓</span> Daily score updates</li>
+      <li><span class="check">✓</span> Discord dividend & earnings alerts</li>
+      <li><span class="check">✓</span> Weekly PDF report</li>
+      <li><span class="check">✓</span> Access to all future features</li>
+    </ul>
+    <a href="#contact" class="btn-price-paid">Get Access →</a>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="section-head">
+  <div class="section-label">Questions</div>
+  <h2>Frequently Asked Questions</h2>
+</div>
+<div class="faq-list">
+
+  <details class="faq-item">
+    <summary>What is StockPilot Philippines?</summary>
+    <div class="faq-body">
+      StockPilot Philippines is a fundamental stock ranking engine that scores all 223 PSE-listed
+      companies using financial data from PSE Edge. It uses a deterministic 4-layer model —
+      Health, Improvement, Acceleration, and Persistence — to give every stock a score from
+      0 to 100 and a letter grade. There is no AI prediction, no tips, and no guesswork.
+      The same inputs always produce the same outputs.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>Do I need to know finance or investing to use this?</summary>
+    <div class="faq-body">
+      No. StockPilot is built for everyday Filipino investors, not finance professionals.
+      Every metric is explained in plain language. The score and grade give you a clear summary
+      instantly — the details are there when you want to dig deeper.
+      If you ever see a term you don't recognize, the <a href="{{ url_for('portal.glossary') }}" style="color:var(--gold);">Glossary</a> explains everything in simple terms.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>How is the score calculated?</summary>
+    <div class="faq-body">
+      Each stock is evaluated across four layers using data from PSE Edge annual reports:
+      <br><br>
+      <strong>Health (25%)</strong> — How strong is the business today? Looks at ROE, margins, debt load, and free cash flow quality.<br>
+      <strong>Improvement (30%)</strong> — Is the business getting better? Measures revenue, earnings, and cash flow growth over 3 years.<br>
+      <strong>Acceleration (15%)</strong> — Is the improvement speeding up? Compares recent growth rate vs. older growth rate.<br>
+      <strong>Persistence (30%)</strong> — Is the growth reliable? Counts consecutive years of positive growth — rewards consistency over luck.
+      <br><br>
+      These are combined into a single score (0–100). The math is pure and deterministic —
+      no machine learning, no sentiment, no analyst opinion.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>How often is the data updated?</summary>
+    <div class="faq-body">
+      Scores are recalculated <strong>every weekday at 5:30 PM PHT</strong> using the latest
+      financial data in the database. New PSE Edge disclosures (dividends, earnings releases)
+      trigger real-time alerts through Discord. Financial history is refreshed weekly as new
+      annual report data becomes available on PSE Edge.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>What is "Margin of Safety" and why does it matter?</summary>
+    <div class="faq-body">
+      Margin of Safety is the gap between a stock's <strong>current market price</strong> and
+      its <strong>estimated intrinsic value</strong>. We calculate intrinsic value using three
+      models — Dividend Discount (DDM), EPS/PE, and Discounted Cash Flow (DCF) — then blend them.
+      <br><br>
+      A <strong>positive margin of safety</strong> means the stock is trading <em>below</em>
+      our estimated fair value — providing a mathematical cushion. A larger margin means more room
+      for error in the estimate.
+      <br><br>
+      <strong>Important:</strong> Intrinsic value is a mathematical reference, not a price target.
+      It does not predict where the stock price will go.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>Is this investment advice?</summary>
+    <div class="faq-body">
+      <strong>No.</strong> StockPilot Philippines is an educational tool that organizes
+      publicly available financial data into a structured ranking. Nothing here constitutes
+      a buy, sell, or hold recommendation. A high score means a company scores well on our
+      criteria — it does not mean the stock will go up.
+      <br><br>
+      Always do your own research and consult a licensed financial advisor before making
+      any investment decision.
+    </div>
+  </details>
+
+  <details class="faq-item">
+    <summary>Where does the financial data come from?</summary>
+    <div class="faq-body">
+      All financial data is sourced exclusively from <strong>PSE Edge</strong>
+      (edge.pse.com.ph) — the official disclosure platform of the Philippine Stock Exchange.
+      We do not use third-party data aggregators or estimates. If a figure is not available
+      on PSE Edge, it will appear as N/A rather than be approximated.
+    </div>
+  </details>
+
+</div>
+
+<!-- CTA -->
+<div class="cta-block" id="contact">
+  <h2>Ready to Rank Every PSE Stock?</h2>
+  <p>
+    Join StockPilot Philippines and spend your time making decisions —
+    not collecting data. Full rankings, daily updates, and real-time alerts.
+  </p>
+  <div class="cta-btns">
+    <a href="{{ url_for('portal.glossary') }}" class="btn btn-outline-light">Learn the Terms First →</a>
+  </div>
+  <div class="cta-note">Contact Josh on Discord to get access · No automated signup yet</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var isAnnual = false;
+  var monthly = {{ pricing.monthly }};
+  var annual  = {{ pricing.annual }};
+  var annualMo = {{ pricing.annual_mo }};
+
+  function toggleBilling() {
+    isAnnual = !isAnnual;
+    var btn = document.getElementById('toggle-btn');
+    btn.classList.toggle('on', isAnnual);
+
+    document.getElementById('lbl-monthly').classList.toggle('active', !isAnnual);
+    document.getElementById('lbl-annual').classList.toggle('active',  isAnnual);
+
+    if (isAnnual) {
+      document.getElementById('price-display').textContent  = '₱' + annual.toLocaleString();
+      document.getElementById('period-display').textContent = 'per year';
+      document.getElementById('sub-display').textContent    = '₱' + annualMo + '/mo — billed annually';
+    } else {
+      document.getElementById('price-display').textContent  = '₱' + monthly.toLocaleString();
+      document.getElementById('period-display').textContent = 'per month';
+      document.getElementById('sub-display').textContent    = '\u00a0';
+    }
+  }
+</script>
+{% endblock %}

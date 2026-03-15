@@ -15,6 +15,12 @@ from reports.pdf_styles import (
     CONTENT_WIDTH, MOS_EXPLAIN,
     score_color, score_bg, grade, grade_label, mos_signal, get_stock_profiles,
 )
+from reportlab.lib import colors as _rl_colors
+
+# Segment health score colours
+COLOUR_SEG_GOOD = _rl_colors.HexColor('#27AE60')
+COLOUR_SEG_FAIR = _rl_colors.HexColor('#E67E22')
+COLOUR_SEG_WEAK = _rl_colors.HexColor('#E74C3C')
 from reports.pdf_rankings_table import generate_overall_assessment
 
 
@@ -300,6 +306,52 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     ]))
     elements.append(price_tbl)
     elements.append(Spacer(1, 3 * mm))
+
+    # ── Conglomerate segment breakdown (holding firms only) ──
+    cong_data = stock.get('breakdown', {}).get('conglomerate') if stock.get('breakdown') else None
+    if cong_data and cong_data.get('segments'):
+        elements.append(Paragraph('SEGMENT BREAKDOWN', styles['GoldLabel']))
+        elements.append(Paragraph(
+            cong_data.get('blend_note', ''),
+            styles['ExplainText']
+        ))
+        elements.append(Spacer(1, 2 * mm))
+
+        seg_header = [
+            Paragraph('Segment',       ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold')),
+            Paragraph('Listed',        ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold')),
+            Paragraph('Rev %',         ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+            Paragraph('Health Score',  ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+        ]
+        seg_rows = [seg_header]
+        for seg in cong_data['segments']:
+            hs  = seg.get('health_score')
+            rev = seg.get('revenue_share')
+            hs_col = (
+                COLOUR_SEG_GOOD if hs and hs >= 70 else
+                COLOUR_SEG_FAIR if hs and hs >= 45 else
+                COLOUR_SEG_WEAK if hs else DARK_GREY
+            )
+            seg_rows.append([
+                Paragraph(seg.get('segment_name', ''), ParagraphStyle('SN', fontSize=8, textColor=BLACK, fontName='Helvetica')),
+                Paragraph(seg.get('segment_ticker') or '—', ParagraphStyle('ST', fontSize=8, textColor=DARK_GREY, fontName='Helvetica')),
+                Paragraph(f"{rev*100:.0f}%" if rev else '—', ParagraphStyle('SR', fontSize=8, textColor=DARK_GREY, fontName='Helvetica', alignment=TA_RIGHT)),
+                Paragraph(f"{hs:.0f}/100" if hs else 'N/A',  ParagraphStyle('SS', fontSize=8, textColor=hs_col, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+            ])
+
+        col_w = CONTENT_WIDTH / 4
+        seg_tbl = Table(seg_rows, colWidths=[col_w * 1.8, col_w * 0.8, col_w * 0.6, col_w * 0.8])
+        seg_tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, 0),  NAVY),
+            ('TEXTCOLOR',     (0, 0), (-1, 0),  WHITE),
+            ('GRID',          (0, 0), (-1, -1), 0.3, MID_GREY),
+            ('TOPPADDING',    (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, LIGHT_GREY]),
+        ]))
+        elements.append(seg_tbl)
+        elements.append(Spacer(1, 3 * mm))
 
     # ── Score breakdown with stock-specific explanations ──
     breakdown = stock.get('score_breakdown', {})

@@ -164,3 +164,58 @@ def get_scheduler_status() -> dict:
         if _scheduler_proc and _scheduler_proc.poll() is None:
             return {'running': True, 'pid': _scheduler_proc.pid}
         return {'running': False, 'pid': None}
+
+
+# ── Discord bot process management ───────────────────────────
+
+_bot_proc = None
+_bot_lock = threading.Lock()
+
+
+def start_bot() -> tuple[bool, str]:
+    """Starts py discord/bot.py as a subprocess. Returns (ok, message)."""
+    global _bot_proc
+    with _bot_lock:
+        if _bot_proc and _bot_proc.poll() is None:
+            return False, 'Discord bot is already running.'
+        import os
+        if not os.getenv('DISCORD_BOT_TOKEN', ''):
+            return False, 'DISCORD_BOT_TOKEN not set in .env. Add it to start the bot.'
+        try:
+            _bot_proc = subprocess.Popen(
+                ['py', str(ROOT / 'discord' / 'bot.py')],
+                cwd=str(ROOT),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            log_activity('pipeline', 'bot_start',
+                         f'PID {_bot_proc.pid}', status='ok')
+            return True, f'Discord bot started (PID {_bot_proc.pid}).'
+        except Exception as e:
+            return False, f'Failed to start bot: {e}'
+
+
+def stop_bot() -> tuple[bool, str]:
+    """Terminates the Discord bot subprocess."""
+    global _bot_proc
+    with _bot_lock:
+        if not _bot_proc or _bot_proc.poll() is not None:
+            _bot_proc = None
+            return False, 'Discord bot is not running.'
+        try:
+            _bot_proc.terminate()
+            _bot_proc.wait(timeout=5)
+        except Exception:
+            _bot_proc.kill()
+        pid = _bot_proc.pid
+        _bot_proc = None
+        log_activity('pipeline', 'bot_stop', f'PID {pid}', status='ok')
+        return True, 'Discord bot stopped.'
+
+
+def get_bot_status() -> dict:
+    """Returns {running: bool, pid: int|None}."""
+    with _bot_lock:
+        if _bot_proc and _bot_proc.poll() is None:
+            return {'running': True, 'pid': _bot_proc.pid}
+        return {'running': False, 'pid': None}

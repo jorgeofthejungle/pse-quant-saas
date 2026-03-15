@@ -8,7 +8,11 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <nav class="sidebar">
+
+  <button class="hamburger" id="hamburger" aria-label="Open menu">&#9776;</button>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <span class="logo-text">PSE Quant</span>
       <span class="logo-sub">SaaS Admin</span>
@@ -19,7 +23,9 @@
       <li><a href="{{ url_for('members.index') }}"    class="{{ 'active' if request.blueprint == 'members' }}">Members</a></li>
       <li><a href="{{ url_for('analytics.index') }}"  class="{{ 'active' if request.blueprint == 'analytics' }}">Analytics</a></li>
       <li><a href="{{ url_for('settings.index') }}"   class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a></li>
-      <li><a href="{{ url_for('stocks.index') }}"    class="{{ 'active' if request.blueprint == 'stocks' }}">Stock Lookup</a></li>
+      <li><a href="{{ url_for('stocks.index') }}"     class="{{ 'active' if request.blueprint == 'stocks' }}">Stock Lookup</a></li>
+      <li><a href="{{ url_for('conglomerates.index') }}" class="{{ 'active' if request.blueprint == 'conglomerates' }}">Conglomerates</a></li>
+      <li><a href="{{ url_for('portal.index') }}"        class="{{ 'active' if request.blueprint == 'portal' }}">Portal</a></li>
     </ul>
     <div class="sidebar-footer">
       <span>v1.0 &bull; Local</span>

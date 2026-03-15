@@ -26,13 +26,19 @@ sys.path.insert(0, str(ROOT / 'alerts'))
 import database as db
 
 from scheduler_data import (
-    load_sample_stocks, _load_stocks,
-    FILTERS, SCORERS, PORTFOLIO_NAMES, SCRAPER_AVAILABLE,
+    load_sample_stocks, _load_stocks, SCRAPER_AVAILABLE,
 )
+
+# Legacy maps — kept for backward compatibility; active pipeline uses unified v2 scorer
+FILTERS        = {}
+SCORERS        = {}
+PORTFOLIO_NAMES = {}
 from scheduler_jobs import (
     run_daily_job, run_daily_score, run_daily_report, run_weekly_scrape,
-    _score_and_rank, _top5_changed, _significant_score_change, _build_changes,
+    run_expiry_notifications,
+    _run_score_pipeline, _top5_changed, _significant_score_change, _build_changes,
 )
+_score_and_rank = _run_score_pipeline   # backward-compat alias
 
 try:
     from alerts.alert_engine import run_alert_check
@@ -47,7 +53,9 @@ from db.db_settings import get_setting
 
 __all__ = [
     'run_daily_job', 'run_daily_score', 'run_daily_report', 'run_weekly_scrape',
-    '_score_and_rank', '_top5_changed', '_significant_score_change', '_build_changes',
+    'run_expiry_notifications',
+    '_score_and_rank', '_run_score_pipeline',
+    '_top5_changed', '_significant_score_change', '_build_changes',
     'load_sample_stocks', '_load_stocks',
     'FILTERS', 'SCORERS', 'PORTFOLIO_NAMES',
     'run_alert_check', 'run_disclosure_check',
@@ -122,6 +130,14 @@ def start_scheduler():
         name='PSE Weekly Full Financial Scrape',
         misfire_grace_time=3600,
     )
+    # Daily 9 AM — expiry renewal reminders (7d, 1d, 0d before expiry)
+    scheduler.add_job(
+        run_expiry_notifications,
+        CronTrigger(hour=9, minute=0),
+        id='daily_expiry_notifications',
+        name='Subscription Expiry Notifications (9 AM daily)',
+        misfire_grace_time=600,
+    )
 
     print("=" * 55)
     print("  PSE QUANT SAAS — Scheduler Started")
@@ -130,6 +146,7 @@ def start_scheduler():
     print(f"  Score run:          weekdays {score_h:02d}:{score_m:02d} PHT")
     print(f"  Report run:         weekdays {report_h:02d}:{report_m:02d} PHT")
     print(f"  Full scrape:        {WEEKLY_SCRAPE_DAY.upper()} {WEEKLY_SCRAPE_HOUR:02d}:00 PHT")
+    print(f"  Expiry reminders:   09:00 PHT daily")
     print("  Press Ctrl+C to stop")
     print("=" * 55)
 
@@ -179,6 +196,11 @@ def main():
         help='Run one disclosure feed check immediately (for testing)',
     )
     parser.add_argument(
+        '--run-expiry',
+        action='store_true',
+        help='Run expiry notification check immediately (for testing)',
+    )
+    parser.add_argument(
         '--run-score',
         action='store_true',
         help='Run the 4 PM scoring phase only (no PDF sent)',
@@ -192,7 +214,10 @@ def main():
 
     db.init_db()
 
-    if args.run_alerts:
+    if args.run_expiry:
+        print("Running expiry notification check now...")
+        run_expiry_notifications()
+    elif args.run_alerts:
         print("Running alert check now...")
         run_alert_check(dry_run=args.dry_run)
     elif args.run_score:

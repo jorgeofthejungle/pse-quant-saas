@@ -174,6 +174,19 @@ def score_unified(stock: dict,
         },
     }
 
+    # ── Optional: conglomerate segment blending ───────────────
+    # If the caller has attached segment_data to the stock dict
+    # (fetched from DB by routes_stocks / scheduler), blend it in.
+    segment_data = stock.get('segment_data')
+    if segment_data:
+        try:
+            from engine.conglomerate_scorer import apply_conglomerate_scoring
+            final_score, full_breakdown = apply_conglomerate_scoring(
+                final_score, full_breakdown, stock, segment_data
+            )
+        except Exception:
+            pass   # Never break standard scoring
+
     return final_score, full_breakdown
 
 

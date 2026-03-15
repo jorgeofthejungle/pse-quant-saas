@@ -1,0 +1,223 @@
+{% extends "portal_base.html" %}
+{% block title %}Glossary — Key Investing Terms{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom:1.5rem;">
+  <h1 style="font-size:1.8rem;font-weight:800;margin-bottom:0.25rem;">Investing Glossary</h1>
+  <p style="color:var(--text-muted);">Plain-English definitions for every term used in StockPilot PH.</p>
+</div>
+
+<!-- Valuation Terms -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;font-size:1rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);">Valuation</h2>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Intrinsic Value (IV)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        A mathematical estimate of what a business is worth based on its fundamentals —
+        earnings, dividends, and cash flow. <strong>It is not a price prediction.</strong>
+        It is a reference point. If the current price is lower than the IV, the stock
+        may be undervalued. If higher, it may be overpriced.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Margin of Safety (MoS)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The gap between the stock's current price and its intrinsic value, expressed as a percentage.
+        A larger margin of safety means more cushion against errors in the model or unexpected bad news.
+        Example: if IV is ₱100 and the price is ₱70, the margin of safety is 30%.
+        <div style="margin-top:0.5rem;">
+          <span style="display:inline-block;background:#eafaf1;color:#1a7a4a;font-size:0.78rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:4px;margin-right:0.4rem;">≥30% — Strong Buy Zone</span>
+          <span style="display:inline-block;background:#eaf4fb;color:#1a5276;font-size:0.78rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:4px;margin-right:0.4rem;">≥15% — Buy Zone</span>
+          <span style="display:inline-block;background:#fef9f0;color:#a04000;font-size:0.78rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:4px;margin-right:0.4rem;">≥−5% — Fairly Valued</span>
+          <span style="display:inline-block;background:#fdf3f2;color:#922b21;font-size:0.78rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:4px;">Below − Above IV</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">P/E Ratio (Price-to-Earnings)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        How much you pay for every ₱1 the company earns per year.
+        Example: P/E of 15x means you pay ₱15 for every ₱1 of earnings.
+        Lower P/E can mean the stock is cheaper — but context matters.
+        A very low P/E can also signal a struggling company.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">P/B Ratio (Price-to-Book)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        How much you pay compared to the company's net asset value (assets minus liabilities).
+        P/B of 1.0x means you're paying exactly what the books say the company is worth.
+        Below 1.0x can indicate undervaluation; above 3x can mean the market expects high future growth.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Dividend Yield</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The annual dividend per share as a percentage of the current stock price.
+        Example: ₱2 dividend on a ₱40 stock = 5% yield.
+        Higher yield is not always better — it can also mean the stock price has fallen.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Profitability Terms -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;font-size:1rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);">Profitability</h2>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">ROE (Return on Equity)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        Measures how efficiently management uses shareholders' money to generate profit.
+        ROE = Net Income ÷ Shareholders' Equity.
+        Example: ROE of 15% means the company earns ₱15 for every ₱100 of equity.
+        Generally, ROE above 12% is considered healthy for PSE stocks.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">EPS (Earnings Per Share)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The company's net profit divided by the number of shares outstanding.
+        Example: EPS of ₱5 means the company earned ₱5 for every share.
+        Growing EPS over time is one of the strongest signals of a healthy business.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Operating Margin</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The percentage of revenue that becomes operating profit — after costs, before interest and taxes.
+        A 20% margin means ₱20 of every ₱100 in revenue is operating profit.
+        Higher is generally better, and stable or improving margins signal a competitive business.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Cash Flow Terms -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;font-size:1rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);">Cash Flow</h2>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">FCF (Free Cash Flow)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The cash a company has left after running the business and making necessary investments.
+        FCF = Operating Cash Flow − Capital Expenditures.
+        This is the money that could theoretically be paid to shareholders or used to pay down debt.
+        Consistently positive FCF is one of the most important signals of financial strength.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">FCF Yield</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        FCF per share as a percentage of the stock price. Similar to dividend yield but uses
+        free cash flow instead of dividends paid. Higher FCF yield means you are buying more
+        cash generation per peso invested.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Payout Ratio</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The percentage of earnings paid out as dividends.
+        Example: payout ratio of 40% means the company pays ₱40 of every ₱100 earned as dividends,
+        keeping ₱60 to reinvest. Very high payout ratios (above 80%) can be unsustainable.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Leverage Terms -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;font-size:1rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);">Debt & Leverage</h2>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">D/E Ratio (Debt-to-Equity)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        Shows how much the company relies on borrowed money relative to shareholder equity.
+        D/E of 1.0x means total debt equals total equity — the company is half-funded by borrowing.
+        Lower is generally safer. StockPilot PH hard-blocks stocks with D/E above 2.5x
+        (or 10x for banks, which operate differently).
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">CAGR (Compound Annual Growth Rate)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        The steady annual growth rate that would take a starting value to an ending value
+        over a number of years. Used to measure revenue growth, EPS growth, and dividend growth.
+        Example: 10% revenue CAGR means revenue roughly doubled in 7 years.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Scoring Model -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;font-size:1rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);">StockPilot PH Score</h2>
+
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Score (0–100)</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        A composite score based on four layers of fundamental analysis.
+        Higher scores reflect stronger, more consistent, and improving fundamentals.
+        The score does not predict future returns. It ranks stocks by how well they perform
+        on historical financial data. Two stocks with similar scores may perform very differently.
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Letter Grade</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        A quick summary of the score.
+        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <span style="display:inline-block;background:#eafaf1;color:#1a7a4a;font-weight:700;padding:0.2rem 0.6rem;border-radius:4px;">A — 80 to 100</span>
+          <span style="display:inline-block;background:#eaf4fb;color:#1a5276;font-weight:700;padding:0.2rem 0.6rem;border-radius:4px;">B — 65 to 79</span>
+          <span style="display:inline-block;background:#fef9f0;color:#a04000;font-weight:700;padding:0.2rem 0.6rem;border-radius:4px;">C — 50 to 64</span>
+          <span style="display:inline-block;background:#fdf3f2;color:#922b21;font-weight:700;padding:0.2rem 0.6rem;border-radius:4px;">D — 35 to 49</span>
+          <span style="display:inline-block;background:#f5f5f5;color:#555;font-weight:700;padding:0.2rem 0.6rem;border-radius:4px;">F — Below 35</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:0.2rem;">Quality Filter</div>
+      <div style="color:var(--text-muted);font-size:0.88rem;line-height:1.6;">
+        Before scoring, each stock must pass a basic quality check:
+        at least 3 years of EPS, revenue, and cash flow data; positive 3-year average EPS;
+        and debt-to-equity within safe limits. Stocks that fail this filter are shown with a
+        warning but are still scored for reference.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Back link -->
+<div style="text-align:center;margin:2rem 0;">
+  <a href="{{ url_for('portal.index') }}" class="btn btn-secondary">← Back to Sample Analysis</a>
+</div>
+
+{% endblock %}

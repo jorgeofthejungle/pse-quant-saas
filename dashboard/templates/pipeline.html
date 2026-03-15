@@ -41,6 +41,31 @@
   </div>
 </div>
 
+<!-- Discord Bot Control -->
+<div class="card full-width" style="margin-bottom:1.25rem;border-top:3px solid {% if bot.running %}#7289DA{% else %}var(--text-muted){% endif %};">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+    <div>
+      <h2 style="margin-bottom:0.25rem;">Discord Bot</h2>
+      <div style="font-size:0.85rem;color:var(--text-muted);">
+        Slash commands for members: <code>/stock &lt;ticker&gt;</code> · <code>/top10</code> · <code>/help</code>
+        <span style="margin-left:0.75rem;">Requires <code>DISCORD_BOT_TOKEN</code> in .env</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;">
+        <span class="status-dot {% if not bot.running %}status-error{% endif %}" id="bot-dot"></span>
+        <span id="bot-status-text">{% if bot.running %}Running (PID {{ bot.pid }}){% else %}Stopped{% endif %}</span>
+      </div>
+      <div id="bot-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
+      <button class="btn {% if bot.running %}btn-danger{% else %}btn-primary{% endif %}"
+              id="btn-bot"
+              onclick="controlBot('{% if bot.running %}stop{% else %}start{% endif %}')">
+        {% if bot.running %}Stop Bot{% else %}Start Bot{% endif %}
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Run Controls -->
 <div class="card-row">
   <div class="card">
@@ -179,6 +204,37 @@ function controlScheduler(action) {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
         btn.textContent = action === 'start' ? 'Start Scheduler' : 'Stop Scheduler';
+      }
+      btn.disabled = false;
+    });
+}
+
+function controlBot(action) {
+  const btn      = document.getElementById('btn-bot');
+  const resultEl = document.getElementById('bot-result');
+  const dot      = document.getElementById('bot-dot');
+  const statusTx = document.getElementById('bot-status-text');
+
+  btn.disabled = true;
+  btn.textContent = action === 'start' ? 'Starting...' : 'Stopping...';
+
+  fetch('/pipeline/bot/' + action, {method: 'POST', body: new FormData()})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.style.display = 'block';
+      if (d.ok) {
+        const running = action === 'start';
+        resultEl.className = 'result-box result-success';
+        resultEl.textContent = d.message;
+        dot.className = 'status-dot' + (running ? '' : ' status-error');
+        statusTx.textContent = d.message;
+        btn.className = 'btn ' + (running ? 'btn-danger' : 'btn-primary');
+        btn.textContent = running ? 'Stop Bot' : 'Start Bot';
+        btn.onclick = function() { controlBot(running ? 'stop' : 'start'); };
+      } else {
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = d.message;
+        btn.textContent = action === 'start' ? 'Start Bot' : 'Stop Bot';
       }
       btn.disabled = false;
     });

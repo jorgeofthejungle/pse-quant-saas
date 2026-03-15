@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Conglomerates{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Conglomerate Segments</h1>
+  <span class="timestamp">{{ now }}</span>
+</div>
+
+<!-- Coverage summary -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2>Data Coverage</h2>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+    {% for t in tickers %}
+      {% set years_for = coverage.get(t, []) %}
+      <div style="text-align:center;min-width:90px;">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--navy);">{{ t }}</div>
+        {% if years_for %}
+          <div style="font-size:0.78rem;color:var(--green);font-weight:600;">
+            {{ years_for | join(', ') }}
+          </div>
+        {% else %}
+          <div style="font-size:0.78rem;color:var(--text-muted);">No data</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Ticker + year selector -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <form method="get" action="{{ url_for('conglomerates.index') }}" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;">
+    <label style="font-weight:600;font-size:0.9rem;">Ticker:</label>
+    <select name="ticker" class="form-select" onchange="this.form.submit()">
+      {% for t in tickers %}
+        <option value="{{ t }}" {{ 'selected' if t == selected_ticker }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <label style="font-weight:600;font-size:0.9rem;">Year:</label>
+    <select name="year" class="form-select" onchange="this.form.submit()">
+      {% for y in range(current_year, current_year - 6, -1) %}
+        <option value="{{ y }}" {{ 'selected' if y == selected_year }}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="card-row">
+  <!-- Left: existing segments + scoring preview -->
+  <div class="card" style="flex:1.5;">
+    <h2>{{ selected_ticker }} — {{ selected_year }} Segments</h2>
+
+    {% if segments %}
+    <table class="data-table" style="margin-bottom:1rem;">
+      <thead>
+        <tr>
+          <th>Segment</th>
+          <th>Listed Ticker</th>
+          <th>Revenue (M)</th>
+          <th>Net Income (M)</th>
+          <th>Equity (M)</th>
+          <th>Health</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for seg in preview.segments if preview %}
+          {% set hs = seg.health_score %}
+          {% if hs is not none and hs >= 70 %}{% set hcol = 'var(--green)' %}
+          {% elif hs is not none and hs >= 45 %}{% set hcol = 'var(--orange)' %}
+          {% elif hs is not none %}{% set hcol = 'var(--red)' %}
+          {% else %}{% set hcol = 'var(--text-muted)' %}{% endif %}
+          <tr>
+            <td><strong>{{ seg.segment_name }}</strong></td>
+            <td>{{ seg.segment_ticker or '—' }}</td>
+            <td>{{ '%.0f'|format(seg.revenue) if seg.revenue else '—' }}</td>
+            <td>{{ '%.0f'|format(seg.net_income) if seg.net_income else '—' }}</td>
+            <td>{{ '%.0f'|format(seg.equity) if seg.equity else '—' }}</td>
+            <td style="font-weight:700;color:{{ hcol }};">
+              {% if hs is not none %}{{ hs }}/100{% else %}N/A{% endif %}
+              {% if seg.revenue_share %}
+                <br><span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;">{{ '%.0f'|format(seg.revenue_share * 100) }}% rev</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('conglomerates.remove_segment') }}"
+                    data-confirm="Delete {{ seg.segment_name }}?">
+                <input type="hidden" name="parent_ticker" value="{{ selected_ticker }}">
+                <input type="hidden" name="segment_name"  value="{{ seg.segment_name }}">
+                <input type="hidden" name="year"          value="{{ selected_year }}">
+                <button type="submit" class="btn btn-danger btn-sm">✕</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          {% for seg in segments %}
+          <tr>
+            <td><strong>{{ seg.segment_name }}</strong></td>
+            <td>{{ seg.segment_ticker or '—' }}</td>
+            <td>{{ '%.0f'|format(seg.revenue) if seg.revenue else '—' }}</td>
+            <td>{{ '%.0f'|format(seg.net_income) if seg.net_income else '—' }}</td>
+            <td>{{ '%.0f'|format(seg.equity) if seg.equity else '—' }}</td>
+            <td class="text-muted">—</td>
+            <td>
+              <form method="post" action="{{ url_for('conglomerates.remove_segment') }}"
+                    data-confirm="Delete {{ seg.segment_name }}?">
+                <input type="hidden" name="parent_ticker" value="{{ selected_ticker }}">
+                <input type="hidden" name="segment_name"  value="{{ seg.segment_name }}">
+                <input type="hidden" name="year"          value="{{ selected_year }}">
+                <button type="submit" class="btn btn-danger btn-sm">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if preview %}
+    <!-- Scoring preview -->
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Scoring Preview</div>
+      <div style="display:flex;gap:2rem;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:0.78rem;color:var(--text-muted);">Weighted Segment Score</div>
+          <div style="font-size:1.4rem;font-weight:700;color:var(--navy);">
+            {{ preview.w_score if preview.w_score is not none else 'N/A' }}/100
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.78rem;color:var(--text-muted);">Calculated IV Discount</div>
+          <div style="font-size:1.4rem;font-weight:700;color:var(--orange);">
+            {{ preview.discount }}%
+            <span style="font-size:0.8rem;color:var(--text-muted);font-weight:400;">(was flat 20%)</span>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.5rem;">
+        The IV discount replaces the flat 20% conglomerate discount in the Margin of Safety calculation.
+        Score blend: 70% parent fundamentals + 30% segment quality.
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="text-muted">No segments for {{ selected_ticker }} in {{ selected_year }}. Add them using the form.</p>
+    {% endif %}
+  </div>
+
+  <!-- Right: add segment form -->
+  <div class="card" style="flex:1;">
+    <h2>Add / Update Segment</h2>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">
+      Enter revenue, net income, and equity in <strong>Millions PHP</strong> (e.g. 45000 = ₱45 billion).
+      Source: latest PSE Edge annual report.
+    </p>
+
+    <form method="post" action="{{ url_for('conglomerates.save_segment') }}">
+      <input type="hidden" name="parent_ticker" value="{{ selected_ticker }}">
+      <input type="hidden" name="year" value="{{ selected_year }}">
+
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="margin-bottom:0.75rem;">
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;white-space:nowrap;font-size:0.85rem;color:var(--text-muted);width:35%;">Segment Name *</td>
+          <td style="padding:0.4rem 0;">
+            <input list="seg-suggestions" name="segment_name" class="form-input-sm"
+                   placeholder="e.g. Banking (BDO)" required>
+            <datalist id="seg-suggestions">
+              {% for s in segment_map.get(selected_ticker, []) %}
+                <option value="{{ s }}">
+              {% endfor %}
+            </datalist>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;font-size:0.85rem;color:var(--text-muted);">Listed Ticker</td>
+          <td style="padding:0.4rem 0;">
+            <input type="text" name="segment_ticker" class="form-input-sm" placeholder="e.g. BDO (optional)">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;font-size:0.85rem;color:var(--text-muted);">Revenue (M PHP)</td>
+          <td style="padding:0.4rem 0;">
+            <input type="number" step="0.01" name="revenue" class="form-input-sm" placeholder="e.g. 45000">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;font-size:0.85rem;color:var(--text-muted);">Net Income (M PHP)</td>
+          <td style="padding:0.4rem 0;">
+            <input type="number" step="0.01" name="net_income" class="form-input-sm" placeholder="e.g. 4500">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;font-size:0.85rem;color:var(--text-muted);">Equity (M PHP)</td>
+          <td style="padding:0.4rem 0;">
+            <input type="number" step="0.01" name="equity" class="form-input-sm" placeholder="e.g. 28000">
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0.4rem 0.5rem 0.4rem 0;font-size:0.85rem;color:var(--text-muted);">Notes</td>
+          <td style="padding:0.4rem 0;">
+            <textarea name="notes" class="form-input-sm" placeholder="Source, assumptions, etc."></textarea>
+          </td>
+        </tr>
+      </table>
+
+      <button type="submit" class="btn btn-primary" style="margin-top:0.75rem;width:100%;">
+        Save Segment
+      </button>
+    </form>
+
+    <!-- Reference map -->
+    <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">
+        {{ selected_ticker }} — Known Segments
+      </div>
+      {% for s in segment_map.get(selected_ticker, []) %}
+        <span class="ticker-badge">{{ s }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

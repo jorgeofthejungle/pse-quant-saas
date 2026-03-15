@@ -5,9 +5,10 @@
 
 import json
 import os
+import shutil
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -18,7 +19,9 @@ sys.path.insert(0, str(ROOT / 'db'))
 sys.path.insert(0, str(ROOT / 'scraper'))
 
 from pdf_generator import generate_report
-from publisher    import WEBHOOKS, send_report, send_rescore_notice, send_sentiment_signal, send_shortlist_change
+from publisher    import (WEBHOOKS, send_report, send_rescore_notice,
+                          send_sentiment_signal, send_shortlist_change,
+                          send_expiry_notification)
 import database as db
 
 try:
@@ -37,14 +40,8 @@ _SIGNAL_CACHE_PATH = _STATE_DIR / 'last_signals.json'
 _rescore_lock = threading.Lock()
 
 from scheduler_data import (
-    FILTERS, SCORERS, PORTFOLIO_NAMES,
     SCRAPER_AVAILABLE, _load_stocks,
 )
-
-try:
-    from engine.pipeline import score_and_rank as _pipeline_score_and_rank
-except ImportError:
-    from pipeline import score_and_rank as _pipeline_score_and_rank
 
 # Scraper import for price updates (PSE Edge — replaces pse.com.ph which 403s)
 try:
@@ -54,14 +51,6 @@ except ImportError:
         from pse_edge_scraper import scrape_daily_prices
     except ImportError:
         scrape_daily_prices = None
-
-
-def _score_and_rank(stocks: list, portfolio_type: str) -> list:
-    """Filters, scores, and ranks stocks for a given portfolio."""
-    filter_fn = FILTERS[portfolio_type]
-    score_fn  = SCORERS[portfolio_type]
-    passed    = [s for s in stocks if filter_fn(s)[0]]
-    return _pipeline_score_and_rank(passed, portfolio_type, score_fn, all_stocks=stocks)
 
 
 def _top5_changed(old_top5: list, new_top5: list) -> bool:
@@ -137,12 +126,15 @@ def _build_shortlist_changes(
     old_scores:     list,
     new_ranked:     list,
     all_stocks:     list,
-    portfolio_type: str,
+    portfolio_type: str = 'unified',
 ) -> list:
     """
-    Detects stocks that entered or left the portfolio's qualifying shortlist.
-    Re-runs filters on exits for plain-English reason; finds strongest factor on entries.
+    Detects stocks that entered or left the qualifying shortlist.
+    Uses the unified v2 filter for exit reason lookups.
+    Finds the strongest scoring factor on entries.
     """
+    from engine.filters_v2 import filter_unified
+
     old_tickers = {s['ticker'] for s in old_scores}
     new_tickers = {s['ticker'] for s in new_ranked}
 
@@ -152,7 +144,6 @@ def _build_shortlist_changes(
     if not exited and not entered:
         return []
 
-    filter_fn    = FILTERS[portfolio_type]
     stock_by_tk  = {s['ticker']: s for s in all_stocks}
     old_by_tk    = {s['ticker']: s for s in old_scores}
 
@@ -164,9 +155,9 @@ def _build_shortlist_changes(
         if stock is None:
             reason = "No longer in the screening universe (data unavailable or stock inactive)."
         else:
-            eligible, reason = filter_fn(stock)
+            eligible, reason = filter_unified(stock)
             if eligible:
-                reason = "Score dropped below qualifying stocks in this portfolio."
+                reason = "Score dropped below qualifying stocks in the unified ranking."
         changes.append({
             'type':      'exit',
             'ticker':    ticker,
@@ -443,8 +434,9 @@ def run_daily_score():
 
         # ── Save scores ────────────────────────────────────────
         try:
-            db.save_scores(today, ranked, 'unified')
-            print("  Scores saved to DB.")
+            db.save_scores(today, ranked, 'unified')   # legacy table (backward compat)
+            db.save_scores_v2(today, ranked)            # new clean scores_v2 table
+            print("  Scores saved to DB (scores + scores_v2).")
         except Exception as e:
             print(f"  DB save error: {e}")
 
@@ -454,6 +446,38 @@ def run_daily_score():
 
     finally:
         _rescore_lock.release()
+
+
+def _enrich_mos(stocks: list) -> list:
+    """
+    Adds intrinsic_value, mos_price, mos_pct to each stock dict.
+    Called before PDF generation so MoS% appears in the report.
+    """
+    from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
+                             calc_hybrid_intrinsic, calc_mos_pct)
+    _IV_WEIGHTS = (0.30, 0.35, 0.35)
+
+    for stock in stocks:
+        try:
+            fins   = db.get_financials(stock['ticker'], years=3)
+            eps_3y = [f['eps'] for f in fins if f.get('eps') is not None][:3]
+            ddm_iv, _ = calc_ddm(stock.get('dps_last'),
+                                  stock.get('dividend_cagr_5y'))
+            eps_iv, _ = calc_eps_pe(eps_3y)
+            dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'),
+                                  stock.get('revenue_cagr'))
+            is_holding = (stock.get('sector', '') == 'Holding Firms')
+            iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
+                                               weights=_IV_WEIGHTS)
+            if is_holding and iv:
+                iv = round(iv * 0.80, 2)
+        except Exception:
+            iv = None
+        price = stock.get('current_price')
+        stock['intrinsic_value'] = iv
+        stock['mos_price']       = round(iv * 0.70, 2) if iv else None
+        stock['mos_pct']         = calc_mos_pct(iv, price) if iv and price else None
+    return stocks
 
 
 def run_daily_report():
@@ -493,6 +517,11 @@ def run_daily_report():
     except Exception as e:
         print(f"  Could not rebuild rankings for PDF: {e}")
         return
+
+    # Enrich with MoS before generating PDF
+    ranked = _enrich_mos(ranked)
+    enriched = sum(1 for s in ranked if s.get('mos_pct') is not None)
+    print(f"  MoS enriched: {enriched}/{len(ranked)} stocks")
 
     DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
     filename = f"PSE_UNIFIED_RANKINGS_{today}.pdf"
@@ -534,6 +563,91 @@ def run_daily_job():
     run_daily_report()
 
 
+def _backup_database():
+    """
+    Copies the SQLite DB to a timestamped backup file in the same directory.
+    Prunes backups older than 4 weeks to avoid disk accumulation.
+    """
+    db_path = Path(db.DB_PATH)
+    if not db_path.exists():
+        return
+    backup_dir = db_path.parent
+    today_str  = datetime.now().strftime('%Y-%m-%d')
+    backup_path = backup_dir / f'pse_quant_backup_{today_str}.db'
+    try:
+        shutil.copy2(str(db_path), str(backup_path))
+        print(f"  DB backup saved: {backup_path.name}")
+    except Exception as e:
+        print(f"  DB backup failed: {e}")
+        return
+
+    # Prune backups older than 28 days
+    cutoff = datetime.now() - timedelta(days=28)
+    for old_backup in backup_dir.glob('pse_quant_backup_*.db'):
+        try:
+            date_str = old_backup.stem.replace('pse_quant_backup_', '')
+            backup_date = datetime.strptime(date_str, '%Y-%m-%d')
+            if backup_date < cutoff:
+                old_backup.unlink()
+                print(f"  Pruned old backup: {old_backup.name}")
+        except Exception:
+            pass
+
+
+def run_expiry_notifications():
+    """
+    Daily job (9:00 AM PHT) — sends Discord alerts for subscriptions
+    expiring in 7 days, 1 day, or today.
+
+    Uses DISCORD_WEBHOOK_ALERTS channel so notifications go to the
+    admin's alerts channel. Admin can then forward renewal links to
+    members via Discord DM.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    print(f"\n[expiry_notifications]  {today}")
+
+    try:
+        sys.path.insert(0, str(ROOT / 'dashboard'))
+        from dashboard.db_members import get_expiring_soon, log_activity
+    except ImportError:
+        try:
+            from db_members import get_expiring_soon, log_activity
+        except ImportError as e:
+            print(f"  [expiry] db_members import failed: {e}")
+            return
+
+    alerts_url = WEBHOOKS.get('alerts', '')
+    if not alerts_url:
+        print("  [expiry] DISCORD_WEBHOOK_ALERTS not set — skipping.")
+        return
+
+    notified = 0
+    for days_left in (7, 1, 0):
+        expiring = get_expiring_soon(days=days_left)
+        # Filter to only members expiring exactly on that day
+        target_date = (datetime.now() + timedelta(days=days_left)).strftime('%Y-%m-%d')
+        on_day = [m for m in expiring if m.get('expiry_date') == target_date]
+
+        for member in on_day:
+            try:
+                send_expiry_notification(
+                    webhook_url = alerts_url,
+                    member_name = member['discord_name'],
+                    expiry_date = member['expiry_date'],
+                    days_left   = days_left,
+                )
+                log_activity(
+                    'member', 'expiry_notification_sent',
+                    f"{member['discord_name']} — {days_left}d remaining",
+                )
+                notified += 1
+                print(f"  [expiry] Notified: {member['discord_name']} ({days_left}d)")
+            except Exception as e:
+                print(f"  [expiry] Failed for {member.get('discord_name', '?')}: {e}")
+
+    print(f"  [expiry] {notified} notification(s) sent.")
+
+
 def run_weekly_scrape():
     """
     Sunday night full financial refresh for all PSE stocks.
@@ -549,12 +663,16 @@ def run_weekly_scrape():
     print(f"  PSE QUANT SAAS — Weekly Financial Scrape  {today}  {now}")
     print(f"{'='*55}")
 
+    # ── Backup DB before any scraping overwrites data ─────────
+    print("\n[0/2]  Backing up database...")
+    _backup_database()
+
     if not SCRAPER_AVAILABLE:
         print("  Scraper not available — weekly refresh skipped.")
         print(f"{'='*55}\n")
         return
 
-    print("\n[1/2]  Running full financial scrape (this may take several hours)...")
+    print("\n[1/3]  Running full financial scrape (this may take several hours)...")
     try:
         from scraper.pse_edge_scraper import scrape_all_and_save
         scrape_all_and_save()
@@ -576,7 +694,7 @@ def run_weekly_scrape():
         return
 
     # ── Step 1b: Force-refresh stale financial data ──────────
-    print("\n[1b/2]  Checking for stale financial data (>90 days since last update)...")
+    print("\n[2/3]  Checking for stale financial data (>90 days since last update)...")
     try:
         stale_tickers = db.get_stale_financials_tickers(days=90)
         if stale_tickers:
@@ -584,7 +702,7 @@ def run_weekly_scrape():
             try:
                 sys.path.insert(0, str(ROOT / 'scraper'))
                 from pse_edge_scraper import scrape_one as _scrape_one
-                for ticker in stale_tickers[:20]:   # cap at 20 per run to avoid rate limits
+                for ticker in stale_tickers[:50]:   # cap at 50 per run (3s delay between requests = ~10-15 min)
                     try:
                         print(f"  Re-fetching {ticker}...")
                         _scrape_one(ticker)
@@ -597,8 +715,30 @@ def run_weekly_scrape():
     except Exception as e:
         print(f"  Stale financials check failed: {e}")
 
-    print("\n[2/2]  Re-scoring all portfolios with fresh data...")
+    # ── Step 2b: Auto-update conglomerate segments from DB ────────
+    print("\n[2b/3] Auto-updating conglomerate segment data from DB...")
+    try:
+        from engine.conglomerate_autofill import autofill_segments_from_db
+        results = autofill_segments_from_db(verbose=False)
+        total   = sum(results.values())
+        print(f"  {total} listed-subsidiary segments refreshed across "
+              f"{len(results)} conglomerates.")
+    except Exception as e:
+        print(f"  Conglomerate autofill failed: {e}")
+
+    print("\n[3/3]  Re-scoring all portfolios with fresh data...")
     run_daily_job()
+
+    # ── Step 4: Cleanup stale data + VACUUM ───────────────────
+    print("\n[4/4]  Cleaning up stale data and vacuuming database...")
+    try:
+        stats = db.cleanup_stale_data()
+        print(f"  Pruned: {stats['prices_deleted']} price rows, "
+              f"{stats['activity_deleted']} activity rows, "
+              f"{stats['sentiment_deleted']} sentiment rows.")
+        print("  VACUUM complete — disk space reclaimed.")
+    except Exception as e:
+        print(f"  Cleanup failed: {e}")
 
     print(f"\n{'='*55}")
     print(f"  Weekly scrape complete.  {datetime.now().strftime('%H:%M:%S')}")

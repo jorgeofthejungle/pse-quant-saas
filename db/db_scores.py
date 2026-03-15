@@ -3,6 +3,7 @@
 # PSE Quant SaaS
 # ============================================================
 
+import json
 from db.db_connection import get_connection
 
 
@@ -100,4 +101,80 @@ def get_last_scores(portfolio_type: str) -> list:
 
     conn.close()
     return [{'ticker': r['ticker'], 'score': r['score'], 'rank': r['rank']}
+            for r in rows]
+
+
+# ── Unified v2 scores table ───────────────────────────────────
+
+def save_scores_v2(run_date: str, ranked_stocks: list):
+    """
+    Saves unified 4-layer scores to the scores_v2 table.
+    Stores rank, score, grade category, and full breakdown as JSON.
+    Each (ticker, run_date) pair is unique — upserts on conflict.
+    """
+    conn = get_connection()
+    for rank, stock in enumerate(ranked_stocks, 1):
+        breakdown = stock.get('breakdown') or {}
+        category  = breakdown.get('category', '')
+        conn.execute("""
+            INSERT INTO scores_v2 (ticker, run_date, score, rank, category, breakdown_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker, run_date)
+            DO UPDATE SET score          = excluded.score,
+                          rank           = excluded.rank,
+                          category       = excluded.category,
+                          breakdown_json = excluded.breakdown_json
+        """, (
+            stock['ticker'], run_date,
+            stock.get('score'), rank, category,
+            json.dumps(breakdown),
+        ))
+    conn.commit()
+    conn.close()
+
+
+def get_last_top5_v2() -> list:
+    """
+    Returns the list of top-5 tickers from the most recent scores_v2 run.
+    Returns empty list if no data yet.
+    """
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT MAX(run_date) AS latest FROM scores_v2 WHERE rank IS NOT NULL"
+    ).fetchone()
+    if not row or not row['latest']:
+        conn.close()
+        return []
+    latest = row['latest']
+    rows = conn.execute(
+        "SELECT ticker FROM scores_v2 WHERE run_date = ? AND rank <= 5 ORDER BY rank",
+        (latest,)
+    ).fetchall()
+    conn.close()
+    return [r['ticker'] for r in rows]
+
+
+def get_last_scores_v2() -> list:
+    """
+    Returns [{ticker, score, rank, category}] from the most recent scores_v2 run.
+    Returns empty list if no data yet.
+    """
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT MAX(run_date) AS latest FROM scores_v2 WHERE rank IS NOT NULL"
+    ).fetchone()
+    if not row or not row['latest']:
+        conn.close()
+        return []
+    latest = row['latest']
+    rows = conn.execute(
+        """SELECT ticker, score, rank, category
+           FROM scores_v2
+           WHERE run_date = ? AND rank IS NOT NULL
+           ORDER BY rank""",
+        (latest,)
+    ).fetchall()
+    conn.close()
+    return [{'ticker': r['ticker'], 'score': r['score'],
+             'rank': r['rank'], 'category': r['category']}
             for r in rows]

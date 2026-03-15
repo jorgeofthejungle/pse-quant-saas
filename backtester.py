@@ -7,7 +7,8 @@
 # Uses current prices (no multi-year price archive).
 # Educational only — not a price-return backtest.
 #
-# CLI: py backtester.py --portfolio pure_dividend --years 2022 2023 2024 2025
+# CLI: py backtester.py --years 2022 2023 2024 2025           (unified, default)
+#      py backtester.py --mode legacy --portfolio value --years 2022 2023 2024 2025
 # ============================================================
 
 import sys
@@ -26,10 +27,17 @@ from metrics import (calculate_roe, calculate_de, calculate_dividend_yield,
                      calculate_payout_ratio, calculate_cagr, calculate_fcf,
                      calculate_fcf_yield, calculate_fcf_coverage,
                      calculate_ev_ebitda)
+
+# ── Legacy scorer imports (kept for --mode legacy) ────────────
 from filters import (filter_pure_dividend_portfolio,
                      filter_dividend_growth_portfolio,
                      filter_value_portfolio)
 from scorer import score_dividend, score_value, score_hybrid
+
+# ── Unified v2 scorer imports ─────────────────────────────────
+from engine.filters_v2   import filter_unified
+from engine.scorer_v2    import score_unified
+from engine.sector_stats import compute_sector_stats
 
 
 # ── Constants ─────────────────────────────────────────────────
@@ -236,6 +244,64 @@ def run_simulation(portfolio_type: str, as_of_year: int) -> list:
         eligible.append(metrics)
 
     conn.close()
+
+    eligible.sort(key=lambda x: x['score'], reverse=True)
+    for rank, s in enumerate(eligible, 1):
+        s['rank'] = rank
+
+    return eligible
+
+
+def run_simulation_v2(as_of_year: int) -> list:
+    """
+    Unified 4-layer backtest simulation for a given year.
+    Uses filter_unified + score_unified (v2 engine).
+    Returns a ranked list: [{ticker, name, score, rank, category, breakdown}].
+    """
+    conn    = db.get_connection()
+    tickers = [r['ticker'] for r in conn.execute(
+        "SELECT ticker FROM stocks WHERE status = 'active' ORDER BY ticker"
+    ).fetchall()]
+    conn.close()
+
+    all_metrics = []
+    conn = db.get_connection()
+    for ticker in tickers:
+        metrics = _build_metrics_as_of(ticker, as_of_year, conn)
+        if metrics:
+            all_metrics.append(metrics)
+    conn.close()
+
+    # Compute sector stats from this snapshot (for PE normalisation)
+    sector_stats = compute_sector_stats(all_metrics)
+
+    eligible = []
+    for metrics in all_metrics:
+        ok, _ = filter_unified(metrics)
+        if not ok:
+            continue
+        # Build financial history as a list of dicts (for improvement/acceleration layers)
+        fin_history = []
+        raw_conn = db.get_connection()
+        rows = raw_conn.execute(
+            """SELECT year, revenue, net_income, equity, total_debt, cash,
+                      operating_cf, capex, ebitda, eps, dps
+               FROM financials
+               WHERE ticker = ? AND year <= ?
+               ORDER BY year DESC LIMIT 10""",
+            (metrics['ticker'], as_of_year)
+        ).fetchall()
+        raw_conn.close()
+        fin_history = [dict(r) for r in rows]
+
+        score, breakdown = score_unified(
+            metrics,
+            sector_stats=sector_stats,
+            financials_history=fin_history,
+        )
+        metrics['score']     = round(score, 1)
+        metrics['breakdown'] = breakdown
+        eligible.append(metrics)
 
     eligible.sort(key=lambda x: x['score'], reverse=True)
     for rank, s in enumerate(eligible, 1):
@@ -461,24 +527,37 @@ def main():
     parser = argparse.ArgumentParser(
         description='PSE Quant SaaS — Fundamental Backtest Simulator'
     )
+    parser.add_argument('--mode',
+        choices=['unified', 'legacy'], default='unified',
+        help='unified = 4-layer v2 scorer (default); legacy = 3-portfolio scorer')
     parser.add_argument('--portfolio',
-        choices=['pure_dividend', 'dividend_growth', 'value'], default='pure_dividend')
+        choices=['pure_dividend', 'dividend_growth', 'value'], default='pure_dividend',
+        help='Only used when --mode legacy')
     parser.add_argument('--years', nargs='+', type=int, default=DEFAULT_YEARS)
     parser.add_argument('--summary-only', action='store_true')
     args = parser.parse_args()
 
     db.init_db()
 
+    mode_label = ('UNIFIED (4-Layer v2)' if args.mode == 'unified'
+                  else f'LEGACY ({args.portfolio.replace("_", " ").upper()})')
+
     print()
+    print(f"  Mode: {mode_label}")
     print(f"  Running simulations for years: {args.years}")
+
     simulations = {}
     for year in sorted(args.years):
         print(f"  Scoring [{year}]...", end='', flush=True)
-        results = run_simulation(args.portfolio, year)
+        if args.mode == 'unified':
+            results = run_simulation_v2(year)
+        else:
+            results = run_simulation(args.portfolio, year)
         simulations[year] = results
         print(f" {len(results)} stocks passed.")
 
-    print_report(simulations, args.portfolio, summary_only=args.summary_only)
+    label = 'unified' if args.mode == 'unified' else args.portfolio
+    print_report(simulations, label, summary_only=args.summary_only)
 
 
 if __name__ == '__main__':

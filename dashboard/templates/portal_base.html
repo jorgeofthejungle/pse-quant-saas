@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StockPilot Philippines — {% block title %}PSE Stock Rankings{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:      #0F1E35;
+      --navy-mid:  #1B2D4F;
+      --navy-card: #162540;
+      --gold:      #F5A623;
+      --gold-dim:  rgba(245,166,35,0.15);
+      --bg:        #F4F6F9;
+      --surface:   #FFFFFF;
+      --border:    #E4E7EB;
+      --text:      #1B2D4F;
+      --muted:     #6B7280;
+      --muted-lt:  #9CA3AF;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ─── Navbar ─────────────────────────────────────────────── */
+    .pnav {
+      background: var(--navy);
+      height: 64px;
+      padding: 0 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+    }
+    .pnav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      text-decoration: none;
+    }
+    .pnav-brand-name {
+      display: block;
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
+    }
+    .pnav-brand-sub {
+      display: block;
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .pnav-links {
+      list-style: none;
+      display: flex;
+      gap: 1.75rem;
+    }
+    .pnav-links a {
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .pnav-links a:hover, .pnav-links a.active { color: #fff; }
+
+    /* ─── Page wrapper ───────────────────────────────────────── */
+    .portal-body {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 1.5rem 5rem;
+    }
+
+    /* ─── Buttons ────────────────────────────────────────────── */
+    .btn {
+      display: inline-block;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      padding: 0.7rem 1.5rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: none;
+    }
+    .btn-gold   { background: var(--gold); color: var(--navy); }
+    .btn-gold:hover { background: #e09615; }
+    .btn-outline-light {
+      background: transparent;
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    .btn-outline-light:hover { border-color: rgba(255,255,255,0.7); color: #fff; }
+    .btn-outline-navy {
+      background: transparent;
+      color: var(--navy-mid);
+      border: 1px solid var(--border);
+    }
+    .btn-outline-navy:hover { border-color: var(--navy-mid); }
+
+    /* ─── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+    }
+    .card.full-width { width: 100%; margin-bottom: 1.5rem; }
+    .card h2 { font-size: 1.1rem; font-weight: 700; color: var(--navy-mid); margin-bottom: 1.25rem; }
+
+    /* ─── Hero ───────────────────────────────────────────────── */
+    .hero-section {
+      background: var(--navy);
+      position: relative;
+      overflow: hidden;
+      padding: 5rem 2rem 4rem;
+    }
+    .hero-glow {
+      position: absolute;
+      width: 700px;
+      height: 500px;
+      background: radial-gradient(ellipse at center,
+        rgba(245,166,35,0.13) 0%,
+        rgba(245,166,35,0.04) 40%,
+        transparent 70%);
+      top: 50%;
+      left: 45%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .hero-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 3rem;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-text { flex: 1; }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      background: rgba(245,166,35,0.12);
+      border: 1px solid rgba(245,166,35,0.25);
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      margin-bottom: 1.25rem;
+    }
+    .hero-text h1 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .hero-text h1 span { color: var(--gold); }
+    .hero-text p {
+      font-size: 1.05rem;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.7;
+      margin-bottom: 1.75rem;
+      max-width: 480px;
+    }
+    .hero-cta { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+
+    /* Mock score card in hero */
+    .hero-mockup {
+      flex: 0 0 300px;
+      background: var(--navy-card);
+      border: 1px solid rgba(245,166,35,0.2);
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .hm-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .hm-ticker { font-size: 1rem; font-weight: 800; color: #fff; }
+    .hm-name   { font-size: 0.72rem; color: rgba(255,255,255,0.5); margin-top: 0.1rem; }
+    .hm-score-wrap { text-align: right; }
+    .hm-score  { font-size: 1.8rem; font-weight: 800; color: var(--gold); line-height: 1; }
+    .hm-grade  {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: rgba(245,166,35,0.15);
+      color: var(--gold);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      margin-top: 0.25rem;
+    }
+    .hm-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.45rem 0;
+    }
+    .hm-bar-label {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.5);
+      width: 68px;
+      flex-shrink: 0;
+    }
+    .hm-bar-track {
+      flex: 1;
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .hm-bar-fill {
+      height: 5px;
+      border-radius: 3px;
+      background: var(--gold);
+    }
+    .hm-bar-val {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.5);
+      width: 22px;
+      text-align: right;
+    }
+    .hm-mos {
+      margin-top: 1rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(22,163,74,0.12);
+      border: 1px solid rgba(22,163,74,0.25);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #4ade80;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─── Trust strip ────────────────────────────────────────── */
+    .trust-strip {
+      background: var(--navy-mid);
+      padding: 1.1rem 2rem;
+    }
+    .trust-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+    }
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .trust-num {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--gold);
+    }
+    .trust-desc {
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.6);
+    }
+
+    /* ─── Section headings ───────────────────────────────────── */
+    .section-head {
+      text-align: center;
+      padding: 3rem 1rem 2rem;
+    }
+    .section-label {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--gold);
+      margin-bottom: 0.65rem;
+    }
+    .section-head h2 {
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: var(--navy-mid);
+      margin-bottom: 0.6rem;
+    }
+    .section-head p {
+      font-size: 0.97rem;
+      color: var(--muted);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* ─── How it works ───────────────────────────────────────── */
+    .hiw-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 3rem;
+    }
+    .hiw-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 1.25rem;
+      text-align: center;
+    }
+    .hiw-num {
+      width: 40px;
+      height: 40px;
+      background: var(--gold);
+      color: var(--navy);
+      font-size: 1rem;
+      font-weight: 800;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 0.85rem;
+    }
+    .hiw-step strong {
+      display: block;
+      font-size: 0.95rem;
+      color: var(--navy-mid);
+      margin-bottom: 0.4rem;
+    }
+    .hiw-step p { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+
+    /* ─── Scoring layers ─────────────────────────────────────── */
+    .layers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 3rem;
+    }
+    .layer-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 1.25rem;
+      border-top: 3px solid var(--gold);
+    }
+    .layer-pct {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 0.3rem;
+    }
+    .layer-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--navy-mid);
+      margin-bottom: 0.5rem;
+    }
+    .layer-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+    .layer-signals {
+      margin-top: 0.85rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .signal-pill {
+      font-size: 0.68rem;
+      font-weight: 600;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 0.2rem 0.5rem;
+      border-radius: 20px;
+    }
+
+    /* ─── Sample analysis (reused from existing) ─────────────── */
+    .sample-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted-lt);
+      margin-bottom: 0.6rem;
+    }
+    .score-big  { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+    .grade-badge {
+      display: inline-block;
+      font-size: 1.4rem;
+      font-weight: 800;
+      padding: 0.2rem 0.7rem;
+      border-radius: 6px;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    .mos-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .mos-row { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; }
+    .mos-item-label {
+      font-size: 0.72rem; color: var(--muted-lt);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.2rem;
+    }
+    .mos-item-val { font-size: 1.35rem; font-weight: 700; color: var(--navy-mid); }
+    .mos-note  { font-size: 0.77rem; color: var(--muted-lt); margin-top: 0.65rem; line-height: 1.5; }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+    }
+    .metric-cell {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.8rem; text-align: center;
+    }
+    .mc-label {
+      font-size: 0.69rem; color: var(--muted-lt); text-transform: uppercase;
+      letter-spacing: 0.06em; display: block; margin-bottom: 0.25rem;
+    }
+    .mc-value { font-size: 1.05rem; font-weight: 700; color: var(--navy-mid); }
+    .breakdown-label {
+      font-size: 0.72rem; color: var(--muted-lt); text-transform: uppercase;
+      letter-spacing: 0.08em; font-weight: 600; margin-bottom: 0.85rem;
+    }
+    .layer-bar-wrap { margin: 0.55rem 0; }
+    .layer-bar-row  {
+      display: flex; justify-content: space-between;
+      font-size: 0.81rem; color: var(--text); margin-bottom: 0.25rem;
+    }
+    .layer-bar-row span:last-child { font-weight: 600; }
+    .layer-bar-track { background: var(--border); border-radius: 4px; height: 7px; }
+    .layer-bar-fill  { height: 7px; border-radius: 4px; background: var(--gold); }
+    .layer-expl { font-size: 0.77rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.45; }
+    .filter-status { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 6px; font-size: 0.82rem; }
+    .portal-disclaimer {
+      font-size: 0.76rem; color: var(--muted-lt);
+      border-top: 1px solid var(--border);
+      padding-top: 0.75rem; margin-top: 1.25rem; line-height: 1.5;
+    }
+
+    /* ─── Pricing ────────────────────────────────────────────── */
+    .pricing-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    .toggle-label { font-size: 0.88rem; color: var(--muted); font-weight: 500; }
+    .toggle-label.active { color: var(--navy-mid); font-weight: 700; }
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border: none;
+    }
+    .toggle-switch.on { background: var(--gold); }
+    .toggle-knob {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 18px; height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      transition: left 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-switch.on .toggle-knob { left: 23px; }
+    .save-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: rgba(22,163,74,0.1);
+      color: #16a34a;
+      border: 1px solid rgba(22,163,74,0.25);
+      padding: 0.2rem 0.5rem;
+      border-radius: 20px;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+    .price-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem 1.75rem;
+    }
+    .price-card.featured {
+      background: var(--navy-mid);
+      border-color: transparent;
+      box-shadow: 0 8px 40px rgba(27,45,79,0.3);
+      position: relative;
+    }
+    .featured-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--gold);
+      color: var(--navy);
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.25rem 1rem;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .price-tier {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted-lt);
+      margin-bottom: 0.4rem;
+    }
+    .price-card.featured .price-tier { color: rgba(255,255,255,0.5); }
+    .price-amount {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--navy-mid);
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+    .price-card.featured .price-amount { color: #fff; }
+    .price-period { font-size: 0.8rem; color: var(--muted-lt); margin-bottom: 0.25rem; }
+    .price-card.featured .price-period { color: rgba(255,255,255,0.5); }
+    .price-sub { font-size: 0.78rem; color: var(--muted-lt); margin-bottom: 1.5rem; min-height: 1.2rem; }
+    .price-card.featured .price-sub { color: rgba(255,255,255,0.4); }
+    .price-divider { border: none; border-top: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .price-card.featured .price-divider { border-color: rgba(255,255,255,0.1); }
+    .price-features { list-style: none; margin-bottom: 1.75rem; }
+    .price-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.86rem;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+    }
+    .price-card.featured .price-features li { color: rgba(255,255,255,0.75); }
+    .price-features .check { color: var(--gold); font-weight: 700; flex-shrink: 0; }
+    .price-features .cross { color: var(--muted-lt); flex-shrink: 0; }
+    .price-card.featured .price-features .cross { color: rgba(255,255,255,0.25); }
+    .btn-price-free {
+      display: block; text-align: center; text-decoration: none;
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.75rem; font-size: 0.9rem; font-weight: 600;
+      color: var(--navy-mid); background: var(--bg);
+      transition: border-color 0.15s;
+    }
+    .btn-price-free:hover { border-color: var(--navy-mid); }
+    .btn-price-paid {
+      display: block; text-align: center; text-decoration: none;
+      border-radius: 8px; padding: 0.75rem; font-size: 0.9rem; font-weight: 700;
+      color: var(--navy); background: var(--gold);
+      transition: background 0.15s;
+    }
+    .btn-price-paid:hover { background: #e09615; }
+
+    /* ─── FAQ ────────────────────────────────────────────────── */
+    .faq-list { margin-bottom: 3rem; }
+    details.faq-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+    details.faq-item[open] { border-color: rgba(27,45,79,0.25); }
+    details.faq-item summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.1rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--navy-mid);
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    details.faq-item summary::-webkit-details-marker { display: none; }
+    details.faq-item summary::after {
+      content: '+';
+      font-size: 1.2rem;
+      color: var(--muted-lt);
+      font-weight: 400;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    details.faq-item[open] summary::after {
+      content: '−';
+      color: var(--gold);
+    }
+    .faq-body {
+      padding: 0 1.5rem 1.1rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.65;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+    .faq-body strong { color: var(--navy-mid); }
+
+    /* ─── CTA block ──────────────────────────────────────────── */
+    .cta-block {
+      background: var(--navy);
+      border-radius: 16px;
+      padding: 3.5rem 2rem;
+      text-align: center;
+      margin-bottom: 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-block::before {
+      content: '';
+      position: absolute;
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(245,166,35,0.1) 0%, transparent 65%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .cta-block h2 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 0.75rem;
+      position: relative;
+    }
+    .cta-block p {
+      color: rgba(255,255,255,0.68);
+      max-width: 460px;
+      margin: 0 auto 1.75rem;
+      font-size: 1rem;
+      line-height: 1.65;
+      position: relative;
+    }
+    .cta-btns { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; position: relative; }
+    .cta-note { font-size: 0.8rem; color: rgba(255,255,255,0.35); margin-top: 1rem; position: relative; }
+
+    /* ─── Footer ─────────────────────────────────────────────── */
+    .portal-footer {
+      text-align: center;
+      font-size: 0.77rem;
+      color: var(--muted-lt);
+      padding: 2rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ─── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      .hero-inner   { flex-direction: column; text-align: center; }
+      .hero-mockup  { display: none; }
+      .hero-text h1 { font-size: 2rem; }
+      .hero-cta     { justify-content: center; }
+      .trust-inner  { gap: 1.5rem; }
+      .hiw-grid, .layers-grid { grid-template-columns: 1fr 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="pnav">
+  <a class="pnav-brand" href="{{ url_for('portal.index') }}">
+    <svg width="38" height="38" viewBox="0 0 38 38" fill="none">
+      <rect width="38" height="38" rx="9" fill="#0F1E35"/>
+      <rect x="5"  y="23" width="5.5" height="10" rx="1.2" fill="#F5A623"/>
+      <rect x="12" y="17" width="5.5" height="16" rx="1.2" fill="#F5A623"/>
+      <rect x="19" y="11" width="5.5" height="22" rx="1.2" fill="#F5A623"/>
+      <rect x="26" y="5"  width="5.5" height="28" rx="1.2" fill="#F5A623"/>
+      <path d="M5 26 Q16 19 32 9" stroke="rgba(245,166,35,0.28)" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div>
+      <span class="pnav-brand-name">StockPilot</span>
+      <span class="pnav-brand-sub">Philippines</span>
+    </div>
+  </a>
+  <ul class="pnav-links">
+    <li><a href="{{ url_for('portal.index') }}"    class="{{ 'active' if request.endpoint == 'portal.index' }}">Home</a></li>
+    <li><a href="{{ url_for('portal.glossary') }}" class="{{ 'active' if request.endpoint == 'portal.glossary' }}">Glossary</a></li>
+  </ul>
+</nav>
+
+{% block hero %}{% endblock %}
+
+<div class="portal-body">
+  {% block content %}{% endblock %}
+</div>
+
+<footer class="portal-footer">
+  StockPilot Philippines &bull; Data sourced from PSE Edge &bull;
+  For educational purposes only &bull; Not investment advice
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

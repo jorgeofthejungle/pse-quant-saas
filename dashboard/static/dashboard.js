@@ -68,6 +68,36 @@ function showToastGlobal(msg, type) {
   setTimeout(() => { t.style.display = 'none'; }, 3000);
 }
 
+// ── Hamburger sidebar toggle (mobile) ─────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('sidebar-overlay');
+  if (!hamburger || !sidebar) return;
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    overlay.classList.add('active');
+    hamburger.innerHTML = '&times;';
+  }
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+    hamburger.innerHTML = '&#9776;';
+  }
+
+  hamburger.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+
+  // Close sidebar on nav link click (mobile UX)
+  sidebar.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', closeSidebar);
+  });
+});
+
 // ── Confirm-before-submit utility ─────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {

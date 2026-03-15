@@ -62,8 +62,9 @@ def make_session() -> requests.Session:
 def _get(session, url: str, params: dict = None,
          retries: int = MAX_RETRIES) -> requests.Response | None:
     """
-    GET request with retry logic. Returns Response or None on failure.
-    Uses the shared session to maintain cookies across calls.
+    GET request with exponential backoff retry logic.
+    Delays: 3s, 6s, 12s (doubles each attempt, base = SCRAPE_DELAY_SECS).
+    Returns Response or None on all attempts exhausted.
     """
     for attempt in range(1, retries + 1):
         try:
@@ -74,5 +75,8 @@ def _get(session, url: str, params: dict = None,
         except requests.RequestException as e:
             print(f"  Request error: {e} (attempt {attempt}/{retries})")
         if attempt < retries:
-            time.sleep(SCRAPE_DELAY_SECS)
+            wait = SCRAPE_DELAY_SECS * (2 ** (attempt - 1))   # 3s, 6s, 12s
+            print(f"  Retrying in {wait}s...")
+            time.sleep(wait)
+    print(f"  All {retries} attempts failed for {url}")
     return None

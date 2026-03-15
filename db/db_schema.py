@@ -78,6 +78,21 @@ def init_db():
             FOREIGN KEY (ticker) REFERENCES stocks(ticker)
         );
 
+        -- ── Unified scores (v2 — clean schema) ─────────────────
+        -- One row per (ticker, run_date). Stores score, rank,
+        -- grade category, and full breakdown as JSON.
+        CREATE TABLE IF NOT EXISTS scores_v2 (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker         TEXT NOT NULL,
+            run_date       TEXT NOT NULL,
+            score          REAL,
+            rank           INTEGER,
+            category       TEXT,
+            breakdown_json TEXT,
+            UNIQUE(ticker, run_date),
+            FOREIGN KEY (ticker) REFERENCES stocks(ticker)
+        );
+
         -- ── PSE Edge disclosure index ─────────────────────────
         CREATE TABLE IF NOT EXISTS disclosures (
             id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,11 +167,33 @@ def init_db():
             updated_at TEXT NOT NULL
         );
 
+        -- ── Conglomerate segment financials ──────────────────
+        -- Manual data entry for Top 5 PH holding firms.
+        -- Used by conglomerate_scorer.py for segment-level scoring.
+        CREATE TABLE IF NOT EXISTS conglomerate_segments (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_ticker  TEXT NOT NULL,
+            segment_name   TEXT NOT NULL,
+            segment_ticker TEXT,
+            revenue        REAL,
+            net_income     REAL,
+            equity         REAL,
+            year           INTEGER NOT NULL,
+            notes          TEXT,
+            updated_at     TEXT,
+            UNIQUE(parent_ticker, segment_name, year),
+            FOREIGN KEY (parent_ticker) REFERENCES stocks(ticker)
+        );
+
         -- ── Indexes for common query patterns ────────────────
         CREATE INDEX IF NOT EXISTS idx_prices_ticker_date
             ON prices(ticker, date);
         CREATE INDEX IF NOT EXISTS idx_scores_run_date
             ON scores(run_date);
+        CREATE INDEX IF NOT EXISTS idx_scores_v2_run_date
+            ON scores_v2(run_date);
+        CREATE INDEX IF NOT EXISTS idx_scores_v2_ticker
+            ON scores_v2(ticker);
         CREATE INDEX IF NOT EXISTS idx_financials_ticker_year
             ON financials(ticker, year);
         CREATE INDEX IF NOT EXISTS idx_sentiment_ticker_date
@@ -167,6 +204,8 @@ def init_db():
             ON members(expiry_date);
         CREATE INDEX IF NOT EXISTS idx_activity_timestamp
             ON activity_log(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_segments_parent_year
+            ON conglomerate_segments(parent_ticker, year);
     """)
     conn.commit()
 
@@ -181,6 +220,8 @@ def init_db():
         # v2 unified scorer columns (Phase 9B)
         "ALTER TABLE scores ADD COLUMN unified_score REAL",
         "ALTER TABLE scores ADD COLUMN unified_rank  INTEGER",
+        # Stage 4.3: subscription tier for access control ('free' or 'paid')
+        "ALTER TABLE members ADD COLUMN tier TEXT DEFAULT 'paid'",
     ]
     for sql in migrations:
         try:

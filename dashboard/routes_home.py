@@ -5,9 +5,12 @@
 
 import sys
 import os
+import csv
+import io
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, render_template, jsonify
+from flask import Blueprint, render_template, jsonify, Response
+from dashboard.security import rate_limit
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'db'))
@@ -106,3 +109,74 @@ def api_activity():
     """JSON endpoint: recent activity log."""
     items = get_recent_activity(limit=30)
     return jsonify(items)
+
+
+@home_bp.route('/api/rankings/export')
+@rate_limit(limit=10)
+def api_rankings_export():
+    """CSV download of current unified rankings."""
+    scores_raw = db.get_last_scores('unified') or []
+    if not scores_raw:
+        return jsonify({'error': 'No rankings available yet.'}), 404
+
+    # Enrich with stock names
+    conn = db.get_connection()
+    name_map = {}
+    try:
+        rows = conn.execute("SELECT ticker, name, sector FROM stocks").fetchall()
+        name_map = {r['ticker']: {'name': r['name'], 'sector': r['sector']} for r in rows}
+    finally:
+        conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Rank', 'Ticker', 'Company', 'Sector', 'Score'])
+    for i, s in enumerate(sorted(scores_raw, key=lambda x: x.get('score', 0), reverse=True), 1):
+        t = s['ticker']
+        info = name_map.get(t, {})
+        writer.writerow([i, t, info.get('name', ''), info.get('sector', ''), s.get('score', '')])
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=pse_rankings_{today}.csv'},
+    )
+
+
+@home_bp.route('/api/health')
+def api_health():
+    """Health check: DB connectivity, last run, disk, scheduler."""
+    from dashboard.background import get_scheduler_status
+
+    db_ok = False
+    last_run = 'Never'
+    ticker_count = 0
+    db_size_kb = 0
+
+    try:
+        conn = db.get_connection()
+        row = conn.execute("SELECT MAX(run_date) AS run_date FROM scores").fetchone()
+        conn.close()
+        db_ok = True
+        last_run = row['run_date'] if row and row['run_date'] else 'Never'
+        ticker_count = len(db.get_all_tickers())
+    except Exception as e:
+        last_run = f'DB error: {e}'
+
+    try:
+        db_size_kb = round(os.path.getsize(db.DB_PATH) / 1024, 1)
+    except Exception:
+        pass
+
+    sched = get_scheduler_status()
+
+    return jsonify({
+        'status':          'ok' if db_ok else 'degraded',
+        'db_ok':           db_ok,
+        'db_size_kb':      db_size_kb,
+        'last_score_run':  last_run,
+        'stocks_tracked':  ticker_count,
+        'scheduler':       sched,
+        'timestamp':       datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    })

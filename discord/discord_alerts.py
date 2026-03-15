@@ -298,6 +298,68 @@ def send_opportunistic_alert(
     return success
 
 
+def send_expiry_notification(
+    webhook_url:  str,
+    member_name:  str,
+    expiry_date:  str,
+    days_left:    int,
+    renewal_url:  str = None,
+) -> bool:
+    """
+    Sends a subscription expiry reminder to the alerts channel.
+    Called 7 days, 1 day, and 0 days before expiry.
+
+    Parameters:
+        member_name  -- Discord display name
+        expiry_date  -- ISO date string 'YYYY-MM-DD'
+        days_left    -- 7, 1, or 0
+        renewal_url  -- PayMongo payment link (optional)
+    """
+    url = webhook_url or WEBHOOKS.get('alerts', '')
+    if not url:
+        return False
+
+    if days_left == 0:
+        urgency  = 'EXPIRED TODAY'
+        colour   = COLOUR_ALERT
+        msg_line = 'Your StockPilot PH subscription has expired.'
+    elif days_left == 1:
+        urgency  = 'EXPIRES TOMORROW'
+        colour   = COLOUR_ALERT
+        msg_line = 'Your StockPilot PH subscription expires tomorrow.'
+    else:
+        urgency  = f'EXPIRES IN {days_left} DAYS'
+        colour   = COLOUR_INFO
+        msg_line = f'Your StockPilot PH subscription expires in {days_left} days.'
+
+    fields = [
+        {'name': 'Member',      'value': member_name, 'inline': True},
+        {'name': 'Expiry Date', 'value': expiry_date, 'inline': True},
+    ]
+    if renewal_url:
+        fields.append({
+            'name':   'Renew Now',
+            'value':  f'[Click here to renew]({renewal_url})',
+            'inline': False,
+        })
+    else:
+        fields.append({
+            'name':   'To Renew',
+            'value':  'Contact @admin in this server for a renewal link.',
+            'inline': False,
+        })
+
+    embed = {
+        'title':       f'Subscription {urgency}',
+        'description': f'{msg_line}\nRenew to keep access to full rankings, PDF reports, and alerts.',
+        'color':       colour,
+        'fields':      fields,
+        'footer':      {'text': 'StockPilot PH · Thank you for your support.'},
+        'timestamp':   datetime.utcnow().isoformat() + 'Z',
+    }
+    return _post_webhook(url, {'embeds': [embed]})
+
+
 # ── Portfolio name lookup (matches scheduler_data.py) ────────
 _PORTFOLIO_NAMES = {
     'pure_dividend':   'PURE DIVIDEND',

@@ -12,6 +12,7 @@ for p in ['db', 'engine', 'scraper']:
 sys.path.insert(0, str(ROOT))
 
 from flask import Blueprint, render_template, jsonify, request
+from dashboard.security import rate_limit, sanitize_ticker
 
 stocks_bp = Blueprint('stocks', __name__)
 
@@ -32,6 +33,17 @@ def _get_stock_analysis(ticker: str) -> dict:
         return {'error': f'Import error: {e}'}
 
     stock = build_stock_dict_from_db(ticker.upper())
+    # Attach segment data for holding firms — enables conglomerate scoring
+    try:
+        from db.db_conglomerates import get_latest_segments
+        from engine.conglomerate_scorer import CONGLOMERATE_TICKERS
+        if ticker.upper() in CONGLOMERATE_TICKERS:
+            segs = get_latest_segments(ticker.upper())
+            if segs:
+                stock['segment_data'] = segs
+    except Exception:
+        pass
+
     if not stock:
         # Check if ticker exists at all
         conn = db.get_connection()
@@ -59,11 +71,17 @@ def _get_stock_analysis(ticker: str) -> dict:
     dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'), stock.get('revenue_cagr'))
     iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
                                       weights=(0.30, 0.35, 0.35))
+    # Apply conglomerate IV discount — calculated if segment data exists, else flat 20%
     if stock.get('sector') == 'Holding Firms' and iv:
-        iv = round(iv * 0.80, 2)
+        cong_data = breakdown.get('conglomerate', {})
+        discount  = cong_data.get('discount_pct', 20.0) / 100.0
+        iv = round(iv * (1.0 - discount), 2)
     price     = stock['current_price']
     mos_pct   = calc_mos_pct(iv, price)         if iv and price else None
     mos_price = calc_mos_price(iv, 'unified')   if iv else None
+
+    # Sentiment (from cache — no live fetch here)
+    sentiment = db.get_sentiment(ticker.upper())
 
     # Financial history rows (for display)
     fin_rows = [
@@ -110,6 +128,7 @@ def _get_stock_analysis(ticker: str) -> dict:
         'mos_signal':   mos_signal,
         'mos_color':    mos_color,
         'financials':   fin_rows,
+        'sentiment':    sentiment,
     }
 
 
@@ -154,6 +173,7 @@ def index():
 
 
 @stocks_bp.route('/api/stocks/search')
+@rate_limit(limit=60)
 def api_search():
     """Autocomplete: returns [{ticker, name}] matching the query."""
     import database as db
@@ -180,8 +200,12 @@ def api_search():
 
 
 @stocks_bp.route('/api/stock/<ticker>')
+@rate_limit(limit=30)
 def api_stock(ticker):
-    result = _get_stock_analysis(ticker.upper())
+    clean = sanitize_ticker(ticker)
+    if not clean:
+        return jsonify({'error': 'Invalid ticker format.'}), 400
+    result = _get_stock_analysis(clean)
     if result.get('stock'):
         s = result['stock']
         result['stock'] = {k: v for k, v in s.items()

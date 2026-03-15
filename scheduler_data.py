@@ -1,6 +1,11 @@
 # ============================================================
-# scheduler_data.py — Stock Loading & Pipeline Config Maps
+# scheduler_data.py — Stock Loading & Pipeline Config
 # PSE Quant SaaS — scheduler sub-module
+# ============================================================
+# NOTE: Legacy 3-portfolio FILTERS/SCORERS maps have been
+# retired from active scheduler code paths (Stage 1.1).
+# The unified v2 scorer is used for all live scoring.
+# Legacy scorer/filters remain importable for backtester.py.
 # ============================================================
 
 import sys
@@ -10,10 +15,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / 'engine'))
 sys.path.insert(0, str(ROOT / 'db'))
 
-from filters import (filter_pure_dividend_portfolio,
-                     filter_dividend_growth_portfolio,
-                     filter_value_portfolio)
-from scorer  import score_pure_dividend, score_dividend_growth, score_value
+# Active pipeline uses unified v2
+UNIFIED_SCORER = 'unified'
 
 # Try importing the scraper (may fail if dependencies not set up yet)
 try:
@@ -27,25 +30,6 @@ except ImportError:
     except ImportError:
         SCRAPER_AVAILABLE = False
         print("WARNING: pse_scraper not available — will use sample data.")
-
-# ── Pipeline lookup maps ───────────────────────────────────────
-FILTERS = {
-    'pure_dividend':   filter_pure_dividend_portfolio,
-    'dividend_growth': filter_dividend_growth_portfolio,
-    'value':           filter_value_portfolio,
-}
-
-SCORERS = {
-    'pure_dividend':   score_pure_dividend,
-    'dividend_growth': score_dividend_growth,
-    'value':           score_value,
-}
-
-PORTFOLIO_NAMES = {
-    'pure_dividend':   'Pure Dividend',
-    'dividend_growth': 'Dividend Growth',
-    'value':           'Value',
-}
 
 
 def load_sample_stocks():

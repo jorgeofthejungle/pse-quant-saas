@@ -11,6 +11,7 @@
 #   ok   = check_access(discord_id, feature)  # True / False
 # ============================================================
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'db'))
 sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(ROOT / '.env')
+
 from db.db_connection import get_connection
+
+
+def _is_admin(discord_id: str) -> bool:
+    """Returns True if this Discord ID is the server admin (ADMIN_DISCORD_ID in .env)."""
+    admin_id = os.getenv('ADMIN_DISCORD_ID', '')
+    return bool(admin_id) and str(discord_id) == admin_id
 
 # Features available to free tier (no subscription needed)
 FREE_FEATURES = {
@@ -43,11 +53,14 @@ PAID_FEATURES = {
 def get_member_tier(discord_id: str) -> str:
     """
     Returns 'paid' or 'free' for a Discord user.
+    Admin (ADMIN_DISCORD_ID) always gets 'paid' without needing a DB entry.
     'paid' if they have an active subscription in the DB.
     'free' otherwise (no account or expired).
     """
     if not discord_id:
         return 'free'
+    if _is_admin(discord_id):
+        return 'paid'
     conn = get_connection()
     row  = conn.execute("""
         SELECT tier, status FROM members

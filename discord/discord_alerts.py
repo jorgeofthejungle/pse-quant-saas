@@ -550,9 +550,6 @@ def send_weekly_briefing(
         '₱99/mo · Cancel anytime.'
     )
 
-    if invite_url and invite_url != '#':
-        teaser += f'\n\n[👉 Join our Discord server]({invite_url})'
-
     fields = [
         {
             'name':   '📋 This Week\'s Top 3',

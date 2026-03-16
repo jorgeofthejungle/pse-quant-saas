@@ -774,13 +774,11 @@ def run_weekly_scrape():
     briefing_url = WEBHOOKS.get('daily_briefing', '')
     if briefing_url:
         try:
-            import os as _os
-            invite       = _os.getenv('DISCORD_INVITE_URL', '#')
             date_display = 'Week of ' + datetime.now().strftime('%b %d, %Y')
             ranked_now   = db.get_last_scores_v2() or []
             ranked_now   = sorted(ranked_now, key=lambda x: x.get('score', 0) or 0, reverse=True)
             if ranked_now:
-                send_weekly_briefing(briefing_url, ranked_now, date_display, invite)
+                send_weekly_briefing(briefing_url, ranked_now, date_display)
                 print("  Weekly briefing sent to #daily-briefing.")
             else:
                 print("  Weekly briefing skipped (no ranked stocks in DB).")
@@ -1187,9 +1185,8 @@ def run_weekly_briefing():
     if not ranked_now:
         print("  No ranked stocks in DB — run scoring first.")
         return
-    invite       = _os.getenv('DISCORD_INVITE_URL', '#')
     date_display = 'Week of ' + datetime.now().strftime('%b %d, %Y')
-    ok = send_weekly_briefing(briefing_url, ranked_now, date_display, invite)
+    ok = send_weekly_briefing(briefing_url, ranked_now, date_display)
     print(f"  Weekly briefing {'sent' if ok else 'FAILED'}.")
 
 

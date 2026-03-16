@@ -219,9 +219,9 @@ def run_pipeline(dry_run: bool = False) -> bool:
         print("  [DRY RUN] Skipping Discord delivery.")
         return True
 
-    webhook_url = WEBHOOKS.get('value', '')
+    webhook_url = WEBHOOKS.get('rankings', '')
     if not webhook_url:
-        print("  No Discord webhook set. Add DISCORD_WEBHOOK_VALUE to .env")
+        print("  No Discord webhook set. Add DISCORD_WEBHOOK_RANKINGS to .env")
         return True
 
     success = send_report(

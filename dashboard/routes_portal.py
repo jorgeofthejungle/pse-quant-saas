@@ -8,6 +8,8 @@
 # ============================================================
 
 import sys
+import os
+import random
 from pathlib import Path
 from flask import Blueprint, render_template
 
@@ -18,7 +20,20 @@ sys.path.insert(0, str(ROOT))
 
 portal_bp = Blueprint('portal', __name__)
 
-SAMPLE_TICKER = 'JFC'
+FALLBACK_TICKER = 'JFC'
+
+
+def _pick_sample_ticker() -> str:
+    """Pick a random stock from the latest top-10 rankings. Falls back to JFC."""
+    try:
+        import database as db
+        scores = db.get_last_scores_v2() or []
+        if scores:
+            top10 = sorted(scores, key=lambda x: x.get('score', 0) or 0, reverse=True)[:10]
+            return random.choice(top10)['ticker']
+    except Exception:
+        pass
+    return FALLBACK_TICKER
 
 
 def _get_sample_analysis() -> dict:
@@ -37,7 +52,7 @@ def _get_sample_analysis() -> dict:
     except ImportError as e:
         return {'error': f'Import error: {e}'}
 
-    ticker = SAMPLE_TICKER
+    ticker = _pick_sample_ticker()
     stock  = build_stock_dict_from_db(ticker)
     if not stock:
         return {'error': f'{ticker} data not available. Run the scraper first.'}
@@ -101,17 +116,25 @@ def _get_sample_analysis() -> dict:
 
 
 PRICING = {
-    'monthly':      299,
-    'annual':       2499,
-    'annual_mo':    208,   # per-month equivalent when billed annually
-    'annual_save':  1089,  # savings vs monthly
+    'monthly':      99,
+    'annual':       999,
+    'annual_mo':    83,    # per-month equivalent when billed annually
+    'annual_save':  189,   # savings vs 12 months of monthly (12×99 − 999)
 }
+
+DISCORD_INVITE_URL = os.getenv('DISCORD_INVITE_URL', '#')
 
 @portal_bp.route('/')
 def index():
     analysis = _get_sample_analysis()
-    return render_template('portal.html', analysis=analysis,
-                           ticker=SAMPLE_TICKER, pricing=PRICING)
+    ticker   = analysis.get('stock', {}).get('ticker', FALLBACK_TICKER) if analysis.get('stock') else FALLBACK_TICKER
+    return render_template(
+        'portal.html',
+        analysis           = analysis,
+        ticker             = ticker,
+        pricing            = PRICING,
+        discord_invite_url = DISCORD_INVITE_URL,
+    )
 
 
 @portal_bp.route('/glossary')

@@ -62,10 +62,11 @@ def _mos_label(mos_pct) -> str:
     return f'{mos_pct:+.1f}% — ABOVE IV'
 
 
-def get_stock_embed(ticker: str) -> dict:
+def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
     """
     Returns a Discord embed dict for a stock analysis.
-    dict has keys: title, description, color, fields, footer.
+    Free tier: grade + name + sector only.
+    Paid tier: full analysis (score, IV, MoS, 4-layer breakdown, metrics).
     Returns {'error': str} on failure.
     """
     try:
@@ -75,9 +76,11 @@ def get_stock_embed(ticker: str) -> dict:
         from engine.scorer_v2 import score_unified
         from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
                                  calc_hybrid_intrinsic, calc_mos_pct)
+        from dashboard.access_control import check_access
     except ImportError as e:
         return {'error': f'Import error: {e}'}
 
+    is_paid = check_access(discord_id, 'stock_lookup') if discord_id else False
     t = ticker.upper().strip()
 
     # Resolve ticker
@@ -92,6 +95,32 @@ def get_stock_embed(ticker: str) -> dict:
 
     name   = row['name']
     sector = row['sector'] or 'Unknown'
+
+    # ── Free tier: grade only ──────────────────────────────────
+    if not is_paid:
+        # Run score so we can show the grade, but reveal nothing else
+        stock = build_stock_dict_from_db(t)
+        if stock:
+            fin_history = db.get_financials(t, years=10)
+            final_score, _ = score_unified(stock, financials_history=fin_history)
+            grade = _grade(round(final_score, 1))
+        else:
+            grade = '?'
+        return {
+            'title':       f'{t} — {name}',
+            'description': f'**{name}** · {sector}',
+            'color':       COLOUR_GREY,
+            'fields': [
+                {
+                    'name':   'Grade',
+                    'value':  f'**{grade}** — Subscribe to see the full score, intrinsic value, MoS, and 4-layer breakdown.',
+                    'inline': False,
+                },
+            ],
+            'footer': {
+                'text': 'StockPilot PH · Use /subscribe to unlock full analysis (₱99/mo).',
+            },
+        }
 
     stock = build_stock_dict_from_db(t)
     if not stock:
@@ -287,12 +316,39 @@ def get_help_embed() -> dict:
         {
             'name':  '📊 /stock <ticker>',
             'value': 'Full analysis for one stock. Example: `/stock DMC`\n'
-                     'Shows score, grade, margin of safety, and 4-layer breakdown.',
+                     'Shows score, grade, margin of safety, and 4-layer breakdown.\n'
+                     '*Premium members only — DM only.*',
             'inline': False,
         },
         {
             'name':  '🏆 /top10',
-            'value': 'Current top 10 stocks from the latest scoring run.',
+            'value': 'Current top 10 stocks from the latest scoring run.\n'
+                     '*Premium members only — DM only.*',
+            'inline': False,
+        },
+        {
+            'name':  '📌 /watchlist show',
+            'value': 'View your personal watchlist with current scores.\n*Premium — DM only.*',
+            'inline': False,
+        },
+        {
+            'name':  '➕ /watchlist add <ticker>',
+            'value': 'Add a stock to your watchlist (max 20). Example: `/watchlist add DMC`\n*Premium — DM only.*',
+            'inline': False,
+        },
+        {
+            'name':  '➖ /watchlist remove <ticker>',
+            'value': 'Remove a stock from your watchlist.\n*Premium — DM only.*',
+            'inline': False,
+        },
+        {
+            'name':  '💳 /subscribe',
+            'value': 'See pricing and get your payment link. DM only.',
+            'inline': False,
+        },
+        {
+            'name':  '👤 /mystatus',
+            'value': 'Check your subscription tier and expiry date. DM only.',
             'inline': False,
         },
         {

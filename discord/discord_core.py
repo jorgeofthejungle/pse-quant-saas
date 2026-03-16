@@ -17,10 +17,10 @@ load_dotenv(_PROJECT_ROOT / '.env')
 
 # ── Webhook URLs (loaded from .env) ───────────────────────
 WEBHOOKS = {
-    'pure_dividend':   os.getenv('DISCORD_WEBHOOK_DIVIDEND', ''),
-    'dividend_growth': os.getenv('DISCORD_WEBHOOK_HYBRID',   ''),
-    'value':           os.getenv('DISCORD_WEBHOOK_VALUE',    ''),
-    'alerts':          os.getenv('DISCORD_WEBHOOK_ALERTS',   ''),
+    'rankings':       os.getenv('DISCORD_WEBHOOK_RANKINGS',       ''),
+    'alerts':         os.getenv('DISCORD_WEBHOOK_ALERTS',         ''),
+    'deep_analysis':  os.getenv('DISCORD_WEBHOOK_DEEP_ANALYSIS',  ''),
+    'daily_briefing': os.getenv('DISCORD_WEBHOOK_DAILY_BRIEFING', ''),
 }
 
 # ── Colour codes (Discord embed colours) ──────────────────

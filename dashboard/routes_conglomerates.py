@@ -20,20 +20,20 @@ from db.db_conglomerates import (
     upsert_segment, get_segments, get_latest_segments,
     get_segment_years, delete_segment, get_all_segment_years,
 )
+from engine.conglomerate_map import CONGLOMERATE_MAP, ALL_CONGLOMERATE_TICKERS
 from engine.conglomerate_scorer import (
-    CONGLOMERATE_TICKERS, score_all_segments, weighted_segment_score,
+    score_all_segments, weighted_segment_score,
     compute_conglomerate_discount,
 )
 
+CONGLOMERATE_TICKERS = ALL_CONGLOMERATE_TICKERS
+
 conglomerates_bp = Blueprint('conglomerates', __name__)
 
-# Reference segment map — pre-populated in the UI form
+# Segment name suggestions built dynamically from the canonical map
 SEGMENT_MAP = {
-    'SM':    ['Retail (SMSM)', 'Property (SMPH)', 'Banking (BDO)', 'Mining (Atlas)'],
-    'AC':    ['Property (ALI)', 'Banking (BPI)', 'Telco (GLO)', 'Energy (ACEN)', 'Water (MWC)'],
-    'JGS':   ['Food (URC)', 'Airline (CEB)', 'Petrochemicals', 'Banking', 'Property (RLC)'],
-    'GTCAP': ['Banking (MBT)', 'Property (FLI)', 'Automotive', 'Insurance'],
-    'DMC':   ['Construction', 'Mining (SCC)', 'Power (DMCPHI)', 'Water', 'Real Estate'],
+    parent: [seg['name'] for seg in segs]
+    for parent, segs in CONGLOMERATE_MAP.items()
 }
 
 CURRENT_YEAR = datetime.now().year

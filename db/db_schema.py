@@ -185,6 +185,16 @@ def init_db():
             FOREIGN KEY (parent_ticker) REFERENCES stocks(ticker)
         );
 
+        -- ── Member stock watchlists ──────────────────────────
+        CREATE TABLE IF NOT EXISTS watchlists (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id TEXT NOT NULL,
+            ticker     TEXT NOT NULL,
+            added_at   TEXT NOT NULL,
+            UNIQUE(discord_id, ticker),
+            FOREIGN KEY (ticker) REFERENCES stocks(ticker)
+        );
+
         -- ── Indexes for common query patterns ────────────────
         CREATE INDEX IF NOT EXISTS idx_prices_ticker_date
             ON prices(ticker, date);
@@ -206,6 +216,8 @@ def init_db():
             ON activity_log(timestamp);
         CREATE INDEX IF NOT EXISTS idx_segments_parent_year
             ON conglomerate_segments(parent_ticker, year);
+        CREATE INDEX IF NOT EXISTS idx_watchlists_discord_id
+            ON watchlists(discord_id);
     """)
     conn.commit()
 

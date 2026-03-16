@@ -35,7 +35,9 @@ SCORERS        = {}
 PORTFOLIO_NAMES = {}
 from scheduler_jobs import (
     run_daily_job, run_daily_score, run_daily_report, run_weekly_scrape,
-    run_expiry_notifications,
+    run_expiry_notifications, run_weekly_briefing, run_stock_of_week,
+    run_weekly_digest, run_monthly_jobs,
+    run_monthly_dividend_calendar, run_monthly_model_performance,
     _run_score_pipeline, _top5_changed, _significant_score_change, _build_changes,
 )
 _score_and_rank = _run_score_pipeline   # backward-compat alias
@@ -53,7 +55,9 @@ from db.db_settings import get_setting
 
 __all__ = [
     'run_daily_job', 'run_daily_score', 'run_daily_report', 'run_weekly_scrape',
-    'run_expiry_notifications',
+    'run_expiry_notifications', 'run_weekly_briefing', 'run_stock_of_week',
+    'run_weekly_digest', 'run_monthly_jobs',
+    'run_monthly_dividend_calendar', 'run_monthly_model_performance',
     '_score_and_rank', '_run_score_pipeline',
     '_top5_changed', '_significant_score_change', '_build_changes',
     'load_sample_stocks', '_load_stocks',
@@ -130,6 +134,21 @@ def start_scheduler():
         name='PSE Weekly Full Financial Scrape',
         misfire_grace_time=3600,
     )
+    scheduler.add_job(
+        run_stock_of_week,
+        CronTrigger(day_of_week='mon', hour=8, minute=0),
+        id='stock_of_week',
+        name='Stock of the Week (Monday 8 AM)',
+        misfire_grace_time=3600,
+    )
+    # Friday 5 PM — weekly digest DM to all active premium members
+    scheduler.add_job(
+        run_weekly_digest,
+        CronTrigger(day_of_week='fri', hour=17, minute=0),
+        id='weekly_digest',
+        name='Weekly Digest DM (Friday 5 PM)',
+        misfire_grace_time=3600,
+    )
     # Daily 9 AM — expiry renewal reminders (7d, 1d, 0d before expiry)
     scheduler.add_job(
         run_expiry_notifications,
@@ -137,6 +156,14 @@ def start_scheduler():
         id='daily_expiry_notifications',
         name='Subscription Expiry Notifications (9 AM daily)',
         misfire_grace_time=600,
+    )
+    # 1st of month 9 AM — dividend calendar + model performance → #deep-analysis
+    scheduler.add_job(
+        run_monthly_jobs,
+        CronTrigger(day=1, hour=9, minute=0),
+        id='monthly_reports',
+        name='Monthly Reports (1st of month 9 AM)',
+        misfire_grace_time=3600,
     )
 
     print("=" * 55)
@@ -146,7 +173,10 @@ def start_scheduler():
     print(f"  Score run:          weekdays {score_h:02d}:{score_m:02d} PHT")
     print(f"  Report run:         weekdays {report_h:02d}:{report_m:02d} PHT")
     print(f"  Full scrape:        {WEEKLY_SCRAPE_DAY.upper()} {WEEKLY_SCRAPE_HOUR:02d}:00 PHT")
+    print(f"  Stock of the Week:  MON 08:00 PHT → #deep-analysis")
+    print(f"  Weekly Digest DM:   FRI 17:00 PHT → all active members")
     print(f"  Expiry reminders:   09:00 PHT daily")
+    print(f"  Monthly reports:    1st of month 09:00 PHT → #deep-analysis")
     print("  Press Ctrl+C to stop")
     print("=" * 55)
 
@@ -201,6 +231,36 @@ def main():
         help='Run expiry notification check immediately (for testing)',
     )
     parser.add_argument(
+        '--run-briefing',
+        action='store_true',
+        help='Send the weekly public briefing to #weekly-briefing immediately (for testing)',
+    )
+    parser.add_argument(
+        '--run-sotw',
+        action='store_true',
+        help='Send Stock of the Week to #deep-analysis immediately (for testing)',
+    )
+    parser.add_argument(
+        '--run-digest',
+        action='store_true',
+        help='Send Weekly Digest DM to all active premium members immediately (for testing)',
+    )
+    parser.add_argument(
+        '--run-monthly',
+        action='store_true',
+        help='Run both monthly reports (dividend calendar + model performance) immediately',
+    )
+    parser.add_argument(
+        '--run-calendar',
+        action='store_true',
+        help='Send monthly dividend calendar to #deep-analysis immediately (for testing)',
+    )
+    parser.add_argument(
+        '--run-performance',
+        action='store_true',
+        help='Send monthly model performance to #deep-analysis immediately (for testing)',
+    )
+    parser.add_argument(
         '--run-score',
         action='store_true',
         help='Run the 4 PM scoring phase only (no PDF sent)',
@@ -214,7 +274,25 @@ def main():
 
     db.init_db()
 
-    if args.run_expiry:
+    if args.run_monthly:
+        print("Running both monthly reports now...")
+        run_monthly_jobs()
+    elif args.run_calendar:
+        print("Sending monthly dividend calendar now...")
+        run_monthly_dividend_calendar()
+    elif args.run_performance:
+        print("Sending monthly model performance now...")
+        run_monthly_model_performance()
+    elif args.run_digest:
+        print("Sending Weekly Digest DM now...")
+        run_weekly_digest()
+    elif args.run_sotw:
+        print("Sending Stock of the Week now...")
+        run_stock_of_week()
+    elif args.run_briefing:
+        print("Sending weekly briefing now...")
+        run_weekly_briefing()
+    elif args.run_expiry:
         print("Running expiry notification check now...")
         run_expiry_notifications()
     elif args.run_alerts:

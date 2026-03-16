@@ -17,7 +17,7 @@
       </p>
       <div class="hero-cta">
         <a href="#sample" class="btn btn-gold">See Free Sample ↓</a>
-        <a href="#pricing" class="btn btn-outline-light">View Plans</a>
+        <a href="{{ discord_invite_url }}" target="_blank" rel="noopener" class="btn btn-outline-light">Join Our Discord</a>
       </div>
     </div>
 
@@ -315,7 +315,7 @@
     <div class="price-sub">&nbsp;</div>
     <hr class="price-divider">
     <ul class="price-features">
-      <li><span class="check">✓</span> Sample analysis (JFC)</li>
+      <li><span class="check">✓</span> Sample analysis (random top stock)</li>
       <li><span class="check">✓</span> Financial terms glossary</li>
       <li><span class="check">✓</span> How the scoring model works</li>
       <li><span class="cross">✗</span> Full 223-stock rankings</li>
@@ -345,7 +345,7 @@
       <li><span class="check">✓</span> Weekly PDF report</li>
       <li><span class="check">✓</span> Access to all future features</li>
     </ul>
-    <a href="#contact" class="btn-price-paid">Get Access →</a>
+    <a href="{{ discord_invite_url }}" target="_blank" rel="noopener" class="btn-price-paid">Join Our Discord →</a>
   </div>
 </div>
 
@@ -451,9 +451,10 @@
     not collecting data. Full rankings, daily updates, and real-time alerts.
   </p>
   <div class="cta-btns">
-    <a href="{{ url_for('portal.glossary') }}" class="btn btn-outline-light">Learn the Terms First →</a>
+    <a href="{{ discord_invite_url }}" target="_blank" rel="noopener" class="btn btn-gold">Join Our Discord →</a>
+    <a href="{{ url_for('portal.glossary') }}" class="btn btn-outline-light">Learn the Terms First</a>
   </div>
-  <div class="cta-note">Contact Josh on Discord to get access · No automated signup yet</div>
+  <div class="cta-note">Join the Discord server · Use <strong>/subscribe</strong> in a DM with the bot to get access</div>
 </div>
 
 {% endblock %}

@@ -95,6 +95,12 @@ STALE_PRICE_BLOCK_DAYS = 90
 # as 'suspended' during the weekly scrape comparison.
 STALE_SCRAPE_SUSPEND_DAYS = 14
 
+# ── Admin Access ───────────────────────────────────────────
+# Your Discord snowflake ID — only this user can use /admin commands.
+# Set ADMIN_DISCORD_ID in .env (never hardcode here).
+import os as _os
+ADMIN_DISCORD_ID = _os.getenv('ADMIN_DISCORD_ID', '')
+
 # ── Fundamental Momentum ───────────────────────────────────
 # Minimum historical data points required to compute any momentum signal.
 # With 4 points: 2 recent vs 2 prior (minimal but usable).

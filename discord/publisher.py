@@ -16,18 +16,22 @@ from discord.discord_core import (
     COLOUR_OPPORTUNITY, COLOUR_HALF_POS, COLOUR_CAUTION, COLOUR_SHORTLIST,
     PORTFOLIO_COLOURS, PORTFOLIO_EMOJI, MAX_FILE_BYTES,
 )
-from discord.discord_reports import send_report
-from discord.discord_alerts  import (
+from discord.discord_reports  import send_report
+from discord.discord_alerts   import (
     send_dividend_alert, send_price_alert, send_earnings_alert,
     send_rescore_notice, send_opportunistic_alert, send_sentiment_signal,
     send_shortlist_change, send_expiry_notification,
+    send_weekly_briefing, send_stock_of_week,
 )
+from discord.discord_monthly  import send_dividend_calendar, send_model_performance
 
 __all__ = [
     'send_report',
     'send_dividend_alert', 'send_price_alert', 'send_earnings_alert',
     'send_rescore_notice', 'send_opportunistic_alert', 'send_sentiment_signal',
     'send_shortlist_change', 'send_expiry_notification',
+    'send_weekly_briefing', 'send_stock_of_week',
+    'send_dividend_calendar', 'send_model_performance',
     'test_webhook',
     'WEBHOOKS', 'DISCLAIMER', 'SIGNAL_DISCLAIMER',
 ]

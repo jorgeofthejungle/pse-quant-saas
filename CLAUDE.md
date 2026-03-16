@@ -34,12 +34,13 @@ Never hardcode model strings. Always import from `config.py`.
 
 **What this system does:**
 - Scrapes financial data from PSE Edge (edge.pse.com.ph)
-- Parses and stores data in a local SQLite database
+- Automatically audits and cleans scraped data (data quality pipeline)
 - Scores every PSE stock using a unified 4-layer fundamental framework
 - Calculates Margin of Safety (intrinsic value vs current price)
 - Enriches top stocks with AI-powered news sentiment (Claude Haiku)
 - Generates professional PDF reports (StockPilot PH Rankings)
-- Delivers reports to a single Discord channel automatically on a schedule
+- Delivers reports to Discord channels automatically on a schedule
+- Runs a Discord slash-command bot for premium member access
 - Sends real-time alerts for new dividends, earnings, and price triggers
 - Provides a local Flask dashboard for admin and member management
 
@@ -52,17 +53,17 @@ Never hardcode model strings. Always import from `config.py`.
 | Persistence | 30% | Improvement consistent and reliable (consecutive positive YoY years) |
 
 Dividends are a bonus signal within the score — not a filter requirement.
-All 223 PSE stocks compete in one unified ranking.
+All PSE stocks compete in one unified ranking.
 
 **Architecture pipeline:**
 ```
-PSE Edge → Scraper → Parser → Validator → Database
-                                              ↓
-                              Metrics → Filter → Scorer → MoS
-                                                            ↓
-                                    Sentiment (Haiku) → PDF Report
-                                                            ↓
-                                                   Discord → Members
+PSE Edge → Scraper → Data Quality Pipeline → Database
+                                                 ↓
+                             Metrics → Filter → Scorer → MoS
+                                                           ↓
+                                   Sentiment (Haiku) → PDF Report
+                                                           ↓
+                                          Discord Webhooks + Bot → Members
 ```
 
 ---
@@ -84,23 +85,24 @@ pse-quant-saas/
 │   ├── scorer.py           ← Legacy scoring engine ✅ (archived facade)
 │   │   ├── scorer_utils.py
 │   │   ├── scorer_explanations.py
-│   │   └── scorer_momentum.py  ← Fundamental momentum composite ✅
+│   │   └── scorer_momentum.py
 │   ├── scorer_v2.py        ← Unified 4-layer scorer ✅
-│   │   ├── scorer_health.py         ← Layer 1: Health
-│   │   ├── scorer_improvement.py    ← Layer 2: Improvement
-│   │   ├── scorer_acceleration.py   ← Layer 3: Acceleration
-│   │   ├── scorer_persistence.py    ← Layer 4: Persistence
+│   │   ├── scorer_health.py
+│   │   ├── scorer_improvement.py
+│   │   ├── scorer_acceleration.py
+│   │   ├── scorer_persistence.py
 │   │   └── scorer_explanations_value.py
 │   ├── sector_stats.py     ← Dynamic sector median computation ✅
 │   ├── mos.py              ← Margin of Safety calculator ✅
 │   ├── validator.py        ← Data validation layer ✅
-│   └── sentiment_engine.py ← Claude Haiku news sentiment ✅
+│   ├── sentiment_engine.py ← Claude Haiku news sentiment ✅
+│   └── conglomerate_scorer.py ← Holding firm segment analysis ✅
 │
 ├── scraper/                ← PSE Edge data collection
 │   ├── pse_edge_scraper.py ← Main scraper facade ✅
 │   │   ├── pse_session.py
 │   │   ├── pse_lookup.py
-│   │   ├── pse_stock_data.py
+│   │   ├── pse_stock_data.py   ← Dividend scraper (COMMON-only whitelist, deduped) ✅
 │   │   └── pse_financial_reports.py
 │   └── news_fetcher.py     ← Yahoo Finance + news RSS ✅
 │
@@ -109,9 +111,12 @@ pse-quant-saas/
 │   ├── db_connection.py    ← SQLite connection + DB_PATH ✅
 │   ├── db_schema.py        ← Table creation (init_db) ✅
 │   ├── db_prices.py        ← Price data CRUD ✅
-│   ├── db_scores.py        ← Score storage + get_last_top5 ✅
-│   ├── db_financials.py    ← Financial data CRUD ✅
-│   └── db_sentiment.py     ← Sentiment cache CRUD ✅
+│   ├── db_scores.py        ← Score storage + get_last_scores_v2 ✅
+│   ├── db_financials.py    ← Financial data CRUD (yield gate at write) ✅
+│   ├── db_sentiment.py     ← Sentiment cache CRUD ✅
+│   ├── db_conglomerates.py ← Conglomerate segment data CRUD ✅
+│   ├── db_data_quality.py  ← Post-scrape data quality auditor ✅
+│   └── db_maintenance.py   ← DPS auto-cleaner + stale data pruner ✅
 │
 ├── reports/                ← PDF generation
 │   ├── pdf_generator.py    ← Facade ✅
@@ -121,32 +126,43 @@ pse-quant-saas/
 │   ├── pdf_stock_detail_page.py
 │   └── pdf_sentiment.py
 │
-├── discord/                ← Discord delivery
-│   ├── publisher.py        ← Facade ✅
+├── discord/                ← Discord delivery and bot
+│   ├── publisher.py        ← Webhook sender facade ✅
 │   ├── discord_core.py
 │   ├── discord_reports.py
-│   └── discord_alerts.py
+│   ├── discord_alerts.py
+│   ├── discord_dm.py       ← Direct message via Discord REST API ✅
+│   ├── bot.py              ← Slash command bot entry point ✅
+│   ├── bot_commands.py     ← /stock, /top10, /help logic ✅
+│   ├── bot_subscribe.py    ← /subscribe, /mystatus logic ✅
+│   ├── bot_watchlist.py    ← /watchlist show/add/remove logic ✅
+│   └── bot_admin.py        ← /admin commands (Josh only) ✅
 │
 ├── alerts/
-│   └── alert_engine.py     ← Price, dividend, earnings alerts ✅
+│   ├── alert_engine.py     ← Price, dividend, earnings alerts ✅
+│   └── disclosure_monitor.py ← PSE Edge feed monitor (15-min polling) ✅
 │
 ├── dashboard/              ← Local Flask admin dashboard ✅
 │   ├── app.py              ← Flask app factory, runs on :8080
 │   ├── background.py       ← Thread-based pipeline runner + scheduler process control
+│   ├── access_control.py   ← Member tier checking (check_access, get_member_tier) ✅
+│   ├── security.py         ← Security utilities ✅
 │   ├── db_members.py       ← Members/subscriptions DB operations
 │   ├── routes_home.py      ← Overview page + /api/status (unified rankings)
 │   ├── routes_pipeline.py  ← Pipeline controls + scheduler start/stop
 │   ├── routes_members.py   ← Member CRUD + extend/cancel
 │   ├── routes_analytics.py ← Chart data JSON endpoints
-│   ├── routes_settings.py  ← Config display + webhook test (2 webhooks only)
+│   ├── routes_settings.py  ← Config display + webhook test
 │   ├── routes_paymongo.py  ← PayMongo payment link generation
 │   ├── routes_stocks.py    ← Stock Lookup page + autocomplete API
-│   ├── templates/          ← Jinja2 HTML templates (8 files, incl. stocks.html)
+│   ├── routes_portal.py    ← Public portal/landing page
+│   ├── routes_conglomerates.py ← Conglomerates deep-dive page
+│   ├── templates/          ← Jinja2 HTML templates
 │   └── static/             ← CSS + JS (style.css, dashboard.js)
 │
 ├── scheduler.py            ← APScheduler facade ✅
 │   ├── scheduler_data.py   ← Ticker lists + run-date helpers
-│   └── scheduler_jobs.py   ← daily_job, run_alert_check
+│   └── scheduler_jobs.py   ← All scheduled job functions
 │
 ├── data/
 │   ├── raw/                ← Raw scraped HTML/JSON
@@ -181,47 +197,14 @@ Function: `filter_unified(stock)` → returns `(eligible: bool, reason: str)`
 Hard filters: min 3 years of EPS/Revenue/OCF data, 3Y normalized EPS > 0,
 no persistent negative OCF (2+ consecutive years), D/E ≤ 2.5x (non-bank) or ≤ 10x (bank).
 
-### engine/filters.py (archived — legacy 3-portfolio system)
-Functions: `filter_dividend_portfolio(stock)`,
-`filter_value_portfolio(stock)`, `filter_hybrid_portfolio(stock)`
-Each returns: `(eligible: bool, reason: str)`. Kept for reference only.
-
 ### engine/scorer_v2.py (unified 4-layer scorer)
 Function: `score_unified(stock, financials_history)` → returns `(score: float, breakdown: dict)`
 Four layers: health (25%), improvement (30%), acceleration (15%), persistence (30%).
-
-**Layer breakdown:**
-| Layer | Weight | Key signals |
-|-------|--------|-------------|
-| Health | 25% | ROE, operating margin/OCF quality, D/E, FCF yield, EPS stability |
-| Improvement | 30% | Revenue delta, EPS delta, OCF delta, ROE delta (3Y smoothed) |
-| Acceleration | 15% | 2-year delta-of-delta for Revenue, EPS, OCF |
-| Persistence | 30% | Consecutive positive YoY years for Revenue, EPS, OCF + direction consistency |
-
-Breakdown dict format:
-```python
-{
-  'layer_name': {
-    'score':       float,   # 0-100 sub-score
-    'weight':      float,   # e.g. 0.30
-    'explanation': str,     # plain English specific to this stock
-  }
-}
-```
-
-**CRITICAL: Do not change weights or normalisation thresholds
-without explicit instruction from the user. The scoring logic
-is deterministic by design.**
-
-### engine/scorer.py (archived — legacy 3-portfolio system)
-Functions: `score_dividend(metrics)`, `score_value(metrics)`,
-`score_hybrid(metrics)`. Kept for reference and backtester compatibility.
+**CRITICAL: Do not change weights or normalisation thresholds without explicit instruction.**
 
 ### engine/mos.py
-Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`,
-`calc_mos_price`, `calc_mos_pct`, `calc_hybrid_intrinsic`
-Risk-free rate = 6.5% (PH 10Y T-bond). Update periodically.
-Max DDM growth rate capped at 7% to prevent model explosion.
+Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`, `calc_mos_price`, `calc_mos_pct`, `calc_hybrid_intrinsic`
+Risk-free rate = 6.5% (PH 10Y T-bond). Max DDM growth rate capped at 7%.
 
 ### engine/sentiment_engine.py
 Uses `PIPELINE_AI_MODEL` from `config.py` (Claude Haiku).
@@ -229,41 +212,112 @@ Entry: `enrich_with_sentiment(stocks)` — enriches list in-place.
 Caches results in `sentiment` DB table for 24 hours.
 Returns `None` silently if `ANTHROPIC_API_KEY` is missing.
 
+### scraper/pse_stock_data.py — scrape_dividend_history()
+Key quality controls (permanent — do not loosen):
+- COMMON shares whitelist: `{'COMMON', 'ORDINARY', 'COMMON SHARES', 'ORDINARY SHARES', 'SHARES', ''}`
+- Ex-date deduplication: first occurrence per ex-date wins (most recent amendment)
+- Per-share rate: currency-prefixed regex `r'(?:P|PHP|Php)\s*([\d]+\.[\d]+)'`, cap ₱0.001–₱100
+- Returns `[{year: int, dps: float}]` newest-first, up to 6 years
+
+### db/db_financials.py — upsert_financials()
+- `force=False` uses `COALESCE(new, existing)` so existing good data is not overwritten
+- `force=True` overwrites ALL fields — use only when you are certain all fields are correct
+- Yield gate at write: DPS yielding > 40% (non-REIT) or > 50% (REIT) is blocked
+
+### db/db_data_quality.py
+Post-scrape financial data auditor. Checks:
+- Current-year DPS (likely partial/attribution error)
+- Implausible yield > 15% (penny stock exception: price < ₱2 → WARN not ERROR)
+- Payout ratio > 200% (holding co exception: yield < 5% → WARN)
+- DPS jumped > 3× vs prior year
+- DPS only — no other financials
+- Negative revenue
+- EPS > 500 (unit mismatch)
+- Net margin > 500% (holding co or unit error)
+- EPS vs NI mismatch > 100× (uses market_cap/close to derive shares)
+
+Key functions:
+- `run_audit(ticker_filter=None)` → `list[dict]` — each issue has ticker, year, check, severity, detail, suggested_action
+- `get_dividend_quality_flags()` → `set[(ticker, year)]` — used by calendar query to exclude bad data
+- `print_report(issues)` — formatted console output
+- CLI: `py db/db_data_quality.py` or `py db/db_data_quality.py --ticker DMC`
+
+### db/db_maintenance.py
+- `clean_bad_dps(max_yield_non_reit=20.0, max_yield_reit=30.0, dry_run=False)` — NULLs DPS with implausible yield; returns `{nulled, tickers_affected}`
+- `cleanup_stale_data(prices_keep_days=365, activity_keep_days=90, sentiment_keep_days=7, vacuum=True)` — prunes old rows and VACUUMs
+
 ### reports/pdf_generator.py (facade)
-Function: `generate_report(portfolio_type, ranked_stocks,
-output_path, total_stocks_screened)`
-Includes sentiment panel per stock when `sentiment_data` is present.
+Function: `generate_report(portfolio_type, ranked_stocks, output_path, total_stocks_screened)`
+Shows ALL qualifying stocks (no cap). Includes sentiment panel when data is present.
 
 ### discord/publisher.py (facade)
-Loads webhook URLs from `.env` via `python-dotenv`.
-Functions: `send_report`, `send_dividend_alert`,
-`send_price_alert`, `send_earnings_alert`,
-`send_rescore_notice`, `send_opportunistic_alert`, `test_webhook`
+Loads webhook URLs from `.env`. 4 webhooks: `rankings`, `alerts`, `deep_analysis`, `daily_briefing`.
+Functions: `send_report`, `send_dividend_alert`, `send_price_alert`, `send_earnings_alert`,
+`send_rescore_notice`, `send_weekly_briefing`, `send_stock_of_week`,
+`send_dividend_calendar`, `send_model_performance`
+
+### discord/bot.py
+Slash command bot. Run with `py discord/bot.py`.
+- `_premium_dm_gate(interaction)` — DM-only + premium member check (returns error string or None)
+- `_dm_only_gate(interaction)` — DM-only, no premium check (for /subscribe, /mystatus)
+- `_admin_gate(interaction)` — DM-only + ADMIN_DISCORD_ID check
+- All admin handlers use `asyncio.to_thread()` to avoid blocking the event loop
+- Guild sync: set `DISCORD_GUILD_ID` in `.env` for instant command propagation (testing)
+- Global sync (no DISCORD_GUILD_ID): takes up to 1 hour to propagate
+
+### discord/bot_admin.py
+Josh-only commands via `/admin` group. All functions return embed dicts.
+- `get_admin_list_embed()` — all active members
+- `get_admin_pending_embed()` — pending members
+- `confirm_member_embed(query)` — activates member + sends welcome DM (calls `send_welcome_dm` synchronously — bot.py wraps in asyncio.to_thread)
+- `extend_member_embed(query, days)` — extends subscription
+- `get_member_status_embed(query)` — full member detail
+- `_find_member(query)` — finds by exact discord_id or partial name match
+
+### discord/discord_dm.py
+Sends embeds/text DMs via Discord REST API (bot token, not webhook).
+- `send_dm_embed(discord_id, embed)` → `(bool, str)`
+- `send_welcome_dm(discord_id, member_name, expiry_date)` → `(bool, str)`
+- `send_dm_text(discord_id, content)` → `(bool, str)`
+Uses synchronous `requests` — always call from a thread (not directly from async).
+
+### dashboard/access_control.py
+Member tier and access control for bot commands and portal.
+- `check_access(discord_id, feature)` → `bool`
+- `get_member_tier(discord_id)` → `'free' | 'paid'`
+- `get_member_by_discord_id(discord_id)` → `dict | None`
+Features: `'discord_bot'`, `'stock_lookup'`, `'watchlist'`, `'pdf_reports'`
 
 ### alerts/alert_engine.py
 Three checks: price (DB-only), dividend (PSE Edge), earnings (PSE Edge).
 First-run baseline: records existing disclosures without alerting.
-Only checks top-15 ranked tickers to avoid PSE Edge rate limits.
-CLI: `py alerts/alert_engine.py --dry-run`
+Atomic dedup: `_claim_disclosure()` uses `INSERT OR IGNORE` + `rowcount`.
+Only checks top-15 ranked tickers. CLI: `py alerts/alert_engine.py --dry-run`
+
+### alerts/disclosure_monitor.py
+15-minute polling of PSE Edge disclosure feed.
+`run_disclosure_check(dry_run=False)` → count of disclosures sent.
+Registered in scheduler as interval job (every 15 minutes, all day).
 
 ### dashboard/app.py
 Flask app — run with `py dashboard/app.py`, open `http://localhost:8080`.
-6 pages: Overview, Pipeline, Stock Lookup, Members, Analytics, Settings.
-PayMongo integration: generates payment links via API (manual confirmation).
-New DB tables: `members`, `subscriptions`, `activity_log`.
-
-### dashboard/routes_stocks.py
-Stock Lookup page at `/stocks`. Search by ticker OR company name with autocomplete.
-`_get_stock_analysis(ticker)` — runs filter, score, MoS and returns full analysis dict.
-`_resolve_ticker(query)` — resolves partial name/ticker to exact ticker via DB.
-Autocomplete endpoint: `GET /api/stocks/search?q=` — returns `[{ticker, name}]`.
-Individual stock API: `GET /api/stock/<ticker>` — returns full analysis as JSON.
+Pages: Overview, Pipeline, Stock Lookup, Members, Analytics, Settings, Portal, Conglomerates.
 
 ### dashboard/background.py
-Manages background pipeline threads AND the scheduler child process.
-`start_scheduler()` — launches `py scheduler.py` via `subprocess.Popen`.
-`stop_scheduler()` — terminates the child process.
-`get_scheduler_status()` — returns `{running: bool, pid: int|None}`.
+`start_scheduler()` — launches `py scheduler.py` via subprocess.Popen.
+`stop_scheduler()` / `get_scheduler_status()` — process lifecycle management.
+
+### scheduler_jobs.py — run_weekly_scrape()
+Full Sunday scrape sequence:
+1. DB backup
+2. Full scrape (`scrape_all_and_save`)
+3. Stale financials re-fetch
+4. Conglomerate autofill
+5. **DPS auto-clean** (`clean_bad_dps`) ← NEW
+6. **Data quality audit** (`run_audit`) + log to activity_log ← NEW
+7. Re-score all stocks
+8. Weekly briefing to #daily-briefing
+9. Stale data cleanup + VACUUM
 
 ---
 
@@ -315,7 +369,6 @@ stock = {
 ```
 
 **Missing values must be `None` — never estimate or approximate.**
-The validator will flag nulls and the scorer handles them gracefully.
 
 ---
 
@@ -324,15 +377,19 @@ The validator will flag nulls and the scorer handles them gracefully.
 SQLite database at: `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`
 
 Tables:
-- `stocks` — ticker, name, sector, is_reit, is_bank, last_updated
-- `financials` — id, ticker, year, revenue, net_income, equity, total_debt, cash, operating_cf, capex, ebitda, eps, dps
+- `stocks` — ticker, name, sector, is_reit, is_bank, last_updated, last_scraped, status, cmpy_id
+- `financials` — id, ticker, year, revenue, net_income, equity, total_debt, cash, operating_cf, capex, ebitda, eps, dps, updated_at
 - `prices` — id, ticker, date, close, market_cap
 - `scores` — id, ticker, run_date, pure_dividend_score, dividend_growth_score, value_score, and ranks
-- `disclosures` — id, ticker, date, type, title, url (used for alert dedup)
+- `scores_v2` — id, ticker, run_date, score, rank, category, breakdown_json
+- `disclosures` — id, ticker, date, type, title, url (UNIQUE on ticker+date+url for alert dedup)
 - `sentiment` — id, ticker, date, score, category, key_events, summary, opportunistic_flag, risk_flag, headlines
-- `members` — id, discord_name, discord_id, email, plan, status, expiry_date, notes, created_at
-- `subscriptions` — id, member_id, plan, amount, paid_at, expiry_date, notes
-- `activity_log` — id, category, action, detail, status, timestamp
+- `members` — id, discord_id, discord_name, email, plan, status, tier, joined_date, expiry_date, notes, created_at
+- `subscriptions` — id, member_id, payment_id, amount, plan, status, payment_method, paid_date, period_start, period_end
+- `activity_log` — id, timestamp, category, action, detail, status
+- `settings` — key, value, updated_at (runtime overrides for config.py values)
+- `watchlists` — id, discord_id, ticker, added_at (UNIQUE on discord_id+ticker)
+- `conglomerate_segments` — id, parent_ticker, segment_name, segment_ticker, revenue, net_income, equity, year, notes
 
 ---
 
@@ -351,8 +408,13 @@ Tables:
 ### Data integrity
 - Never invent or approximate missing financial data
 - Missing values = `None`, not `0` or estimated values
-- Flag suspicious values (negative equity, yield > 25%, etc.)
 - All values from PSE Edge only — no third-party data sources
+- The data quality pipeline (scraper whitelist → write gate → post-scrape audit) is mandatory — never bypass it
+
+### Discord bot async safety
+- Never call synchronous `requests` or DB operations directly from async command handlers
+- Always use `asyncio.to_thread(fn, *args)` for any blocking call inside a `@tree.command` handler
+- `defer(thinking=True)` must be called within 3 seconds of receiving an interaction
 
 ### No investment advice
 - Never use: "best stock", "buy this", "we recommend"
@@ -374,7 +436,6 @@ Tables:
 
 ## 7A. EDUCATIONAL COMMUNICATION LAYER — REPORT WRITING STANDARD
 
-This system is deterministic in calculation, but educational in communication.
 All PDF explanations, stock summaries, and breakdown text must follow this framework.
 
 ### Role when writing report text
@@ -386,7 +447,6 @@ Senior investment learning designer — not a salesperson, not a promoter.
 3. Never assume prior investing knowledge.
 4. Always explain both strengths and risks.
 5. Never promise returns. Never imply a recommendation.
-6. Always reinforce that intrinsic value is a mathematical estimate — not a price target.
 
 ### Tone
 Calm, analytical, neutral, beginner-friendly, rational, professional.
@@ -413,83 +473,99 @@ pdf_generator.py, publisher.py, main.py.
 
 ### Phase 3 — Data Pipeline ✅ COMPLETE
 database.py (+ sub-modules), pse_edge_scraper.py (+ sub-modules),
-news_fetcher.py, sentiment_engine.py.
-223 PSE stocks scraped. DB live at AppData/Local/pse_quant/.
+news_fetcher.py, sentiment_engine.py. DB live at AppData/Local/pse_quant/.
 
 ### Phase 4 — Automation ✅ COMPLETE
-scheduler.py — daily scoring at 17:30 PHT, alert check at 09:00 PHT.
-alert_engine.py — price, dividend, earnings alerts with first-run dedup.
+scheduler.py — daily scoring 17:30 PHT, alert check 09:00 PHT.
+alert_engine.py — price, dividend, earnings alerts with atomic dedup.
 
 ### Phase 5 — Dashboard ✅ COMPLETE
 Local Flask dashboard at http://localhost:8080.
 Member management, PayMongo payment links, pipeline controls, analytics.
 
 ### Phase 6 — Scoring Enhancement ✅ COMPLETE
-Fundamental Momentum layer added to all 3 portfolio scorers.
-- `engine/scorer_momentum.py` — Split-Window CAGR Delta + OCF mean-comparison
-- Signals: Revenue Momentum (40%), EPS Momentum (35%), Operating CF Momentum (25%)
-- 10% weight in all portfolios; graceful None fallback via `_blend()`
-- Requires: `revenue_5y`, `eps_5y`, `operating_cf_history` (newest-first lists, min 4 values)
-- Config: `MOMENTUM_MIN_YEARS = 4` in `config.py`
+Unified 4-layer scorer (scorer_v2.py). Fundamental Momentum layer in legacy scorer.
 
 ### Phase 7 — Backtester ✅ COMPLETE
-`backtester.py` — fundamental score simulation across historical years.
-- Re-runs scoring model for each year using only financials available at that time
-- Measures rank consistency, Spearman correlation, portfolio turnover, score trajectories
-- Uses current prices with historical fundamentals (no multi-year price archive)
-- CLI: `py backtester.py --portfolio pure_dividend --years 2022 2023 2024 2025`
-- Includes educational disclaimer per CLAUDE.md 7A
+backtester.py — historical score simulation. CLI: `py backtester.py --portfolio pure_dividend`
 
 ### Phase 8 — Stability & Bug Fixes ✅ COMPLETE (2026-03-09)
-- [x] PDF report now shows ALL qualifying stocks (not capped at 10)
-  - `reports/pdf_generator.py`: removed `[:10]` slice; heading shows "ALL N QUALIFYING STOCKS"
-  - `main.py`: `_try_enrich_with_sentiment(ranked)` enriches full list (no slice)
-- [x] Duplicate Discord alert fix — atomic dedup via `_claim_disclosure()`
-  - `alerts/alert_engine.py`: `_claim_disclosure()` uses `INSERT OR IGNORE` + `rowcount`
-    to atomically claim each alert slot BEFORE sending — prevents duplicates even
-    when multiple `py scheduler.py` processes run simultaneously
-- [x] Production readiness audit passed — all 50+ files present, all under 500 lines
+- PDF shows ALL qualifying stocks (no cap)
+- Atomic alert dedup via _claim_disclosure()
+- Production readiness audit passed
 
 ### Phase 9 — Unified Scoring System ✅ COMPLETE (2026-03-14)
-- [x] Unified 4-layer scoring engine (`engine/scorer_v2.py` + 4 sub-modules)
-- [x] Unified health filter (`engine/filters_v2.py`)
-- [x] Stock Lookup dashboard page (`dashboard/routes_stocks.py` + `templates/stocks.html`)
-  - Search by ticker OR company name with live autocomplete
-  - Shows score, letter grade, MoS, IV, 4-layer breakdown, key metrics, financial history
-- [x] Scheduler start/stop from Pipeline page (`dashboard/background.py`)
-- [x] Overview page shows unified StockPilot PH Rankings (single table)
-- [x] Schedule times updated: alert 09:00 PHT, scoring 17:30 PHT
-- [x] Discord webhooks simplified: `DISCORD_WEBHOOK_VALUE` (StockPilot Picks) + `DISCORD_WEBHOOK_ALERTS`
-- [x] PDF cover page "About" section shortened to 3-line summary
+- Unified 4-layer scorer (scorer_v2.py + 4 sub-modules)
+- Unified health filter (filters_v2.py)
+- Stock Lookup dashboard page (routes_stocks.py)
+- Scheduler start/stop from Pipeline page
+- Overview page shows unified StockPilot PH Rankings
+- Scheduler: alert 09:00 PHT, scoring 17:30 PHT
 
-### Phase 10 — Next (Backlog)
+### Phase 10 — Discord Bot + Data Quality ✅ COMPLETE (2026-03-15)
+- [x] Discord slash command bot (`discord/bot.py`)
+  - /stock, /top10 — premium DM-only with tier gating
+  - /subscribe, /mystatus — free DM-only
+  - /watchlist show/add/remove — premium DM-only
+  - /admin list/pending/confirm/extend/status — Josh-only DM
+  - All blocking calls wrapped in asyncio.to_thread()
+  - Guild sync via DISCORD_GUILD_ID for instant testing propagation
+- [x] Member access control (`dashboard/access_control.py`)
+- [x] Direct message delivery (`discord/discord_dm.py`)
+- [x] Financial data quality auditor (`db/db_data_quality.py`)
+  - Checks: yield, payout, EPS/NI mismatch, DPS jumps, negative revenue, net margin anomalies
+  - Penny stock and holding company exceptions built in
+  - `get_dividend_quality_flags()` used by calendar query
+- [x] Database maintenance (`db/db_maintenance.py`)
+  - `clean_bad_dps()` — auto-nulls implausible DPS
+  - `cleanup_stale_data()` — prunes old rows + VACUUM
+- [x] Weekly scrape now includes Steps 2c/2d: DPS auto-clean + full audit logged to activity_log
+- [x] 4-webhook Discord structure: RANKINGS, ALERTS, DEEP_ANALYSIS, DAILY_BRIEFING
+- [x] Disclosure monitor (15-min PSE Edge feed polling)
+
+### Phase 11 — Next (Backlog)
+- [ ] Run full weekly scrape to restore 3-year history for all stocks (currently only 6 qualify due to 2-year data)
 - [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
-- [ ] REIT FFO-based FCF coverage exemption in dividend filters
+- [ ] REIT FFO-based FCF coverage exemption
 - [ ] Export rankings to CSV/Excel from dashboard
+- [ ] Educational auto-poster — 52-topic Wednesday rotation to #learn-investing
+- [ ] Daily public briefing webhook — top 3 grades to #daily-briefing (separate from weekly)
 
 ---
 
 ## 9. HOW TO RUN THE SYSTEM
 
 ```bash
-# Full unified pipeline
+# Full unified pipeline (score + PDF + Discord)
 py main.py
 
 # Dry run (no Discord publish)
 py main.py --dry-run
 
-# Scheduler (continuous — runs on schedule)
-# Alert check: weekdays 09:00 PHT
-# Scoring job: weekdays 17:30 PHT
+# Scheduler (continuous — runs on automatic schedule)
 py scheduler.py
 
-# Run scoring job now
-py scheduler.py --run-now
+# Manual scheduler triggers
+py scheduler.py --run-now           # full scoring cycle
+py scheduler.py --run-alerts        # alert check
+py scheduler.py --run-weekly        # full financial scrape (+ data quality)
+py scheduler.py --run-score         # 4 PM scoring phase only
+py scheduler.py --run-report        # 6 PM report phase only
+py scheduler.py --run-sotw          # Stock of the Week
+py scheduler.py --run-digest        # Weekly Digest DMs
+py scheduler.py --run-monthly       # Monthly reports (calendar + performance)
+py scheduler.py --run-briefing      # Weekly public briefing
+py scheduler.py --run-disclosure    # One disclosure feed check
 
-# Run alert check now
-py scheduler.py --run-alerts
+# Discord bot (slash commands for members)
+py discord/bot.py
 
-# You can also start/stop the scheduler from the Pipeline page in the dashboard
+# Local dashboard
+py dashboard/app.py                 # open http://localhost:8080
+
+# Data quality tools
+py db/db_data_quality.py            # full audit report
+py db/db_data_quality.py --ticker DMC  # audit one ticker
 
 # Alerts only
 py alerts/alert_engine.py --dry-run
@@ -497,20 +573,13 @@ py alerts/alert_engine.py --check price
 py alerts/alert_engine.py --check dividend
 py alerts/alert_engine.py --check earnings
 
-# Local dashboard
-py dashboard/app.py
-# Open: http://localhost:8080
-
-# Test sentiment for one ticker
+# Sentiment test
 py engine/sentiment_engine.py --ticker DMC
 
-# Run individual tests
+# Tests
 py tests/test_metrics.py
-py tests/test_filters.py
 py tests/test_scorer.py
 py tests/test_mos.py
-py tests/test_pdf.py
-py tests/test_discord.py
 ```
 
 **Python command on this machine: `py` (not `python`)**
@@ -524,7 +593,7 @@ Location: `C:\Users\Josh\AppData\Local\Python\pythoncore-3.14-64\`
 ```
 requests, beautifulsoup4, pdfplumber, reportlab,
 apscheduler, pydantic, pandas, pytest,
-python-dotenv, lxml, anthropic, flask
+python-dotenv, lxml, anthropic, flask, discord.py
 ```
 
 Install missing: `py -m pip install <package_name>`
@@ -534,29 +603,29 @@ Install missing: `py -m pip install <package_name>`
 ## 11. ENVIRONMENT VARIABLES (.env)
 
 ```
-# Discord webhooks (only 2 needed now)
-DISCORD_WEBHOOK_VALUE=https://discord.com/api/webhooks/...      # StockPilot Picks channel
-DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...     # Alerts channel
-
-# PSE Edge login
+# PSE Edge credentials
 PSE_EDGE_EMAIL=your@email.com
 PSE_EDGE_PASSWORD=yourpassword
 
-# AI sentiment (optional — dashboard works without this)
+# Discord webhooks (4 channels)
+DISCORD_WEBHOOK_RANKINGS=https://discord.com/api/webhooks/...      # #rankings (premium PDF)
+DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...        # #alerts (public)
+DISCORD_WEBHOOK_DEEP_ANALYSIS=https://discord.com/api/webhooks/... # #deep-analysis (premium)
+DISCORD_WEBHOOK_DAILY_BRIEFING=https://discord.com/api/webhooks/.. # #daily-briefing (public)
+
+# Discord bot
+DISCORD_BOT_TOKEN=your_bot_token_here
+ADMIN_DISCORD_ID=your_discord_user_id     # Right-click name → Copy User ID
+DISCORD_INVITE_URL=https://discord.gg/... # Permanent server invite link
+DISCORD_GUILD_ID=your_server_id           # Optional: instant guild sync for testing
+
+# AI sentiment (optional)
 ANTHROPIC_API_KEY=sk-ant-...
 
-# PayMongo (optional — dashboard works without this)
+# PayMongo (optional)
 PAYMONGO_SECRET_KEY=sk_test_...
-MONTHLY_PRICE_CENTAVOS=29900
-ANNUAL_PRICE_CENTAVOS=299900
-```
-
-Load with:
-```python
-from dotenv import load_dotenv
-import os
-load_dotenv()
-webhook = os.getenv('DISCORD_WEBHOOK_VALUE')
+MONTHLY_PRICE_CENTAVOS=9900
+ANNUAL_PRICE_CENTAVOS=99900
 ```
 
 ---
@@ -570,60 +639,54 @@ When you encounter an error:
 3. **Fix the minimal change needed** — do not refactor unrelated code
 4. **Re-run immediately** — confirm the fix works
 5. **If still failing after 3 attempts** — report the error to the user
-   with: what you tried, what failed, and what you need from them
-
-**If adding AI-assisted self-repair logic, use `SELF_REPAIR_MODEL` (Sonnet).**
 
 Common errors on this Windows setup:
 - `ModuleNotFoundError` → run `py -m pip install <module>`
 - `FileNotFoundError` → create the directory first with `os.makedirs`
 - `SyntaxError` → check indentation and missing colons
 - `KeyError` on stock dict → add `.get('key', default)` not `['key']`
-- `return outside function` → check indentation of return statements
-- `UnicodeEncodeError` in print() → replace Unicode box chars with ASCII
+- `UnicodeEncodeError` in print() → replace Unicode chars with ASCII in print() calls (Discord sends UTF-8 fine; only console output breaks on cp1252)
 - SQL `SUM()` on empty table → returns NULL rows, always coerce with `or 0`
+- `sqlite3.ProgrammingError: SQLite objects created in a thread` → open a new connection inside the thread (`get_connection()` per call is correct)
+- Discord `The application did not respond` → `defer(thinking=True)` not called within 3s; check for exception before defer, or ensure blocking code uses `asyncio.to_thread()`
 
 ---
 
-## 13. NEXT TASK QUEUE
+## 13. DISCORD SETUP
 
-Work through these in order. Complete and test each before moving on.
+**4 channels needed:**
 
-1. Add `ANTHROPIC_API_KEY` to `.env` → activates news sentiment in PDF reports
-2. Add `DISCORD_WEBHOOK_ALERTS` to `.env` → activates opportunistic alerts
-3. Add `PAYMONGO_SECRET_KEY` to `.env` → activates payment link generation
-4. Manual data entry for GSMI 2022 and GLO 2022 (missing from PSE Edge — enter from PSE Edge PDF disclosures directly)
-5. Build `backtester.py` — historical model performance vs PSEi benchmark
+| Channel | Access | Webhook Env Var | Purpose |
+|---------|--------|----------------|---------|
+| `#rankings` | Premium only | `DISCORD_WEBHOOK_RANKINGS` | Full PDF rankings report |
+| `#deep-analysis` | Premium only | `DISCORD_WEBHOOK_DEEP_ANALYSIS` | Stock of the Week, monthly reports |
+| `#alerts` | Public | `DISCORD_WEBHOOK_ALERTS` | Price, dividend, earnings alerts |
+| `#daily-briefing` | Public | `DISCORD_WEBHOOK_DAILY_BRIEFING` | Top 3 grades (no scores) |
 
----
+**Bot setup:**
+1. Create bot at discord.com/developers/applications
+2. Bot → Reset Token → copy to `DISCORD_BOT_TOKEN` in `.env`
+3. Invite bot with `bot` + `applications.commands` scopes
+4. Set `ADMIN_DISCORD_ID` to your Discord user ID (right-click name → Copy User ID)
+5. Set `DISCORD_GUILD_ID` to your server ID (right-click server → Copy Server ID) for instant sync
+6. Run: `py discord/bot.py`
 
-## 14. DISCORD SETUP
-
-Two channels needed:
-- `#stockpilot-picks` (or any name) — Unified rankings PDF report, mapped to `DISCORD_WEBHOOK_VALUE`
-- `#pse-alerts` — Price / dividend / earnings alerts + opportunistic flags, mapped to `DISCORD_WEBHOOK_ALERTS`
-
-To get a webhook URL:
+**Webhook URLs:**
 Discord → Channel Settings → Integrations → Webhooks → New Webhook → Copy URL
 
-Paste webhook URLs into `.env` only (not config.py).
-
 ---
 
-## 15. BACKTESTING NOTES (Phase 6)
+## 14. BACKTESTING NOTES
 
 Per the project instruction manual:
 - Focus on statistical interpretation — not return guarantees
 - Highlight drawdown risk
-- Compare against PSEi benchmark logically
-- Identify factor instability across time periods
-- Suggest sensitivity testing on weights
 - Never declare the model superior without statistical evidence
 - Never infer future performance from historical results
 
 ---
 
-## 16. IMPORTANT FILESYSTEM NOTE
+## 15. IMPORTANT FILESYSTEM NOTE
 
 Python (via Bash tool) **cannot write new files** to `C:\Users\Josh\Documents\`.
 Use the **Write tool** directly to create new files — it bypasses this restriction.
@@ -632,6 +695,6 @@ The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
 
 ---
 
-*Last updated: Phase 9 complete — unified scoring, stock lookup, scheduler control, simplified Discord (2026-03-14)*
+*Last updated: Phase 10 complete — Discord bot, data quality pipeline, 4-webhook structure (2026-03-15)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

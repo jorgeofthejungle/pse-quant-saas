@@ -155,11 +155,27 @@ def _save_company(company_info: dict, stock_data: dict):
             market_cap = stock_data.get('market_cap'),
         )
 
+    # DPS sanity gate: skip any per-year DPS that implies an implausible yield.
+    # This catches historical bad data being re-written and any future scraper
+    # edge cases that slip past the per-declaration < 100 filter.
+    current_price = stock_data.get('current_price')
+    is_reit = company_info.get('is_reit', False)
+    # Gate: reject only clearly impossible yields. Legitimate edge cases
+    # (special dividends, high-yield penny stocks) can be up to ~35%.
+    # The dividend calendar query has its own 0.5–20% filter for display.
+    max_yield_pct = 50.0 if is_reit else 40.0
+
     for entry in stock_data.get('div_history', []):
+        dps_val = entry['dps']
+        if (current_price and current_price > 0
+                and (dps_val / current_price * 100.0) > max_yield_pct):
+            print(f"    {ticker} FY{entry['year']}: DPS={dps_val:.4f} implies "
+                  f"{dps_val/current_price*100:.1f}% yield — skipping (likely bad data)")
+            continue
         db.upsert_financials(
             ticker = ticker,
             year   = entry['year'],
-            dps    = entry['dps'],
+            dps    = dps_val,
         )
 
     for fin in stock_data.get('fin_data', []):

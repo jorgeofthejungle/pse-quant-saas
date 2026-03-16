@@ -360,6 +360,232 @@ def send_expiry_notification(
     return _post_webhook(url, {'embeds': [embed]})
 
 
+def send_stock_of_week(
+    webhook_url: str,
+    ticker:      str,
+    name:        str,
+    sector:      str,
+    score:       float,
+    grade:       str,
+    price:       float | None,
+    iv:          float | None,
+    mos_pct:     float | None,
+    layers:      dict,
+    roe:         float | None,
+    de_ratio:    float | None,
+    div_yield:   float | None,
+    score_delta: float | None,
+    week_str:    str,
+) -> bool:
+    """
+    Posts the Stock of the Week deep-analysis embed to #deep-analysis (premium).
+    Runs every Monday morning after the Sunday weekly scrape + rescore.
+
+    Parameters:
+        layers      -- breakdown['layers'] dict from score_unified()
+        score_delta -- score change vs last week (None on first run)
+        week_str    -- display string e.g. 'Week of Mar 17, 2026'
+    """
+    url = webhook_url or WEBHOOKS.get('deep_analysis', '')
+    if not url:
+        print("[discord_alerts] DISCORD_WEBHOOK_DEEP_ANALYSIS not set — skipping SOTW")
+        return False
+
+    # ── Pick reason headline ──────────────────────────────────
+    if score_delta is not None and score_delta >= 1.0:
+        headline = (
+            f"**{ticker}** recorded the biggest fundamental improvement this week, "
+            f"with its score rising **+{score_delta:.1f} pts**."
+        )
+    else:
+        headline = (
+            f"**{ticker}** ranks #1 in this week's unified fundamental scoring "
+            f"across all 223 PSE stocks."
+        )
+
+    # ── MoS label ─────────────────────────────────────────────
+    if mos_pct is None:
+        mos_str = 'N/A'
+    elif mos_pct >= 30:
+        mos_str = f'+{mos_pct:.1f}% — STRONG BUY ZONE'
+    elif mos_pct >= 15:
+        mos_str = f'+{mos_pct:.1f}% — BUY ZONE'
+    elif mos_pct >= -5:
+        mos_str = f'{mos_pct:+.1f}% — FAIRLY VALUED'
+    else:
+        mos_str = f'{mos_pct:+.1f}% — ABOVE IV'
+
+    # ── Colour by grade ───────────────────────────────────────
+    grade_colour = {
+        'A': 0x27AE60, 'B': 0x2980B9,
+        'C': 0xE67E22, 'D': 0xE74C3C, 'F': 0xE74C3C,
+    }.get(grade, 0x95A5A6)
+
+    # ── Build fields ──────────────────────────────────────────
+    price_str = f'₱{price:.2f}' if price else 'N/A'
+    iv_str    = f'₱{iv:.2f}'   if iv    else 'N/A'
+
+    fields = [
+        {'name': 'Score / Grade',      'value': f'**{score:.1f}** / 100 — Grade **{grade}**', 'inline': True},
+        {'name': 'Price → IV',         'value': f'{price_str} → {iv_str}',                    'inline': True},
+        {'name': 'Margin of Safety',   'value': mos_str,                                       'inline': False},
+    ]
+
+    if score_delta is not None:
+        delta_sign = '+' if score_delta >= 0 else ''
+        fields.append({
+            'name':   'Score Change This Week',
+            'value':  f'{delta_sign}{score_delta:.1f} pts',
+            'inline': True,
+        })
+
+    # 4-layer breakdown
+    layer_lines = []
+    for layer_key, layer_data in (layers or {}).items():
+        if not isinstance(layer_data, dict):
+            continue
+        ls = round(layer_data.get('score') or 0, 1)
+        lw = int((layer_data.get('weight') or 0) * 100)
+        label = layer_key.replace('_', ' ').title()
+        expl  = layer_data.get('explanation', '')
+        layer_lines.append(f'**{label}** ({lw}%): {ls}/100' + (f'\n_{expl}_' if expl else ''))
+    if layer_lines:
+        fields.append({
+            'name':   '4-Layer Breakdown',
+            'value':  '\n'.join(layer_lines),
+            'inline': False,
+        })
+
+    # Key metrics
+    metrics = []
+    if roe       is not None: metrics.append(f'ROE: {roe:.1f}%')
+    if de_ratio  is not None: metrics.append(f'D/E: {de_ratio:.2f}x')
+    if div_yield is not None and div_yield > 0: metrics.append(f'Yield: {div_yield:.2f}%')
+    if metrics:
+        fields.append({'name': 'Key Metrics', 'value': ' · '.join(metrics), 'inline': False})
+
+    fields.append({
+        'name':   '⚠️ Educational Reminder',
+        'value':  (
+            'This is a mathematical ranking based on fundamental data from PSE Edge. '
+            'It is not a buy recommendation. Always do your own research.'
+        ),
+        'inline': False,
+    })
+
+    embed = {
+        'title':       f'⭐ Stock of the Week — {ticker}  |  {week_str}',
+        'description': (
+            f'**{name}** · {sector}\n\n'
+            f'{headline}'
+        ),
+        'color':       grade_colour,
+        'fields':      fields,
+        'footer':      {
+            'text': (
+                'StockPilot PH · Scores are educational rankings, not investment advice. '
+                'Data sourced from PSE Edge.'
+            )
+        },
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }
+    return _post_webhook(url, {'embeds': [embed]})
+
+
+def send_weekly_briefing(
+    webhook_url:   str,
+    ranked_stocks: list,
+    date_str:      str = None,
+    invite_url:    str = None,
+) -> bool:
+    """
+    Posts the weekly top-3 grade summary to the public #daily-briefing channel.
+    Runs Sunday night after the full financial scrape and rescore.
+    Free users see grades only — no scores, IV, or MoS.
+    Includes a CTA teaser for premium membership.
+
+    Parameters:
+        ranked_stocks -- full ranked list (only top 3 are used)
+        date_str      -- display week string, e.g. 'Week of Mar 15, 2026' (auto-generated if None)
+        invite_url    -- Discord server invite URL for the CTA
+    """
+    url = webhook_url or WEBHOOKS.get('daily_briefing', '')
+    if not url:
+        print("[discord_alerts] DISCORD_WEBHOOK_DAILY_BRIEFING not set -- skipping briefing")
+        return False
+
+    if not ranked_stocks:
+        print("[discord_alerts] No ranked stocks for weekly briefing -- skipping")
+        return False
+
+    if date_str is None:
+        date_str = 'Week of ' + datetime.now().strftime('%b %d, %Y')
+
+    def _grade(score: float) -> str:
+        if score >= 80: return 'A'
+        if score >= 65: return 'B'
+        if score >= 50: return 'C'
+        if score >= 35: return 'D'
+        return 'F'
+
+    medals = ['🥇', '🥈', '🥉']
+    top3   = ranked_stocks[:3]
+
+    lines = []
+    for i, stock in enumerate(top3):
+        ticker = stock.get('ticker', '?')
+        name   = stock.get('name', ticker)
+        sector = stock.get('sector', '')
+        score  = stock.get('score') or 0
+        grade  = _grade(score)
+        medal  = medals[i] if i < len(medals) else f'#{i+1}'
+        sector_str = f'  ·  {sector}' if sector else ''
+        lines.append(f"{medal}  **{ticker}** — Grade **{grade}**{sector_str}")
+
+    briefing_text = '\n'.join(lines)
+
+    teaser = (
+        '\n\n🔒 **Full rankings** with scores, intrinsic value, and margin of safety '
+        'are available to **StockPilot Premium** members.\n'
+        '₱99/mo · Cancel anytime.'
+    )
+
+    if invite_url and invite_url != '#':
+        teaser += f'\n\n[👉 Join our Discord server]({invite_url})'
+
+    fields = [
+        {
+            'name':   '📋 This Week\'s Top 3',
+            'value':  briefing_text,
+            'inline': False,
+        },
+        {
+            'name':   '📈 What Premium Members See',
+            'value':  (
+                '• Full top 10+ with exact scores (e.g. 83.7/100)\n'
+                '• Intrinsic value and margin of safety %\n'
+                '• 4-layer breakdown: Health · Improvement · Acceleration · Persistence\n'
+                '• `/stock <ticker>` via DM for any PSE stock'
+            ),
+            'inline': False,
+        },
+    ]
+
+    embed = {
+        'title':       f'📊 StockPilot PH — Weekly Briefing  |  {date_str}',
+        'description': (
+            'Rankings updated daily at 4 PM PHT using our 4-layer fundamental model '
+            'across 223 PSE stocks.'
+            + teaser
+        ),
+        'color':   0x1B4B6B,
+        'fields':  fields,
+        'footer':  {'text': 'StockPilot PH · Scores are for educational purposes only. Not investment advice.'},
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+    }
+    return _post_webhook(url, {'embeds': [embed]})
+
+
 # ── Portfolio name lookup (matches scheduler_data.py) ────────
 _PORTFOLIO_NAMES = {
     'pure_dividend':   'PURE DIVIDEND',

@@ -22,22 +22,17 @@ import hmac
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 from dashboard.security import rate_limit
+from dashboard.paymongo_core import (
+    generate_payment_link, get_paymongo_auth as _get_auth, get_pricing,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'db'))
 
-from db.db_settings import get_setting
-
 paymongo_bp = Blueprint('paymongo', __name__)
 
 PAYMONGO_API = 'https://api.paymongo.com/v1'
-
-
-def _get_auth():
-    """Returns (secret_key, is_configured)."""
-    key = os.getenv('PAYMONGO_SECRET_KEY', '')
-    return key, bool(key)
 
 
 @paymongo_bp.route('/create-link', methods=['POST'])
@@ -48,14 +43,12 @@ def create_link():
     Expects JSON: {member_id, member_name, plan}
     Returns JSON: {ok, url, error}
     """
-    import requests as req
-
-    data       = request.get_json() or {}
-    member_id  = data.get('member_id')
+    data        = request.get_json() or {}
+    member_id   = data.get('member_id')
     member_name = data.get('member_name', 'Member')
-    plan       = data.get('plan', 'monthly')
+    plan        = data.get('plan', 'monthly')
 
-    secret_key, configured = _get_auth()
+    _, configured = _get_auth()
     if not configured:
         return jsonify({
             'ok':    False,
@@ -63,51 +56,10 @@ def create_link():
                      'Add it to use PayMongo payment links.',
         })
 
-    # Amount in centavos — DB setting takes priority over .env
-    if plan == 'annual':
-        centavos    = int(get_setting('annual_price_centavos',
-                                       os.getenv('ANNUAL_PRICE_CENTAVOS', 299900)))
-        description = 'PSE Quant SaaS - Annual Subscription'
-    else:
-        centavos    = int(get_setting('monthly_price_centavos',
-                                       os.getenv('MONTHLY_PRICE_CENTAVOS', 29900)))
-        description = 'PSE Quant SaaS - Monthly Subscription'
-
-    # Encode member_id in remarks so webhook can auto-confirm payment
-    remarks = f'mid:{member_id} {plan}' if member_id else f'{member_name} ({plan})'
-
-    payload = {
-        'data': {
-            'attributes': {
-                'amount':      centavos,
-                'description': description,
-                'remarks':     remarks,
-            }
-        }
-    }
-
-    try:
-        response = req.post(
-            f'{PAYMONGO_API}/links',
-            json    = payload,
-            auth    = (secret_key, ''),
-            timeout = 15,
-        )
-        resp_data = response.json()
-
-        if response.status_code in (200, 201):
-            link_url = (resp_data.get('data', {})
-                                 .get('attributes', {})
-                                 .get('checkout_url', ''))
-            pm_id    = resp_data.get('data', {}).get('id', '')
-            return jsonify({'ok': True, 'url': link_url, 'payment_id': pm_id})
-
-        error_msg = (resp_data.get('errors', [{}])[0]
-                              .get('detail', 'PayMongo API error'))
-        return jsonify({'ok': False, 'error': error_msg})
-
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)})
+    ok, url, pm_id = generate_payment_link(member_id, member_name, plan)
+    if ok:
+        return jsonify({'ok': True, 'url': url, 'payment_id': pm_id})
+    return jsonify({'ok': False, 'error': url})
 
 
 @paymongo_bp.route('/webhook', methods=['POST'])
@@ -195,6 +147,17 @@ def webhook():
         'payment', 'webhook_auto_confirmed',
         f'{member["discord_name"]} · PHP{amount_php:.2f} · {plan} · pid={payment_id}',
     )
+
+    # Send welcome DM if member has a Discord ID
+    if member.get('discord_id'):
+        try:
+            from discord.discord_dm import send_welcome_dm
+            updated = get_member(member_id)
+            expiry  = updated.get('expiry_date', '') if updated else ''
+            send_welcome_dm(member['discord_id'], member['discord_name'], expiry)
+        except Exception:
+            pass  # DM failure must never block payment confirmation
+
     return jsonify({'ok': True, 'message': 'Payment confirmed'}), 200
 
 

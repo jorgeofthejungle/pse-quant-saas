@@ -21,7 +21,9 @@ sys.path.insert(0, str(ROOT / 'scraper'))
 from pdf_generator import generate_report
 from publisher    import (WEBHOOKS, send_report, send_rescore_notice,
                           send_sentiment_signal, send_shortlist_change,
-                          send_expiry_notification)
+                          send_expiry_notification,
+                          send_weekly_briefing, send_stock_of_week,
+                          send_dividend_calendar, send_model_performance)
 import database as db
 
 try:
@@ -534,9 +536,9 @@ def run_daily_report():
         total_stocks_screened = len(all_stocks),
     )
 
-    webhook_url = WEBHOOKS.get('value', '')
+    webhook_url = WEBHOOKS.get('rankings', '')
     if webhook_url:
-        print("  Sending PDF to Discord #pse-value...")
+        print("  Sending PDF to Discord #rankings...")
         send_report(
             webhook_url    = webhook_url,
             pdf_path       = pdf_path,
@@ -726,8 +728,64 @@ def run_weekly_scrape():
     except Exception as e:
         print(f"  Conglomerate autofill failed: {e}")
 
+    # ── Step 2c: Auto-clean bad DPS values ───────────────────
+    print("\n[2c/3] Auto-cleaning implausible DPS values...")
+    try:
+        from db.db_maintenance import clean_bad_dps
+        result = clean_bad_dps(dry_run=False)
+        if result['nulled'] > 0:
+            print(f"  Nulled {result['nulled']} bad DPS row(s) across: "
+                  f"{', '.join(result['tickers_affected'])}")
+            db.log_activity('pipeline', 'dps_auto_clean',
+                            f"Nulled {result['nulled']} bad DPS row(s): "
+                            f"{', '.join(result['tickers_affected'])}")
+        else:
+            print("  No implausible DPS values found.")
+    except Exception as e:
+        print(f"  DPS auto-clean failed: {e}")
+
+    # ── Step 2d: Data quality audit ───────────────────────────
+    print("\n[2d/3] Running data quality audit...")
+    try:
+        from db.db_data_quality import run_audit
+        issues   = run_audit()
+        errors   = [i for i in issues if i['severity'] == 'ERROR']
+        warnings = [i for i in issues if i['severity'] == 'WARN']
+        infos    = [i for i in issues if i['severity'] == 'INFO']
+        print(f"  Audit complete: {len(errors)} ERROR(s), "
+              f"{len(warnings)} WARN(s), {len(infos)} INFO(s)")
+        for issue in errors:
+            print(f"  ERROR [{issue['ticker']}] FY{issue['year']}: "
+                  f"{issue['check']} — {issue['detail']}")
+        if issues:
+            db.log_activity(
+                'pipeline', 'data_quality_audit',
+                f"{len(errors)} ERROR(s), {len(warnings)} WARN(s), "
+                f"{len(infos)} INFO(s) found post-scrape",
+                status='warn' if errors else 'ok',
+            )
+    except Exception as e:
+        print(f"  Data quality audit failed: {e}")
+
     print("\n[3/3]  Re-scoring all portfolios with fresh data...")
     run_daily_job()
+
+    # ── Step 3b: Weekly public briefing (top 3 grades → #daily-briefing) ──
+    briefing_url = WEBHOOKS.get('daily_briefing', '')
+    if briefing_url:
+        try:
+            import os as _os
+            invite       = _os.getenv('DISCORD_INVITE_URL', '#')
+            date_display = 'Week of ' + datetime.now().strftime('%b %d, %Y')
+            ranked_now   = db.get_last_scores_v2() or []
+            ranked_now   = sorted(ranked_now, key=lambda x: x.get('score', 0) or 0, reverse=True)
+            if ranked_now:
+                send_weekly_briefing(briefing_url, ranked_now, date_display, invite)
+                print("  Weekly briefing sent to #daily-briefing.")
+            else:
+                print("  Weekly briefing skipped (no ranked stocks in DB).")
+        except Exception as e:
+            print(f"  [weekly briefing] failed: {e}")
 
     # ── Step 4: Cleanup stale data + VACUUM ───────────────────
     print("\n[4/4]  Cleaning up stale data and vacuuming database...")
@@ -743,3 +801,565 @@ def run_weekly_scrape():
     print(f"\n{'='*55}")
     print(f"  Weekly scrape complete.  {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*55}\n")
+
+
+def run_weekly_digest():
+    """
+    Sends a personalized Weekly Digest DM to every active premium member.
+    Runs every Friday at 5:00 PM PHT.
+    CLI: py scheduler.py --run-digest
+
+    Digest includes:
+      - Top 5 rankings with scores
+      - Biggest score movers vs last week
+      - Dividends declared in the past 7 days
+      - Price alerts triggered this week
+      - Subscription expiry reminder (if < 14 days remaining)
+    """
+    from discord.discord_dm import send_dm_embed
+
+    today     = datetime.now().strftime('%Y-%m-%d')
+    week_ago  = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    week_str  = 'Week of ' + (datetime.now() - timedelta(days=6)).strftime('%b %d') \
+                + '–' + datetime.now().strftime('%b %d, %Y')
+
+    print(f"\n[weekly_digest]  {today}")
+
+    # ── Get active members with a Discord ID ─────────────────
+    try:
+        sys.path.insert(0, str(ROOT / 'dashboard'))
+        from dashboard.db_members import get_all_members
+    except ImportError:
+        try:
+            from db_members import get_all_members
+        except ImportError as e:
+            print(f"  [digest] db_members import failed: {e}")
+            return
+
+    members = [
+        m for m in get_all_members(status_filter='active')
+        if m.get('discord_id')
+    ]
+    if not members:
+        print("  [digest] No active members with Discord IDs — skipping.")
+        return
+    print(f"  [digest] Sending to {len(members)} active member(s)...")
+
+    # ── Gather shared data (queried once, reused for all DMs) ─
+
+    # Top 5 current rankings
+    current    = db.get_last_scores_v2() or []
+    top5       = sorted(current, key=lambda x: x.get('score', 0) or 0, reverse=True)[:5]
+    score_map  = {s['ticker']: s.get('score', 0) or 0 for s in current}
+
+    conn = db.get_connection()
+
+    # Name map
+    name_rows = conn.execute("SELECT ticker, name FROM stocks").fetchall()
+    name_map  = {r['ticker']: r['name'] for r in name_rows}
+
+    # Last week's scores for movers
+    prev_row = conn.execute("""
+        SELECT MAX(run_date) AS pd FROM scores_v2
+        WHERE run_date < date('now', '-6 days')
+    """).fetchone()
+    prev_date = prev_row['pd'] if prev_row else None
+
+    prev_scores = {}
+    if prev_date:
+        rows = conn.execute(
+            "SELECT ticker, score FROM scores_v2 WHERE run_date = ?", (prev_date,)
+        ).fetchall()
+        prev_scores = {r['ticker']: r['score'] for r in rows}
+
+    # Dividends declared this week
+    div_rows = conn.execute("""
+        SELECT DISTINCT ticker, title, date FROM disclosures
+        WHERE (LOWER(type) LIKE '%dividend%' OR LOWER(title) LIKE '%dividend%')
+          AND date >= ?
+        ORDER BY date DESC
+        LIMIT 5
+    """, (week_ago,)).fetchall()
+    dividends = [dict(r) for r in div_rows]
+
+    # Price alerts from activity_log this week
+    alert_rows = conn.execute("""
+        SELECT detail, timestamp FROM activity_log
+        WHERE action = 'price_alert'
+          AND timestamp >= ?
+        ORDER BY timestamp DESC
+        LIMIT 5
+    """, (week_ago + ' 00:00:00',)).fetchall()
+    price_alerts = [dict(r) for r in alert_rows]
+
+    conn.close()
+
+    # ── Build grade helper ────────────────────────────────────
+    def _grade(s):
+        if s >= 80: return 'A'
+        if s >= 65: return 'B'
+        if s >= 50: return 'C'
+        if s >= 35: return 'D'
+        return 'F'
+
+    # ── Top 5 field ───────────────────────────────────────────
+    medals = ['🥇', '🥈', '🥉', '4.', '5.']
+    top5_lines = []
+    for i, s in enumerate(top5):
+        t     = s['ticker']
+        score = round(s.get('score', 0) or 0, 1)
+        grade = _grade(score)
+        medal = medals[i] if i < len(medals) else f'{i+1}.'
+        top5_lines.append(f'{medal} **{t}** — {score} ({grade})')
+    top5_text = '\n'.join(top5_lines) or 'No rankings available.'
+
+    # ── Movers field ──────────────────────────────────────────
+    movers_lines = []
+    if prev_scores:
+        deltas = []
+        for s in current:
+            t     = s['ticker']
+            prev  = prev_scores.get(t)
+            if prev is None:
+                continue
+            delta = (s.get('score') or 0) - prev
+            if abs(delta) >= 1.0:
+                deltas.append((t, delta))
+        deltas.sort(key=lambda x: abs(x[1]), reverse=True)
+        for t, delta in deltas[:4]:
+            arrow = '▲' if delta > 0 else '▼'
+            movers_lines.append(f'{arrow} **{t}** {delta:+.1f} pts')
+    movers_text = '\n'.join(movers_lines) or 'No significant changes this week.'
+
+    # ── Dividends field ───────────────────────────────────────
+    if dividends:
+        div_lines = [
+            f'• **{d["ticker"]}** — {d["title"][:60]}' for d in dividends
+        ]
+        div_text = '\n'.join(div_lines)
+    else:
+        div_text = 'No dividend declarations this week.'
+
+    # ── Price alerts field ────────────────────────────────────
+    if price_alerts:
+        pa_lines = [a['detail'][:80] for a in price_alerts]
+        pa_text  = '\n'.join(f'• {l}' for l in pa_lines)
+    else:
+        pa_text = 'No price alerts triggered this week.'
+
+    # ── Build embed (same for all members + expiry suffix) ───
+    base_fields = [
+        {'name': '🏆 Top 5 This Week',          'value': top5_text,   'inline': False},
+        {'name': '📈 Biggest Movers',            'value': movers_text, 'inline': False},
+        {'name': '💰 Dividends Declared',        'value': div_text,    'inline': False},
+        {'name': '📉 Price Alerts Triggered',    'value': pa_text,     'inline': False},
+    ]
+
+    # ── Pre-load watchlist data ───────────────────────────────
+    try:
+        sys.path.insert(0, str(ROOT / 'db'))
+        from db.db_watchlist import get_watchlist as _get_watchlist
+        watchlists_available = True
+    except ImportError:
+        watchlists_available = False
+
+    # ── DM each member ────────────────────────────────────────
+    sent = 0
+    failed = 0
+    for member in members:
+        discord_id  = member['discord_id']
+        name        = member.get('discord_name', 'Member')
+        expiry_str  = member.get('expiry_date', '')
+        fields      = list(base_fields)   # shallow copy — expiry field is member-specific
+
+        # Personalised watchlist section
+        if watchlists_available:
+            try:
+                wl_tickers = _get_watchlist(discord_id)
+                if wl_tickers:
+                    wl_lines = []
+                    for wt in wl_tickers:
+                        ws = score_map.get(wt)
+                        wn = name_map.get(wt, wt)
+                        if ws is not None:
+                            wl_lines.append(f'• **{wt}** — {ws:.1f} ({_grade(ws)})  ·  {wn}')
+                        else:
+                            wl_lines.append(f'• **{wt}** — not yet scored  ·  {wn}')
+                    fields.append({
+                        'name':   f'📌 Your Watchlist  ({len(wl_tickers)} stock(s))',
+                        'value':  '\n'.join(wl_lines),
+                        'inline': False,
+                    })
+            except Exception:
+                pass
+
+        # Personalised expiry reminder
+        try:
+            from datetime import date as _date
+            expiry_dt = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            days_left = (expiry_dt - _date.today()).days
+            if days_left <= 14:
+                urgency = 'today' if days_left == 0 else f'in {days_left} day(s)'
+                fields.append({
+                    'name':   '⚠️ Subscription Reminder',
+                    'value':  (
+                        f'Your subscription expires **{urgency}** ({expiry_str}).\n'
+                        f'Use `/subscribe` in a DM with me to renew.'
+                    ),
+                    'inline': False,
+                })
+        except Exception:
+            pass
+
+        embed = {
+            'title':       f'📊 StockPilot PH — Weekly Digest  |  {week_str}',
+            'description': (
+                f'Hi **{name}**! Here\'s your weekly summary from StockPilot PH.\n\n'
+                f'Rankings run daily. Use `/stock <ticker>` to analyse any PSE stock.'
+            ),
+            'color':   0x1B4B6B,
+            'fields':  fields,
+            'footer':  {
+                'text': (
+                    'StockPilot PH · Scores are educational rankings, not investment advice. '
+                    'Data sourced from PSE Edge.'
+                )
+            },
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+        }
+
+        ok, err = send_dm_embed(discord_id, embed)
+        if ok:
+            sent += 1
+            print(f"  [digest] OK  {name} ({discord_id})")
+        else:
+            failed += 1
+            print(f"  [digest] ERR {name} ({discord_id}): {err}")
+
+    print(f"  [digest] Done — {sent} sent, {failed} failed.")
+
+
+def run_stock_of_week():
+    """
+    Picks the stock with the biggest score improvement vs last week
+    (fallback: current #1 ranked stock) and posts a full analysis embed
+    to the premium #deep-analysis channel.
+
+    Runs every Monday morning at 8:00 AM PHT via the scheduler.
+    Can also be triggered manually: py scheduler.py --run-sotw
+    """
+    from engine.scorer_v2 import score_unified
+    from engine.filters_v2 import filter_unified
+    from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
+                             calc_hybrid_intrinsic, calc_mos_pct)
+
+    deep_url = WEBHOOKS.get('deep_analysis', '')
+    if not deep_url:
+        print("  [SOTW] DISCORD_WEBHOOK_DEEP_ANALYSIS not set — skipping.")
+        return
+
+    # ── Get current top rankings ──────────────────────────────
+    current = db.get_last_scores_v2() or []
+    if not current:
+        print("  [SOTW] No scores in DB — run scoring first.")
+        return
+    current_sorted = sorted(current, key=lambda x: x.get('score', 0) or 0, reverse=True)
+
+    # ── Get last week's scores for delta calculation ──────────
+    conn = db.get_connection()
+    row = conn.execute("""
+        SELECT MAX(run_date) AS prev_date FROM scores_v2
+        WHERE run_date < date('now', '-6 days')
+    """).fetchone()
+    prev_date = row['prev_date'] if row else None
+
+    prev_by_ticker = {}
+    if prev_date:
+        prev_rows = conn.execute(
+            "SELECT ticker, score FROM scores_v2 WHERE run_date = ?",
+            (prev_date,)
+        ).fetchall()
+        prev_by_ticker = {r['ticker']: r['score'] for r in prev_rows}
+    conn.close()
+
+    # ── Pick the stock: biggest positive delta, fallback #1 ──
+    best_ticker = current_sorted[0]['ticker']
+    best_delta  = None
+
+    if prev_by_ticker:
+        best_delta_val = None
+        for s in current_sorted:
+            t     = s['ticker']
+            prev  = prev_by_ticker.get(t)
+            if prev is None:
+                continue
+            delta = (s.get('score') or 0) - prev
+            if best_delta_val is None or delta > best_delta_val:
+                best_delta_val = delta
+                best_ticker    = t
+                best_delta     = delta
+        # Only use delta if it's actually positive
+        if best_delta is not None and best_delta < 0.5:
+            best_ticker = current_sorted[0]['ticker']
+            best_delta  = None
+
+    # ── Load stock data and run full analysis ─────────────────
+    try:
+        from scraper.pse_stock_builder import build_stock_dict_from_db
+    except ImportError:
+        try:
+            sys.path.insert(0, str(ROOT / 'scraper'))
+            from pse_stock_builder import build_stock_dict_from_db
+        except ImportError as e:
+            print(f"  [SOTW] Cannot import build_stock_dict_from_db: {e}")
+            return
+
+    stock = build_stock_dict_from_db(best_ticker)
+    if not stock:
+        print(f"  [SOTW] No stock data for {best_ticker}.")
+        return
+
+    fin_history  = db.get_financials(best_ticker, years=10)
+    final_score, breakdown = score_unified(stock, financials_history=fin_history)
+    score = round(final_score, 1)
+
+    def _grade(s):
+        if s >= 80: return 'A'
+        if s >= 65: return 'B'
+        if s >= 50: return 'C'
+        if s >= 35: return 'D'
+        return 'F'
+
+    grade  = _grade(score)
+    layers = breakdown.get('layers', {})
+
+    # MoS calculation
+    eps_3y = [f['eps'] for f in fin_history if f.get('eps') is not None][:3]
+    ddm_iv, _ = calc_ddm(stock.get('dps_last'), stock.get('dividend_cagr_5y'))
+    eps_iv, _ = calc_eps_pe(eps_3y)
+    dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'), stock.get('revenue_cagr'))
+    iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv, weights=(0.30, 0.35, 0.35))
+    if stock.get('sector') == 'Holding Firms' and iv:
+        iv = round(iv * 0.80, 2)
+    price   = stock.get('current_price')
+    mos_pct = calc_mos_pct(iv, price) if iv and price else None
+
+    week_str = 'Week of ' + datetime.now().strftime('%b %d, %Y')
+
+    ok = send_stock_of_week(
+        webhook_url = deep_url,
+        ticker      = best_ticker,
+        name        = stock.get('name', best_ticker),
+        sector      = stock.get('sector', ''),
+        score       = score,
+        grade       = grade,
+        price       = price,
+        iv          = round(iv, 2) if iv else None,
+        mos_pct     = round(mos_pct, 1) if mos_pct is not None else None,
+        layers      = layers,
+        roe         = stock.get('roe'),
+        de_ratio    = stock.get('de_ratio'),
+        div_yield   = stock.get('dividend_yield'),
+        score_delta = round(best_delta, 1) if best_delta is not None else None,
+        week_str    = week_str,
+    )
+    print(f"  [SOTW] Stock of the Week: {best_ticker} (score {score}, "
+          f"delta {best_delta:+.1f})" if best_delta is not None
+          else f"  [SOTW] Stock of the Week: {best_ticker} (score {score}, rank #1 fallback)")
+    if ok:
+        print("  [SOTW] Posted to #deep-analysis.")
+    else:
+        print("  [SOTW] Failed to post.")
+
+
+def run_weekly_briefing():
+    """
+    Standalone function to send the weekly public briefing immediately.
+    Used by CLI --run-briefing flag for testing without a full weekly scrape.
+    """
+    import os as _os
+    briefing_url = WEBHOOKS.get('daily_briefing', '')
+    if not briefing_url:
+        print("  DISCORD_WEBHOOK_DAILY_BRIEFING not set in .env — skipping.")
+        return
+    ranked_now = db.get_last_scores_v2() or []
+    ranked_now = sorted(ranked_now, key=lambda x: x.get('score', 0) or 0, reverse=True)
+    if not ranked_now:
+        print("  No ranked stocks in DB — run scoring first.")
+        return
+    invite       = _os.getenv('DISCORD_INVITE_URL', '#')
+    date_display = 'Week of ' + datetime.now().strftime('%b %d, %Y')
+    ok = send_weekly_briefing(briefing_url, ranked_now, date_display, invite)
+    print(f"  Weekly briefing {'sent' if ok else 'FAILED'}.")
+
+
+# ── Monthly jobs (1st of each month) ─────────────────────────
+
+def run_monthly_dividend_calendar():
+    """
+    Posts the monthly dividend calendar to #deep-analysis.
+    Shows top dividend-paying stocks by yield + recent PSE Edge announcements.
+    Runs on the 1st of each month.
+    """
+    from db.db_connection import get_connection
+
+    month_str = datetime.now().strftime('%B %Y')
+    print(f"\n[monthly_calendar] Building dividend calendar for {month_str}...")
+
+    conn = get_connection()
+
+    # Top 15 dividend payers from latest COMPLETED year financials × current prices.
+    # Rules:
+    #   1. year < current_year — exclude FY2026+ (partial data, PDF parser errors,
+    #      ex-div dates from early 2026 mis-bucketed as FY2026)
+    #   2. yield 0.3–20% — removes inflated DPS from PDF parser misreads
+    import datetime as _dt
+    current_year = _dt.date.today().year
+
+    payer_rows = conn.execute("""
+        SELECT f.ticker,
+               s.name,
+               f.dps,
+               f.year,
+               p.close AS price,
+               round(f.dps / p.close * 100.0, 2) AS yield_pct
+        FROM financials f
+        JOIN (
+            SELECT ticker, MAX(year) AS max_year
+            FROM financials
+            WHERE dps > 0 AND year < ?
+            GROUP BY ticker
+        ) latest ON f.ticker = latest.ticker AND f.year = latest.max_year
+        JOIN stocks s ON f.ticker = s.ticker
+        JOIN (
+            SELECT t.ticker, p2.close
+            FROM (SELECT ticker, MAX(date) AS max_date FROM prices GROUP BY ticker) t
+            JOIN prices p2 ON p2.ticker = t.ticker AND p2.date = t.max_date
+        ) p ON f.ticker = p.ticker
+        WHERE f.dps > 0
+          AND s.status = 'active'
+          AND p.close > 0
+          AND f.year < ?
+          AND (f.dps / p.close * 100.0) BETWEEN 0.5 AND 20.0
+          AND (
+              -- REITs: always allowed (legitimate high payouts by law)
+              s.is_reit = 1
+              -- Has positive EPS: validate payout ratio (must be <= 200%)
+              OR (f.eps > 0 AND (f.dps / f.eps) <= 2.0)
+              -- Negative EPS: allow (paying dividends from retained earnings)
+              OR (f.eps IS NOT NULL AND f.eps <= 0)
+              -- EPS unknown: allow ONLY if yield <= 10% (low risk without validation)
+              OR (f.eps IS NULL AND (f.dps / p.close * 100.0) <= 10.0)
+              -- EPS unknown, yield > 10%: require at least 1 prior year of DPS
+              -- history to confirm this is not a scraper error (e.g. LFM FY2025)
+              OR (
+                  f.eps IS NULL
+                  AND (f.dps / p.close * 100.0) > 10.0
+                  AND EXISTS (
+                      SELECT 1 FROM financials f2
+                      WHERE f2.ticker = f.ticker
+                        AND f2.dps > 0
+                        AND f2.year < f.year
+                        AND f2.year >= f.year - 4
+                  )
+              )
+          )
+        ORDER BY yield_pct DESC
+        LIMIT 15
+    """, (current_year, current_year)).fetchall()
+
+    payers = [dict(r) for r in payer_rows]
+
+    # Dividend disclosures from the last 45 days
+    cutoff = (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d')
+    disc_rows = conn.execute("""
+        SELECT ticker, date, title FROM disclosures
+        WHERE (type LIKE '%dividend%' OR title LIKE '%dividend%')
+        AND date >= ?
+        ORDER BY date DESC
+        LIMIT 10
+    """, (cutoff,)).fetchall()
+
+    recent_disc = [dict(r) for r in disc_rows]
+    conn.close()
+
+    url = WEBHOOKS.get('deep_analysis', '')
+    ok  = send_dividend_calendar(url, month_str, payers, recent_disc)
+    print(f"  Dividend calendar {'sent' if ok else 'FAILED'} for {month_str}.")
+
+
+def run_monthly_model_performance():
+    """
+    Compares current vs last month's unified scores and posts a
+    performance snapshot to #deep-analysis.
+    Runs on the 1st of each month.
+    """
+    from db.db_connection import get_connection
+
+    month_str = datetime.now().strftime('%B %Y')
+    print(f"\n[monthly_perf] Building model performance for {month_str}...")
+
+    conn = get_connection()
+
+    # All distinct run dates, newest first
+    date_rows = conn.execute(
+        "SELECT DISTINCT run_date FROM scores_v2 ORDER BY run_date DESC LIMIT 60"
+    ).fetchall()
+
+    if not date_rows:
+        print("  [monthly_perf] No scores_v2 data — run scoring first.")
+        conn.close()
+        return
+
+    latest_date = date_rows[0]['run_date']
+    latest_dt   = datetime.strptime(latest_date, '%Y-%m-%d')
+    target_prior = latest_dt - timedelta(days=28)
+
+    # Find closest run_date at or before 28 days ago
+    prior_date = None
+    for row in date_rows[1:]:
+        dt = datetime.strptime(row['run_date'], '%Y-%m-%d')
+        if dt <= target_prior:
+            prior_date = row['run_date']
+            break
+
+    # Current top 20 with stock names
+    curr_rows = conn.execute("""
+        SELECT sv.ticker, sv.score, sv.rank, sv.category, s.name
+        FROM scores_v2 sv
+        LEFT JOIN stocks s ON sv.ticker = s.ticker
+        WHERE sv.run_date = ? AND sv.rank IS NOT NULL
+        ORDER BY sv.rank
+        LIMIT 20
+    """, (latest_date,)).fetchall()
+
+    current = [dict(r) for r in curr_rows]
+
+    # Prior month scores for comparison
+    prior = {}
+    if prior_date:
+        prior_rows = conn.execute(
+            "SELECT ticker, score, rank FROM scores_v2 WHERE run_date = ? AND rank IS NOT NULL",
+            (prior_date,)
+        ).fetchall()
+        prior = {r['ticker']: {'score': r['score'], 'rank': r['rank']} for r in prior_rows}
+
+    conn.close()
+
+    url = WEBHOOKS.get('deep_analysis', '')
+    ok  = send_model_performance(url, month_str, current, prior, latest_date, prior_date)
+    print(f"  Model performance {'sent' if ok else 'FAILED'} for {month_str}.")
+
+
+def run_monthly_jobs():
+    """
+    Runs both monthly reports on the 1st of each month:
+      1. Dividend Calendar  → #deep-analysis
+      2. Model Performance  → #deep-analysis
+    """
+    print(f"\n{'='*55}")
+    print(f"  Monthly Reports — {datetime.now().strftime('%B %Y')}")
+    print(f"{'='*55}")
+    run_monthly_dividend_calendar()
+    run_monthly_model_performance()
+    print(f"\n  Monthly reports complete.")

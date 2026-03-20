@@ -18,7 +18,7 @@
 #   - EPS Acceleration     (35%) — earnings momentum
 #   - OCF Acceleration     (25%) — cash flow momentum
 #
-# Weight in final score: 15% (lowest weight due to annual data noise)
+# Weight in final score: 5% (reduced from 15%; rarely has 5yr data)
 # Returns None → weight redistributed to other layers when data < 4 years.
 #
 # Returns: (score: float 0-100, breakdown: dict)
@@ -87,11 +87,12 @@ def _two_window_delta(series: list) -> float | None:
 
 
 # ── Normalisation thresholds for acceleration (delta of delta in pp) ──
+# Wider bands: at 5% weight, fine-grained differences matter less.
 # Symmetric around 0: positive = accelerating, negative = decelerating
 _ACCEL_THRESHOLDS = [
-    (-25, 5),  (-15, 12), (-8, 22), (-5, 32),
-    (-2, 44),  (0,   52), (2, 62),  (5, 74),
-    (8,  84),  (15, 93),  (25, 100),
+    (-15, 5),  (-10, 15), (-5, 30),  (-2, 40),
+    (0,  50),  (2,  60),  (5, 75),   (10, 90),
+    (15, 100),
 ]
 
 

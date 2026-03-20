@@ -61,14 +61,24 @@ def _yoy_changes(series: list) -> list[float]:
 
 def _smoothed_delta(series: list, years: int = 3) -> float | None:
     """
-    Computes the average of the most recent N year-over-year changes.
-    Using the average reduces sensitivity to one-time events.
+    Computes the recency-weighted average of the most recent N YoY changes.
+    Weights are loaded from config.IMPROVEMENT_RECENCY_WEIGHTS (newest first).
+    Falls back to simple average if fewer changes than weights available.
     Returns None if fewer than 2 data points are available.
     """
+    from config import IMPROVEMENT_RECENCY_WEIGHTS
+
     changes = _yoy_changes(series)
     if not changes:
         return None
     recent = changes[:years]  # newest changes first
+
+    # Apply recency weights if we have enough changes
+    weights = IMPROVEMENT_RECENCY_WEIGHTS[:len(recent)]
+    if len(recent) >= len(weights) and len(weights) > 1:
+        total_w = sum(weights)
+        return sum(c * w for c, w in zip(recent, weights)) / total_w
+    # Fallback: simple average for 1 change or missing config
     return sum(recent) / len(recent)
 
 
@@ -77,18 +87,27 @@ def _roe_delta(roe_current: float | None,
     """
     Computes ROE delta = current ROE - ROE 3 years ago.
     Uses financials_history (list of annual rows, newest first).
-    Each row must have 'net_income' and 'equity' fields.
+    Indexes by actual fiscal year, not array position, to handle gaps.
+    Each row must have 'year', 'net_income', and 'equity' fields.
     """
     if roe_current is None:
         return None
-    if not financials_history or len(financials_history) < 4:
+    if not financials_history or len(financials_history) < 2:
         return None
-    # Try to get ROE from 3 years ago
-    row_3y = financials_history[3] if len(financials_history) > 3 else None
-    if row_3y is None:
+
+    current_year = financials_history[0].get('year')
+    if current_year is None:
         return None
-    ni_3y  = row_3y.get('net_income')
-    eq_3y  = row_3y.get('equity')
+    target_year = current_year - 3
+
+    target_entry = next(
+        (f for f in financials_history if f.get('year') == target_year), None
+    )
+    if target_entry is None:
+        return None
+
+    ni_3y = target_entry.get('net_income')
+    eq_3y = target_entry.get('equity')
     if ni_3y is None or eq_3y is None or eq_3y <= 0:
         return None
     roe_3y = (ni_3y / eq_3y) * 100

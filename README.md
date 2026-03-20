@@ -21,9 +21,13 @@ The system connects to **PSE Edge** (the official PSE disclosure platform) and d
 - Corporate disclosures (quarterly earnings filings, dividend declarations)
 
 After every scrape, an automated **data quality pipeline** runs:
-- **DPS auto-cleaner** — nulls any dividend yield > 20% (non-REIT) or > 30% (REIT)
+- **Canary checks** — validates that PSE Edge page structure hasn't changed; alerts admin via DM if patterns break
+- **Unit validation** — requires explicit currency line; cross-validates revenue/share and EPS/NI ratios
+- **Write gate** — blocks dividend yields > 25% (non-REIT) or > 35% (REIT) at scrape time
+- **DPS auto-cleaner** — nulls any dividend yield > 20% (non-REIT) or > 30% (REIT) post-scrape
 - **Full audit** — checks payout ratios, EPS/NI mismatches, revenue anomalies, and implausible figures
 - **Audit log** — issues recorded to the dashboard activity log for review
+- **Scheduler heartbeat** — monitors scheduler health; alerts admin if process stops responding
 
 Data is stored in a local SQLite database on your machine. Nothing is sent to external servers.
 
@@ -32,15 +36,19 @@ Every stock is scored using the **StockPilot PH Rankings** system — a unified 
 fundamental framework. The scoring is **deterministic** — the same data always produces
 the same score, with no randomness or AI guessing.
 
+Default unified weights (portfolio-specific weights available for Pure Dividend, Dividend Growth, and Value):
 | Layer | Weight | What It Measures |
 |-------|--------|-----------------|
-| **Health** | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) |
-| **Improvement** | 30% | Fundamentals improving over 3 years (Revenue, EPS, OCF, ROE deltas) |
-| **Acceleration** | 15% | Improvement getting stronger (2-year delta-of-delta) |
-| **Persistence** | 30% | Improvement consistent and reliable (consecutive positive YoY years) |
+| **Health** | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) — sector-relative |
+| **Improvement** | 30% | Fundamentals improving (Revenue, EPS, OCF, ROE deltas) — recency-weighted |
+| **Acceleration** | 5% | Improvement getting stronger (2-year delta-of-delta) |
+| **Persistence** | 40% | Improvement consistent and reliable (direction + magnitude + streak) |
 
-All PSE stocks compete in one unified ranking. A minimum health filter removes
-companies with persistent losses, high debt, or insufficient data before scoring.
+All PSE stocks compete in one unified ranking. The PDF contains three sections
+(Pure Dividend, Dividend Growth, Value) each scored with portfolio-specific weights.
+A minimum health filter removes companies with persistent losses, high debt, or
+insufficient data before scoring. Each stock carries a **data confidence badge**
+(High/Medium/Limited) based on how many years of complete data are available.
 
 ### 3. Calculates Margin of Safety
 For each stock, the system calculates an **intrinsic value** — a mathematical estimate
@@ -50,6 +58,9 @@ Three models are used:
 - **DDM** (Dividend Discount Model) — for dividend stocks
 - **DCF** (Discounted Cash Flow) — for cash-generating businesses
 - **EPS × PE** — earnings-based fair value estimate
+
+The discount rate is **risk-adjusted** by company size (0-5% premium) and sector
+(0-2% premium), so riskier companies get a more conservative valuation.
 
 The **Margin of Safety** is the percentage discount between the intrinsic value and
 the current market price. A larger margin means more cushion if our estimates are off.
@@ -168,18 +179,21 @@ Alert engine (dividend, earnings, price triggers)
 
 ### StockPilot PH Rankings — Unified 4-Layer Score
 
-| Layer | Weight | What It Measures |
-|-------|--------|-----------------|
-| **Health** | 25% | ROE, operating margin/OCF quality, D/E, FCF yield, EPS stability |
-| **Improvement** | 30% | Revenue delta, EPS delta, OCF delta, ROE delta (3-year smoothed) |
-| **Acceleration** | 15% | 2-year delta-of-delta for Revenue, EPS, OCF |
-| **Persistence** | 30% | Consecutive positive YoY years for Revenue, EPS, OCF + direction consistency |
+| Layer | Unified | Pure Div | Div Growth | Value | What It Measures |
+|-------|---------|----------|------------|-------|-----------------|
+| **Health** | 25% | 30% | 25% | 35% | ROE, OCF margin, D/E, FCF yield, EPS stability — 70/30 absolute/sector-relative blend |
+| **Improvement** | 30% | 20% | 35% | 25% | Revenue, EPS, OCF, ROE deltas — recency-weighted (50/30/20) |
+| **Acceleration** | 5% | 5% | 5% | 5% | 2-year delta-of-delta for Revenue, EPS, OCF |
+| **Persistence** | 40% | 45% | 35% | 35% | Direction consistency + growth magnitude + streak bonus |
+
+Health thresholds are calibrated from PSE market percentiles (top-10% = excellent, median = average).
+Each stock's final score is multiplied by a **data confidence factor** (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65).
 
 **Health filter** (pass/fail before scoring):
-- Minimum 3 years of EPS, Revenue, and OCF data
-- 3-year normalized EPS must be positive
+- Minimum 2 years of EPS, Revenue, and OCF data
+- Normalized EPS must be positive
 - No persistent negative OCF (2+ consecutive years)
-- D/E ≤ 2.5× (non-bank) or ≤ 10× (bank)
+- D/E ≤ 3.0× (non-bank), ≤ 4.0× (REIT), or ≤ 10× (bank)
 
 ---
 
@@ -254,6 +268,10 @@ py scheduler.py --run-report        # report phase only (6 PM job)
 py scheduler.py --run-sotw          # Stock of the Week
 py scheduler.py --run-digest        # Weekly Digest DMs
 py scheduler.py --run-monthly       # Monthly reports
+py scheduler.py --run-backfill      # Historical data backfill (2018-2023)
+
+# Threshold calibration
+py engine/calibrate_thresholds.py   # Derive thresholds from DB percentiles
 
 # Data quality
 py db/db_data_quality.py            # full audit of all stocks
@@ -274,10 +292,11 @@ pse-quant-saas/
 │
 ├── engine/                 Scoring and calculation logic
 │   ├── metrics.py          Financial ratio calculations
-│   ├── filters_v2.py       Unified health filter (pass/fail)
-│   ├── scorer_v2.py        Unified 4-layer scorer
-│   ├── mos.py              Margin of Safety calculator
-│   ├── validator.py        Pre-scoring data validation
+│   ├── filters_v2.py       Unified health filter (pass/fail, 2yr min)
+│   ├── scorer_v2.py        Unified 4-layer scorer (portfolio-specific weights)
+│   ├── mos.py              Margin of Safety (risk-adjusted discount rate)
+│   ├── validator.py        Pre-scoring data validation + confidence calc
+│   ├── calibrate_thresholds.py  Percentile-based threshold derivation
 │   └── sentiment_engine.py AI news sentiment (Claude Haiku)
 │
 ├── scraper/                Data collection from PSE Edge
@@ -338,17 +357,28 @@ pse-quant-saas/
 Every weekly scrape automatically runs a 3-layer quality pipeline:
 
 **Layer 1 — Scraper (prevents bad data entering the DB)**
+- Canary field checks — validates PSE Edge page structure before parsing
 - COMMON shares whitelist — preferred/warrant dividends excluded
 - Ex-date deduplication — amended circulars don't double-count
 - Per-share rate cap — ₱0.001–₱100 per declaration
+- Mandatory unit detection — requires explicit currency line (no silent defaults)
+- Fiscal year mapping — dividends attributed to correct fiscal year, not ex-date year
 
 **Layer 2 — Write gate (catches anything the scraper misses)**
-- Dividend yield > 40% (non-REIT) or > 50% (REIT) at write time → blocked
+- Dividend yield > 25% (non-REIT) or > 35% (REIT) at write time → blocked
+- Negative revenue → blocked
+- Unit plausibility cross-validation (revenue/share, EPS/NI mismatch, net margin)
 
 **Layer 3 — Post-scrape audit (auto-runs after every weekly scrape)**
 - `clean_bad_dps()` — nulls DPS where yield > 20%/30%
 - `run_audit()` — checks payout ratios, EPS/NI mismatches, revenue anomalies
 - Results logged to dashboard activity log
+
+**Layer 4 — Staleness prevention**
+- Price older than 7 days → excluded from scoring
+- Financials older than 15 months → excluded from scoring
+- Consecutive scrape failures → escalated to admin; auto-suspended after 7 failures
+- Scheduler heartbeat monitored every 15 minutes
 
 Run manually: `py db/db_data_quality.py`
 
@@ -372,4 +402,4 @@ Sentiment analysis powered by Claude (Anthropic), for informational purposes onl
 ---
 
 *StockPilot PH — Built for the Philippine retail investor.*
-*Version: Phase 10 (production) | Last updated: 2026-03-15*
+*Version: Phase 11 complete (data quality + scoring recalibration) | Last updated: 2026-03-20*

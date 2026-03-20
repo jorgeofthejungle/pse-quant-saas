@@ -163,7 +163,7 @@ def _save_company(company_info: dict, stock_data: dict):
     # Gate: reject only clearly impossible yields. Legitimate edge cases
     # (special dividends, high-yield penny stocks) can be up to ~35%.
     # The dividend calendar query has its own 0.5–20% filter for display.
-    max_yield_pct = 50.0 if is_reit else 40.0
+    max_yield_pct = 35.0 if is_reit else 25.0
 
     for entry in stock_data.get('div_history', []):
         dps_val = entry['dps']
@@ -174,7 +174,7 @@ def _save_company(company_info: dict, stock_data: dict):
             continue
         db.upsert_financials(
             ticker = ticker,
-            year   = entry['year'],
+            year   = entry.get('fiscal_year', entry['year']),
             dps    = dps_val,
         )
 

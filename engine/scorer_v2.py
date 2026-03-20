@@ -4,11 +4,11 @@
 # ============================================================
 # Combines all 4 layers into a single unified score 0-100.
 #
-# Layer weights (Balanced — approved in planning):
+# Layer weights (Unified — loaded from config.SCORER_WEIGHTS):
 #   Health (Layer 1):       25%
 #   Improvement (Layer 2):  30%
-#   Acceleration (Layer 3): 15%
-#   Persistence (Layer 4):  30%
+#   Acceleration (Layer 3):  5%  (reduced from 15%; rarely has 5yr data)
+#   Persistence (Layer 4):  40%
 #
 # Result categories:
 #   >= 75: Highest Quality  (Healthy + Improving + Accelerating + Persistent)
@@ -27,14 +27,8 @@ from engine.scorer_improvement import score_improvement
 from engine.scorer_acceleration import score_acceleration
 from engine.scorer_persistence import score_persistence
 from engine.sector_stats       import get_sector_pe
-
-# ── Layer weights ─────────────────────────────────────────────
-LAYER_WEIGHTS = {
-    'health':       0.25,
-    'improvement':  0.30,
-    'acceleration': 0.15,
-    'persistence':  0.30,
-}
+from engine.validator          import calc_data_confidence
+from config                    import SCORER_WEIGHTS
 
 # ── Result categories ─────────────────────────────────────────
 CATEGORIES = [
@@ -100,7 +94,8 @@ def get_category(score: float) -> tuple[str, str]:
 
 def score_unified(stock: dict,
                   sector_stats: dict | None = None,
-                  financials_history: list | None = None
+                  financials_history: list | None = None,
+                  portfolio_type: str = 'unified',
                   ) -> tuple[float, dict]:
     """
     Compute the unified 4-layer score for a single stock.
@@ -112,7 +107,12 @@ def score_unified(stock: dict,
                             sector-adjusted PE scoring in Layer 1
         financials_history: Annual DB rows (newest first) for ROE delta
                             in Layer 2. If None, ROE delta is skipped.
+        portfolio_type:     One of 'unified', 'pure_dividend',
+                            'dividend_growth', 'value'. Selects the
+                            correct layer weights from config.SCORER_WEIGHTS.
     """
+    weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
+
     # Resolve sector median PE for this stock's sector
     sector_pe = None
     if sector_stats:
@@ -138,10 +138,10 @@ def score_unified(stock: dict,
 
     # ── Final weighted blend ──────────────────────────────────
     final_score = _blend_layers([
-        (h_score,       LAYER_WEIGHTS['health']),
-        (i_score,       LAYER_WEIGHTS['improvement']),
-        (a_score_maybe, LAYER_WEIGHTS['acceleration']),
-        (p_score,       LAYER_WEIGHTS['persistence']),
+        (h_score,       weights['health']),
+        (i_score,       weights['improvement']),
+        (a_score_maybe, weights['acceleration']),
+        (p_score,       weights['persistence']),
     ])
 
     category, category_desc = get_category(final_score)
@@ -150,25 +150,26 @@ def score_unified(stock: dict,
         'final_score': final_score,
         'category':    category,
         'category_description': category_desc,
+        'portfolio_type': portfolio_type,
         'layers': {
             'health': {
                 'score':   h_score,
-                'weight':  LAYER_WEIGHTS['health'],
+                'weight':  weights['health'],
                 'factors': h_breakdown,
             },
             'improvement': {
                 'score':   i_score,
-                'weight':  LAYER_WEIGHTS['improvement'],
+                'weight':  weights['improvement'],
                 'factors': i_breakdown,
             },
             'acceleration': {
                 'score':   a_score_maybe,
-                'weight':  LAYER_WEIGHTS['acceleration'],
+                'weight':  weights['acceleration'],
                 'factors': a_breakdown,
             },
             'persistence': {
                 'score':   p_score,
-                'weight':  LAYER_WEIGHTS['persistence'],
+                'weight':  weights['persistence'],
                 'factors': p_breakdown,
             },
         },
@@ -187,12 +188,21 @@ def score_unified(stock: dict,
         except Exception:
             pass   # Never break standard scoring
 
+    # ── Data confidence multiplier ────────────────────────────
+    # Penalises stocks with fewer years of complete data.
+    # 5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65, 1yr=0.0
+    confidence = calc_data_confidence(stock)
+    final_score = round(final_score * confidence, 1)
+    full_breakdown['confidence'] = confidence
+    full_breakdown['final_score'] = final_score
+
     return final_score, full_breakdown
 
 
 def rank_stocks_v2(stocks: list,
                    sector_stats: dict | None = None,
-                   financials_map: dict | None = None
+                   financials_map: dict | None = None,
+                   portfolio_type: str = 'unified',
                    ) -> list:
     """
     Score and rank a list of pre-filtered stocks using the unified model.
@@ -202,6 +212,8 @@ def rank_stocks_v2(stocks: list,
         sector_stats:    Output of compute_sector_stats(all_stocks)
         financials_map:  Dict of {ticker: [annual_rows]} from DB — used for
                          ROE delta. If None, ROE delta is skipped.
+        portfolio_type:  One of 'unified', 'pure_dividend', 'dividend_growth',
+                         'value'. Passed to score_unified for weight selection.
 
     Returns:
         List of stock dicts sorted by score descending.
@@ -210,11 +222,13 @@ def rank_stocks_v2(stocks: list,
     scored = []
     for stock in stocks:
         fins_history = (financials_map or {}).get(stock.get('ticker'), [])
-        score, breakdown = score_unified(stock, sector_stats, fins_history)
+        score, breakdown = score_unified(stock, sector_stats, fins_history,
+                                        portfolio_type=portfolio_type)
         enriched = dict(stock)
-        enriched['score']     = score
-        enriched['category']  = breakdown['category']
-        enriched['breakdown'] = breakdown
+        enriched['score']      = score
+        enriched['category']   = breakdown['category']
+        enriched['breakdown']  = breakdown
+        enriched['confidence'] = breakdown.get('confidence', 1.0)
         # Flat score_breakdown for the PDF detail page bar-chart renderer
         enriched['score_breakdown'] = {
             layer_name: {

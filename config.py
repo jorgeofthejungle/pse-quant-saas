@@ -91,9 +91,21 @@ WEEKLY_SCRAPE_HOUR = 22    # 10:00 PM PHT — after-hours, before Monday market
 STALE_PRICE_WARN_DAYS  = 30
 STALE_PRICE_BLOCK_DAYS = 90
 
+# Fine-grained price staleness thresholds (used by check_price_staleness()).
+# WARN: flag the stock as stale in the staleness report (5 trading days = ~1 week).
+# ERROR: critical — stock is likely suspended or data pipeline is broken.
+# MARKET_CAP: market cap is considered stale after this many calendar days.
+PRICE_STALENESS_WARN_DAYS    = 5    # warn if price older than 5 calendar days
+PRICE_STALENESS_ERROR_DAYS   = 30   # critical block if price older than 30 days
+MARKET_CAP_STALENESS_DAYS    = 30   # market_cap stale if price row older than 30 days
+
 # How many days without a PSE Edge scrape before a ticker is auto-marked
 # as 'suspended' during the weekly scrape comparison.
 STALE_SCRAPE_SUSPEND_DAYS = 14
+
+# ── Scheduler Heartbeat ─────────────────────────────────────
+# If the daily scoring job hasn't run in this many hours, dashboard shows WARNING.
+SCHEDULER_HEARTBEAT_WARN_HOURS = 26
 
 # ── Admin Access ───────────────────────────────────────────
 # Your Discord snowflake ID — only this user can use /admin commands.
@@ -106,3 +118,69 @@ ADMIN_DISCORD_ID = _os.getenv('ADMIN_DISCORD_ID', '')
 # With 4 points: 2 recent vs 2 prior (minimal but usable).
 # Stocks with fewer data points receive None -- _blend() redistributes weight.
 MOMENTUM_MIN_YEARS = 4
+
+# ── Improvement Layer Recency Weighting ──────────────────
+# Applied to 3-year smoothed deltas in scorer_improvement.py.
+# Most recent YoY change gets 50% weight, then 30%, then 20%.
+IMPROVEMENT_RECENCY_WEIGHTS = [0.50, 0.30, 0.20]  # newest first
+
+# ── REIT Classification Whitelist ────────────────────────
+# Tickers that must always be classified as REIT (is_reit=1).
+# These were initially misclassified during scraping.
+REIT_WHITELIST = {'VREIT', 'PREIT', 'MREIT', 'AREIT'}
+
+# ── Data Confidence Tiers ────────────────────────────────────
+# Multiplier applied to final score based on years of complete data.
+# Complete = EPS + Revenue + OCF all present for a given year.
+CONFIDENCE_TIERS = {
+    5: 1.00,  # 5+ years
+    4: 0.90,
+    3: 0.80,
+    2: 0.65,
+    1: 0.00,  # not scored
+}
+
+# ── Health Layer Thresholds (PSE percentile-based) ───────
+# Fallback values used when calibration has not yet run.
+# calibrate_thresholds.py overwrites these in the settings table.
+HEALTH_THRESHOLDS = {
+    'roe':              {'p90': 20.0, 'p75': 14.0, 'p50': 9.0,  'p25': 4.0},
+    'ocf_margin':       {'p90': 22.0, 'p75': 15.0, 'p50': 9.0,  'p25': 3.0},
+    'fcf_yield':        {'p90': 10.0, 'p75': 6.5,  'p50': 3.5,  'p25': 1.0},
+    'eps_stability_cv': {'p90': 0.10, 'p75': 0.25, 'p50': 0.50, 'p25': 0.80},
+}
+# Note: For eps_stability_cv, lower is better (p90 = most stable 10%).
+
+# ── MoS Risk-Adjusted Discount Rate ─────────────────────
+# Size premiums added to base discount rate (percentage points)
+MOS_SIZE_PREMIUM = {
+    'large': 0.0,    # > PHP 100B market cap
+    'mid':   1.5,    # PHP 20B-100B
+    'small': 3.0,    # PHP 5B-20B
+    'micro': 5.0,    # < PHP 5B
+}
+
+# Sector-specific risk premiums (percentage points)
+MOS_SECTOR_PREMIUM = {
+    'Financials':    0.0,
+    'Banking':       0.0,
+    'Utilities':     0.0,
+    'Property':      0.5,
+    'Consumer':      0.5,
+    'Industrial':    1.0,
+    'Services':      1.0,
+    'Holding Firms': 1.0,
+    'Mining and Oil': 2.0,
+    'Unknown':       1.5,
+}
+MOS_SECTOR_PREMIUM_DEFAULT = 1.0  # fallback for unrecognised sectors
+
+# ── Scorer Layer Weights ─────────────────────────────────
+# Portfolio-specific weights for the 4-layer scorer.
+# Acceleration kept at 5% until 80%+ of stocks have 5yr history.
+SCORER_WEIGHTS = {
+    'unified':         {'health': 0.25, 'improvement': 0.30, 'acceleration': 0.05, 'persistence': 0.40},
+    'pure_dividend':   {'health': 0.30, 'improvement': 0.20, 'acceleration': 0.05, 'persistence': 0.45},
+    'dividend_growth': {'health': 0.25, 'improvement': 0.35, 'acceleration': 0.05, 'persistence': 0.35},
+    'value':           {'health': 0.35, 'improvement': 0.25, 'acceleration': 0.05, 'persistence': 0.35},
+}

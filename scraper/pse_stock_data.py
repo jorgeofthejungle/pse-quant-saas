@@ -5,6 +5,7 @@
 
 import re
 import time
+from datetime import datetime as _dt
 from bs4 import BeautifulSoup
 from collections import defaultdict
 from pathlib import Path
@@ -18,6 +19,11 @@ try:
     from scraper.pse_session import _get, STOCK_DATA_URL, DIVIDENDS_LIST_URL
 except ImportError:
     from pse_session import _get, STOCK_DATA_URL, DIVIDENDS_LIST_URL
+
+try:
+    from scraper.scraper_canary import fire_canary
+except ImportError:
+    from scraper_canary import fire_canary
 
 
 def _parse_number(text: str) -> float | None:
@@ -83,13 +89,21 @@ def scrape_stock_data(session, cmpy_id: str) -> dict | None:
                             result[field] = parsed
                         break
 
+    # Canary 1: close price must be present (last-traded-price label exists)
     if not result.get('close'):
+        fire_canary('pse_stock_data', 'stock_data_close_missing',
+                    f'No close price found for cmpy_id={cmpy_id} — stockData.do structure may have changed')
         return None
+
+    # Canary 2: market_cap should normally be present alongside price
+    if not result.get('market_cap'):
+        fire_canary('pse_stock_data', 'stock_data_market_cap_missing',
+                    f'No market_cap found for cmpy_id={cmpy_id} — check stockData.do table structure')
 
     return result
 
 
-def scrape_dividend_history(session, cmpy_id: str) -> list:
+def scrape_dividend_history(session, cmpy_id: str, fiscal_year_end_month: int = 12) -> list:
     """
     Scrapes dividend history for a company.
 
@@ -117,8 +131,8 @@ def scrape_dividend_history(session, cmpy_id: str) -> list:
          declaration. Legitimate high-DPS stocks (TEL ~P95/share) pay in
          quarterly installments well under this cap.
 
-    Aggregates unique cash dividend declarations per calendar year.
-    Returns: [{year: int, dps: float}, ...] newest first (up to 6 years)
+    Aggregates unique cash dividend declarations per fiscal year.
+    Returns: [{year: int, dps: float, fiscal_year: int}, ...] newest first (up to 6 years)
     """
     _get(session, f'{PSE_EDGE_BASE_URL}/companyPage/dividends_and_rights_form.do',
          params={'cmpy_id': cmpy_id})
@@ -129,6 +143,20 @@ def scrape_dividend_history(session, cmpy_id: str) -> list:
         return []
 
     soup = BeautifulSoup(resp.text, 'lxml')
+
+    # Canary 1: Dividend table must contain data rows with <td> cells.
+    # If PSE Edge restructures the page this will fail gracefully.
+    all_data_rows = [r for r in soup.find_all('tr') if len(r.find_all('td')) >= 4]
+    if not all_data_rows:
+        fire_canary('pse_stock_data', 'dividends_table_missing',
+                    f'No dividend table rows (>=4 cells) found for cmpy_id={cmpy_id}')
+        return []
+
+    # Canary 2: Check that first data row has expected column count (7 columns).
+    first_row_cells = all_data_rows[0].find_all('td')
+    if len(first_row_cells) < 6:
+        fire_canary('pse_stock_data', 'dividends_table_column_count',
+                    f'Expected >=6 columns, found {len(first_row_cells)} for cmpy_id={cmpy_id}')
 
     # key: ex_date_string -> (year, per_share)
     # PSE Edge shows newest records first, so first occurrence per ex-date
@@ -182,21 +210,30 @@ def scrape_dividend_history(session, cmpy_id: str) -> list:
             continue
         year = int(yr_match.group(1))
 
+        # ── Fiscal year mapping ──────────────────────────────
+        # Parse month from ex-date (e.g. 'Nov 04, 2025' → 11)
+        try:
+            ex_date_parsed = _dt.strptime(date_text.strip(), '%b %d, %Y')
+            ex_month = ex_date_parsed.month
+        except (ValueError, TypeError):
+            ex_month = fiscal_year_end_month  # safe fallback: no shift
+        fiscal_year = year if ex_month >= fiscal_year_end_month else year - 1
+
         # ── Deduplication: first occurrence per ex-date wins ──
         # Same ex-date = same dividend declaration (amendments just add rows).
         # We use the full date string as the key so 'Nov 04, 2025' and
         # 'Nov 5, 2025' are treated as different declarations.
         key = date_text.strip()
         if key not in seen_ex_dates:
-            seen_ex_dates[key] = (year, per_share)
+            seen_ex_dates[key] = (year, per_share, fiscal_year)
 
     if not seen_ex_dates:
         return []
 
-    # Aggregate unique declarations by year
+    # Aggregate unique declarations by fiscal year
     yearly: dict[int, float] = defaultdict(float)
-    for _key, (year, per_share) in seen_ex_dates.items():
-        yearly[year] += per_share
+    for _key, (year, per_share, fiscal_year) in seen_ex_dates.items():
+        yearly[fiscal_year] += per_share
 
-    return [{'year': yr, 'dps': round(dps, 4)}
-            for yr, dps in sorted(yearly.items(), reverse=True)[:6]]
+    return [{'year': fy, 'dps': round(dps, 4), 'fiscal_year': fy}
+            for fy, dps in sorted(yearly.items(), reverse=True)[:6]]

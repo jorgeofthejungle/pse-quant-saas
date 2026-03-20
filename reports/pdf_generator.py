@@ -29,6 +29,7 @@ from reports.pdf_styles import (
 from reports.pdf_cover_page import build_cover_page, build_disclaimer_page
 from reports.pdf_rankings_table import build_rankings_table, generate_overall_assessment
 from reports.pdf_stock_detail_page import build_stock_detail
+from reports.pdf_portfolio_sections import build_section_header
 
 PAGE_W, PAGE_H = A4
 
@@ -96,20 +97,58 @@ __all__ = [
 
 
 def generate_report(
-    portfolio_type:        str,
-    ranked_stocks:         list,
+    ranked_sections:       object,
     output_path:           str,
     total_stocks_screened: int = 0,
+    # Legacy positional arg support: old callers passed portfolio_type as 1st arg
+    # and ranked_stocks as 2nd arg. Detect this via type check below.
+    portfolio_type:        str = None,
 ):
+    """
+    Generate the unified StockPilot PH Rankings PDF.
+
+    New call style (Task 12):
+        generate_report(ranked_sections, output_path, total_stocks_screened)
+        ranked_sections — dict: {'pure_dividend': [...], 'dividend_growth': [...], 'value': [...]}
+
+    Legacy call style (backward compatible):
+        generate_report(portfolio_type, ranked_stocks, output_path, total_stocks_screened)
+        If ranked_sections is a str, treat as old-style single-section call.
+        If ranked_sections is a list, treat as old-style with portfolio_type='unified'.
+    """
+    # ── Backward compatibility shim ──────────────────────────
+    if isinstance(ranked_sections, str):
+        # Called as generate_report(portfolio_type, ranked_stocks, output_path, ...)
+        # ranked_sections holds portfolio_type, output_path holds ranked_stocks
+        _pt     = ranked_sections
+        _stocks = output_path
+        _path   = total_stocks_screened
+        _total  = portfolio_type or 0
+        ranked_sections = {_pt: _stocks}
+        output_path = _path
+        total_stocks_screened = _total if isinstance(_total, int) else 0
+    elif isinstance(ranked_sections, list):
+        # Called as generate_report(ranked_stocks_list, output_path, total, ...)
+        ranked_sections = {'unified': ranked_sections}
+
     names = {
         'pure_dividend':   'PURE DIVIDEND',
         'dividend_growth': 'DIVIDEND GROWTH',
         'value':           'VALUE',
         'unified':         'UNIFIED STOCK RANKINGS',
     }
-    portfolio_name = names.get(portfolio_type, 'PORTFOLIO')
-    run_date       = datetime.now().strftime('%B %d, %Y')
-    eligible       = len(ranked_stocks)
+    run_date = datetime.now().strftime('%B %d, %Y')
+
+    # Determine cover-page portfolio type and name
+    section_keys = list(ranked_sections.keys())
+    if len(section_keys) == 1:
+        cover_pt   = section_keys[0]
+        cover_name = names.get(cover_pt, 'PORTFOLIO')
+    else:
+        cover_pt   = 'unified'
+        cover_name = 'STOCKPILOT PH RANKINGS'
+
+    total_eligible = sum(len(v) for v in ranked_sections.values())
 
     output_dir = os.path.dirname(output_path)
     if output_dir:
@@ -120,38 +159,51 @@ def generate_report(
         pagesize=A4,
         leftMargin=LEFT_MARGIN,
         rightMargin=RIGHT_MARGIN,
-        topMargin=TOP_MARGIN + 8 * mm,    # extra space for branded header bar
-        bottomMargin=BOTTOM_MARGIN + 6 * mm,  # extra space for footer
+        topMargin=TOP_MARGIN + 8 * mm,
+        bottomMargin=BOTTOM_MARGIN + 6 * mm,
     )
 
     styles   = build_styles()
     elements = []
 
     elements += build_cover_page(
-        styles, portfolio_type, portfolio_name,
-        run_date, total_stocks_screened, eligible
+        styles, cover_pt, cover_name,
+        run_date, total_stocks_screened, total_eligible,
     )
-    elements += build_rankings_table(styles, ranked_stocks, portfolio_type)
-    elements.append(Spacer(1, 6 * mm))
-    elements.append(PageBreak())
-    elements.append(Paragraph(
-        f'DETAILED STOCK ANALYSIS — ALL {len(ranked_stocks)} QUALIFYING STOCKS',
-        styles['SectionHeader']
-    ))
-    elements.append(HRFlowable(
-        width=CONTENT_WIDTH, thickness=2,
-        color=GOLD, spaceAfter=8
-    ))
 
-    for i, stock in enumerate(ranked_stocks):
-        if i > 0:
-            # CondPageBreak avoids a blank page when the previous stock's
-            # content exactly fills the page (which would make a plain
-            # PageBreak() fire as the first item on a fresh page).
-            # 180mm threshold: if less than 180mm remains, break to new page;
-            # if ≥ 180mm remains (i.e. we're already at the top), do nothing.
-            elements.append(CondPageBreak(180 * mm))
-        elements += build_stock_detail(styles, stock, i + 1, portfolio_type)
+    # ── Ranked tables — one per section ──────────────────────
+    section_order = ['pure_dividend', 'dividend_growth', 'value']
+    ordered_sections = [k for k in section_order if k in ranked_sections]
+    ordered_sections += [k for k in section_keys if k not in section_order]
+
+    for pt in ordered_sections:
+        stocks = ranked_sections[pt]
+        if not stocks:
+            continue
+        elements += build_section_header(pt)
+        elements += build_rankings_table(styles, stocks, pt)
+        elements.append(Spacer(1, 6 * mm))
+
+    elements.append(PageBreak())
+
+    # ── Detailed stock pages — one per section ────────────────
+    for pt in ordered_sections:
+        stocks = ranked_sections[pt]
+        if not stocks:
+            continue
+        elements += build_section_header(pt)
+        elements.append(Paragraph(
+            f'DETAILED STOCK ANALYSIS — ALL {len(stocks)} QUALIFYING STOCKS',
+            styles['SectionHeader']
+        ))
+        elements.append(HRFlowable(
+            width=CONTENT_WIDTH, thickness=2,
+            color=GOLD, spaceAfter=8,
+        ))
+        for i, stock in enumerate(stocks):
+            if i > 0:
+                elements.append(CondPageBreak(180 * mm))
+            elements += build_stock_detail(styles, stock, i + 1, pt)
 
     elements += build_disclaimer_page(styles)
 

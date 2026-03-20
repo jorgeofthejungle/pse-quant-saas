@@ -377,3 +377,97 @@ def calc_hybrid_intrinsic(
     intrinsic_value = sum(v * w for v, w in zip(values, normalised))
 
     return round(intrinsic_value, 2), f"Hybrid blend of {len(values)} method(s)"
+
+
+def calc_required_return(market_cap: float | None, sector: str | None) -> float:
+    """
+    Computes the risk-adjusted required return for DCF/DDM valuation.
+    Formula: risk_free + equity_premium + size_premium + sector_premium
+
+    Size breakpoints (market_cap in PHP):
+        large: > 100B  -> 0.0% premium
+        mid:   20B-100B -> 1.5% premium
+        small: 5B-20B  -> 3.0% premium
+        micro: < 5B    -> 5.0% premium
+
+    Sector premiums range 0% (Banking/Utilities) to 2% (Mining and Oil).
+    Unrecognised sectors use MOS_SECTOR_PREMIUM_DEFAULT (1.0%).
+    """
+    from config import (PH_RISK_FREE_RATE, EQUITY_RISK_PREMIUM,
+                        MOS_SIZE_PREMIUM, MOS_SECTOR_PREMIUM,
+                        MOS_SECTOR_PREMIUM_DEFAULT)
+
+    base = PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM  # 11.5%
+
+    # Size premium
+    if market_cap is None or market_cap <= 0:
+        size_prem = MOS_SIZE_PREMIUM['micro']
+    elif market_cap > 100e9:
+        size_prem = MOS_SIZE_PREMIUM['large']
+    elif market_cap > 20e9:
+        size_prem = MOS_SIZE_PREMIUM['mid']
+    elif market_cap > 5e9:
+        size_prem = MOS_SIZE_PREMIUM['small']
+    else:
+        size_prem = MOS_SIZE_PREMIUM['micro']
+
+    # Sector premium
+    sector_prem = MOS_SECTOR_PREMIUM.get(
+        sector or '', MOS_SECTOR_PREMIUM_DEFAULT
+    )
+
+    return base + (size_prem + sector_prem) / 100
+
+
+def calc_mos_price_v2(stock: dict) -> dict:
+    """
+    Compute intrinsic value and MoS using risk-adjusted discount rate.
+
+    Unlike calc_mos_price() which takes an already-computed intrinsic value,
+    this function runs all three valuation methods (DDM, EPS-PE, DCF) using
+    a discount rate that reflects the stock's size and sector risk.
+
+    Returns:
+        {
+            'intrinsic_value': float | None,
+            'mos_pct':         float | None,
+            'required_return': float,
+        }
+    """
+    required_return = calc_required_return(
+        stock.get('market_cap'), stock.get('sector')
+    )
+
+    # DDM
+    ddm_result = calc_ddm(
+        stock.get('dps_last'), stock.get('dividend_cagr_5y', 0),
+        required_return
+    )
+    ddm = ddm_result[0] if isinstance(ddm_result, tuple) else ddm_result
+
+    # EPS x PE
+    eps_result = calc_eps_pe(
+        stock.get('eps_3y'), None, stock.get('roe')
+    )
+    eps_pe = eps_result[0] if isinstance(eps_result, tuple) else eps_result
+
+    # DCF
+    dcf_result = calc_dcf(
+        stock.get('fcf_per_share'), stock.get('revenue_cagr', 0),
+        required_return
+    )
+    dcf = dcf_result[0] if isinstance(dcf_result, tuple) else dcf_result
+
+    intrinsic_result = calc_hybrid_intrinsic(ddm, eps_pe, dcf)
+    intrinsic = intrinsic_result[0] if isinstance(intrinsic_result, tuple) else intrinsic_result
+
+    if intrinsic and stock.get('current_price'):
+        mos_pct = calc_mos_pct(intrinsic, stock['current_price'])
+    else:
+        mos_pct = None
+
+    return {
+        'intrinsic_value': intrinsic,
+        'mos_pct': mos_pct,
+        'required_return': required_return,
+    }

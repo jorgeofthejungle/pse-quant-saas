@@ -23,6 +23,42 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from config import SCRAPE_DELAY_SECS
 
+try:
+    from scraper.scraper_canary import fire_canary
+except ImportError:
+    from scraper_canary import fire_canary
+
+
+def _check_autocomplete_canary(resp, ticker: str) -> bool:
+    """
+    Canary check for the autocomplete endpoint.
+    Returns True if structure looks valid, False (and fires canary) if not.
+
+    Canary 1: Response must be a non-empty JSON list.
+    Canary 2: First item must contain expected keys (cmpyId, symbol, cmpyNm).
+    """
+    try:
+        data = resp.json()
+    except Exception:
+        fire_canary('pse_lookup', 'autocomplete_json_parse',
+                    f'Response is not valid JSON for ticker={ticker}')
+        return False
+
+    if not isinstance(data, list):
+        fire_canary('pse_lookup', 'autocomplete_not_list',
+                    f'Expected list, got {type(data).__name__} for ticker={ticker}')
+        return False
+
+    if data:
+        first = data[0]
+        missing = [k for k in ('cmpyId', 'symbol', 'cmpyNm') if k not in first]
+        if missing:
+            fire_canary('pse_lookup', 'autocomplete_missing_keys',
+                        f'Missing keys {missing} in autocomplete response for ticker={ticker}')
+            return False
+
+    return True
+
 
 def lookup_cmpy_id(session, ticker: str) -> str | None:
     """
@@ -34,6 +70,8 @@ def lookup_cmpy_id(session, ticker: str) -> str | None:
         return None
     try:
         data = resp.json()
+        # Canary: validate structure on first successful parse
+        _check_autocomplete_canary(resp, ticker)
         for item in data:
             if item.get('symbol', '').upper() == ticker.upper():
                 return str(item['cmpyId'])
@@ -53,6 +91,8 @@ def lookup_company_info(session, ticker: str) -> dict | None:
         return None
     try:
         data = resp.json()
+        if not _check_autocomplete_canary(resp, ticker):
+            return None
         for item in data:
             if item.get('symbol', '').upper() == ticker.upper():
                 return {

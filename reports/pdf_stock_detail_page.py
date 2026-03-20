@@ -136,6 +136,25 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     ]))
     elements.append(badges)
 
+    # ── Confidence badge ──
+    confidence = stock.get('confidence', 1.0)
+    if confidence >= 0.9:
+        conf_label = 'High Confidence (5yr data)'
+    elif confidence >= 0.8:
+        conf_label = 'Medium Confidence (3-4yr data)'
+    elif confidence >= 0.65:
+        conf_label = 'Limited Data (2yr)'
+    else:
+        conf_label = 'Insufficient Data'
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        f'Data confidence: {conf_label}',
+        ParagraphStyle(
+            'ConfBadge', fontSize=7.5, textColor=MID_GREY,
+            fontName='Helvetica', alignment=TA_CENTER,
+        )
+    ))
+
     # ── Investment profile tags ──
     profiles = get_stock_profiles(stock)
     if profiles:

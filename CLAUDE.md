@@ -45,23 +45,31 @@ Never hardcode model strings. Always import from `config.py`.
 - Provides a local Flask dashboard for admin and member management
 
 **Unified scoring system (StockPilot PH Rankings):**
-| Layer | Weight | What It Measures |
-|-------|--------|-----------------|
-| Health | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) |
-| Improvement | 30% | Fundamentals improving over 3 years (Revenue, EPS, OCF, ROE deltas) |
-| Acceleration | 15% | Improvement getting stronger (2-year window delta-of-delta) |
-| Persistence | 30% | Improvement consistent and reliable (consecutive positive YoY years) |
+
+Default unified weights (portfolio-specific weights configured in `config.py SCORER_WEIGHTS`):
+| Layer | Unified | Pure Dividend | Div Growth | Value | What It Measures |
+|-------|---------|---------------|------------|-------|-----------------|
+| Health | 25% | 30% | 25% | 35% | Financial health today (ROE, margins, D/E, FCF, EPS stability) — sector-relative |
+| Improvement | 30% | 20% | 35% | 25% | Fundamentals improving (Revenue, EPS, OCF, ROE deltas) — recency-weighted |
+| Acceleration | 5% | 5% | 5% | 5% | Improvement getting stronger (2-year window delta-of-delta) |
+| Persistence | 40% | 45% | 35% | 35% | Improvement consistent and reliable (direction + magnitude + streak) |
 
 Dividends are a bonus signal within the score — not a filter requirement.
-All PSE stocks compete in one unified ranking.
+All PSE stocks compete in one unified ranking. The PDF contains three sections (Pure Dividend, Dividend Growth, Value) each scored with portfolio-specific weights. A stock can appear in multiple sections.
+
+Health layer thresholds are calibrated from PSE market percentiles via `engine/calibrate_thresholds.py`. Each scored stock carries a data confidence multiplier (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65).
+
+MoS discount rate is risk-adjusted by size premium (0-5%) and sector premium (0-2%), not a flat 11.5%.
 
 **Architecture pipeline:**
 ```
-PSE Edge → Scraper → Data Quality Pipeline → Database
-                                                 ↓
-                             Metrics → Filter → Scorer → MoS
+PSE Edge → Scraper (canary checks) → Unit Validation → Database
                                                            ↓
-                                   Sentiment (Haiku) → PDF Report
+                              Data Quality Audit → Calibration (thresholds)
+                                                           ↓
+                    Metrics → Filter (2yr min) → Scorer (per-portfolio) → MoS (risk-adjusted)
+                                                           ↓
+                                   Sentiment (Haiku) → Unified PDF (3 sections)
                                                            ↓
                                           Discord Webhooks + Bot → Members
 ```
@@ -92,9 +100,10 @@ pse-quant-saas/
 │   │   ├── scorer_acceleration.py
 │   │   ├── scorer_persistence.py
 │   │   └── scorer_explanations_value.py
-│   ├── sector_stats.py     ← Dynamic sector median computation ✅
-│   ├── mos.py              ← Margin of Safety calculator ✅
-│   ├── validator.py        ← Data validation layer ✅
+│   ├── sector_stats.py     ← Dynamic sector median computation (8 metrics, market-cap weighted) ✅
+│   ├── mos.py              ← Margin of Safety calculator (risk-adjusted discount rate) ✅
+│   ├── validator.py        ← Data validation layer + confidence calculator ✅
+│   ├── calibrate_thresholds.py ← Percentile-based threshold derivation from DB ✅
 │   ├── sentiment_engine.py ← Claude Haiku news sentiment ✅
 │   └── conglomerate_scorer.py ← Holding firm segment analysis ✅
 │
@@ -102,8 +111,10 @@ pse-quant-saas/
 │   ├── pse_edge_scraper.py ← Main scraper facade ✅
 │   │   ├── pse_session.py
 │   │   ├── pse_lookup.py
-│   │   ├── pse_stock_data.py   ← Dividend scraper (COMMON-only whitelist, deduped) ✅
-│   │   └── pse_financial_reports.py
+│   │   ├── pse_stock_data.py   ← Dividend scraper (COMMON-only whitelist, deduped, fiscal year mapped) ✅
+│   │   └── pse_financial_reports.py ← Financial report parser + backfill scraper ✅
+│   ├── pse_stock_builder.py ← Builds stock dict from DB for scoring pipeline ✅
+│   ├── scraper_canary.py   ← Canary field checks + admin DM on pattern failure ✅
 │   └── news_fetcher.py     ← Yahoo Finance + news RSS ✅
 │
 ├── db/                     ← Database layer
@@ -112,7 +123,7 @@ pse-quant-saas/
 │   ├── db_schema.py        ← Table creation (init_db) ✅
 │   ├── db_prices.py        ← Price data CRUD ✅
 │   ├── db_scores.py        ← Score storage + get_last_scores_v2 ✅
-│   ├── db_financials.py    ← Financial data CRUD (yield gate at write) ✅
+│   ├── db_financials.py    ← Financial data CRUD ✅
 │   ├── db_sentiment.py     ← Sentiment cache CRUD ✅
 │   ├── db_conglomerates.py ← Conglomerate segment data CRUD ✅
 │   ├── db_data_quality.py  ← Post-scrape data quality auditor ✅
@@ -124,6 +135,7 @@ pse-quant-saas/
 │   ├── pdf_cover_page.py
 │   ├── pdf_rankings_table.py
 │   ├── pdf_stock_detail_page.py
+│   ├── pdf_portfolio_sections.py ← Multi-section layout for unified PDF ✅
 │   └── pdf_sentiment.py
 │
 ├── discord/                ← Discord delivery and bot
@@ -194,17 +206,35 @@ All functions return `float | None`. Never raise on bad input.
 
 ### engine/filters_v2.py
 Function: `filter_unified(stock)` → returns `(eligible: bool, reason: str)`
-Hard filters: min 3 years of EPS/Revenue/OCF data, 3Y normalized EPS > 0,
-no persistent negative OCF (2+ consecutive years), D/E ≤ 2.5x (non-bank) or ≤ 10x (bank).
+Hard filters: min 2 years of EPS/Revenue data, min 2 years OCF, normalized EPS > 0,
+no persistent negative OCF (2+ consecutive years), D/E ≤ 3.0x (non-bank) or ≤ 10x (bank) or ≤ 4.0x (REIT).
+*(Phase 11: Relaxed from 3-year to 2-year minimum for EPS/Revenue. Confidence multiplier handles the penalty.)*
 
 ### engine/scorer_v2.py (unified 4-layer scorer)
-Function: `score_unified(stock, financials_history)` → returns `(score: float, breakdown: dict)`
-Four layers: health (25%), improvement (30%), acceleration (15%), persistence (30%).
-**CRITICAL: Do not change weights or normalisation thresholds without explicit instruction.**
+Function: `score_unified(stock, financials_history, portfolio_type='unified')` → returns `(score: float, breakdown: dict)`
+Four layers with portfolio-specific weights configured in `config.py SCORER_WEIGHTS`.
+Default unified: health (25%), improvement (30%), acceleration (5%), persistence (40%).
+Applies data confidence multiplier to final score.
+**Weights and thresholds are configured in `config.py`. Do not change without explicit instruction.**
+*(Phase 11: Portfolio-specific weights, confidence multiplier, acceleration reduced to 5%.)*
+
+### engine/scorer_health.py
+Health layer uses 70/30 blend of absolute (PSE percentile) and sector-relative scoring.
+Thresholds calibrated by `engine/calibrate_thresholds.py`, stored in `settings` DB table with `config.py` fallbacks.
+
+### engine/scorer_improvement.py
+Uses recency-weighted smoothed deltas (50/30/20 newest-first).
+ROE delta indexes by actual fiscal year, not array position.
+
+### engine/scorer_persistence.py
+Blended formula: direction (60pts) + magnitude (20pts) + streak bonus (20pts).
 
 ### engine/mos.py
 Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`, `calc_mos_price`, `calc_mos_pct`, `calc_hybrid_intrinsic`
 Risk-free rate = 6.5% (PH 10Y T-bond). Max DDM growth rate capped at 7%.
+Discount rate = risk-free + equity premium (5%) + size premium (0-5%) + sector premium (0-2%).
+All constants imported from `config.py` — no local duplicates.
+*(Phase 11: Risk-adjusted discount rate by size and sector.)*
 
 ### engine/sentiment_engine.py
 Uses `PIPELINE_AI_MODEL` from `config.py` (Claude Haiku).
@@ -217,12 +247,48 @@ Key quality controls (permanent — do not loosen):
 - COMMON shares whitelist: `{'COMMON', 'ORDINARY', 'COMMON SHARES', 'ORDINARY SHARES', 'SHARES', ''}`
 - Ex-date deduplication: first occurrence per ex-date wins (most recent amendment)
 - Per-share rate: currency-prefixed regex `r'(?:P|PHP|Php)\s*([\d]+\.[\d]+)'`, cap ₱0.001–₱100
-- Returns `[{year: int, dps: float}]` newest-first, up to 6 years
+- Returns `[{year: int, dps: float, fiscal_year: int}]` newest-first, up to 6 years
+- Fiscal year mapping: ex-dates in months ≤ fiscal_year_end_month → prior fiscal year
+*(Phase 11: Added fiscal year mapping for correct year attribution.)*
+
+### scraper/pse_edge_scraper.py — yield gate
+- Write-time yield gate lives here (lines 166-171), NOT in `db_financials.py`
+- DPS yielding > 25% (non-REIT) or > 35% (REIT) is blocked at scrape time
+- Canary field checks on each scrape; admin DM on pattern failure
+*(Phase 11: Tightened from 40%/50% to 25%/35%. Added scraper change detection.)*
+
+### scraper/scraper_canary.py
+Shared canary helper for all PSE Edge scrapers.
+- `fire_canary(scraper_name, canary_name, detail)` — logs failure to `settings` table under `scraper_health_{scraper_name}`; sends admin DM via `discord_dm.send_dm_text`; anti-spam: one DM per canary per 24 hours
+- Canary checks added to: `pse_lookup.py` (JSON keys), `pse_stock_data.py` (price/dividend table), `pse_financial_reports.py` (report table + columns)
+- All failures are non-fatal — scraper logs and continues
+
+### engine/validator.py — check_price_staleness()
+- `check_price_staleness(stock)` → `{price_date, days_stale, is_stale, is_critical, warning}`
+- Warn threshold: `PRICE_STALENESS_WARN_DAYS = 5` days; critical: `PRICE_STALENESS_ERROR_DAYS = 30` days
+- DB fallback: queries `SELECT MAX(date) FROM prices WHERE ticker = ?` if `price_date` not in stock dict
+- Integrated into `validate_stock()` return dict as `'price_staleness'` key
+
+### scheduler_jobs.py — heartbeat + freshness gate
+- `_record_heartbeat(job_name)` — writes `scheduler_heartbeat_{job_name}` ISO timestamp to settings table after each job completes
+- `_check_price_freshness()` — queries prices table; if no rows within `PRICE_STALENESS_ERROR_DAYS`, sends admin DM and returns False; `run_daily_score()` calls this at start and skips if stale
+- `check_scheduler_health()` → dict with `last_run`, `hours_ago`, `ok` for daily_score / weekly_scrape / alert_check
+- Re-exported via `scheduler.py` facade
+
+### config.py — REIT_WHITELIST
+- `REIT_WHITELIST = {'VREIT', 'PREIT', 'MREIT', 'AREIT'}` — tickers always classified as REIT
+- db_schema.py migrations set `is_reit=1` for these tickers on every startup (idempotent)
+*(Phase 11: Task 5 — fixes REIT misclassification introduced during initial scraping.)*
+
+### engine/validator.py — hard-block thresholds
+- `BLOCK_THRESHOLDS`: `'roe': ('<', -50.0, ...)` — ROE < -50% is a hard block (not warn)
+- `BLOCK_THRESHOLDS`: `'pb': ('>', 50.0, ...)` — P/B > 50 is a hard block
+- `MIN_COMPLETENESS = 0.40` — 40% of scored fields must be populated (tightened from 0.25)
+*(Phase 11: Task 5 — tightened from ROE warn-only and P/B>100 to hard blocks.)*
 
 ### db/db_financials.py — upsert_financials()
 - `force=False` uses `COALESCE(new, existing)` so existing good data is not overwritten
 - `force=True` overwrites ALL fields — use only when you are certain all fields are correct
-- Yield gate at write: DPS yielding > 40% (non-REIT) or > 50% (REIT) is blocked
 
 ### db/db_data_quality.py
 Post-scrape financial data auditor. Checks:
@@ -336,8 +402,9 @@ stock = {
     'is_reit':          bool,
     'is_bank':          bool,
 
-    # Price
+    # Price & Market
     'current_price':    float,  # Latest closing price in PHP
+    'market_cap':       float,  # Market capitalisation in PHP (from prices table)
 
     # Income metrics
     'dividend_yield':   float,  # % e.g. 8.35
@@ -377,17 +444,17 @@ stock = {
 SQLite database at: `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`
 
 Tables:
-- `stocks` — ticker, name, sector, is_reit, is_bank, last_updated, last_scraped, status, cmpy_id
+- `stocks` — ticker, name, sector, is_reit, is_bank, last_updated, last_scraped, status, cmpy_id, fiscal_year_end_month (default 12)
 - `financials` — id, ticker, year, revenue, net_income, equity, total_debt, cash, operating_cf, capex, ebitda, eps, dps, updated_at
 - `prices` — id, ticker, date, close, market_cap
 - `scores` — id, ticker, run_date, pure_dividend_score, dividend_growth_score, value_score, and ranks
-- `scores_v2` — id, ticker, run_date, score, rank, category, breakdown_json
+- `scores_v2` — id, ticker, run_date, portfolio_type, score, confidence, rank, category, breakdown_json (UNIQUE on ticker+run_date+portfolio_type)
 - `disclosures` — id, ticker, date, type, title, url (UNIQUE on ticker+date+url for alert dedup)
 - `sentiment` — id, ticker, date, score, category, key_events, summary, opportunistic_flag, risk_flag, headlines
 - `members` — id, discord_id, discord_name, email, plan, status, tier, joined_date, expiry_date, notes, created_at
 - `subscriptions` — id, member_id, payment_id, amount, plan, status, payment_method, paid_date, period_start, period_end
 - `activity_log` — id, timestamp, category, action, detail, status
-- `settings` — key, value, updated_at (runtime overrides for config.py values)
+- `settings` — key, value, updated_at (runtime overrides for config.py values; also stores calibrated thresholds and scraper health flags)
 - `watchlists` — id, discord_id, ticker, added_at (UNIQUE on discord_id+ticker)
 - `conglomerate_segments` — id, parent_ticker, segment_name, segment_ticker, revenue, net_income, equity, year, notes
 
@@ -398,7 +465,7 @@ Tables:
 ### Deterministic scoring
 - Scoring logic is pure Python — no AI, no ML, no randomness
 - Same inputs always produce same outputs
-- Never modify weights or thresholds without explicit instruction
+- Weights are configured in `config.py SCORER_WEIGHTS`. Thresholds are calibrated by `engine/calibrate_thresholds.py`. Do not modify either without explicit instruction.
 
 ### AI model discipline
 - Pipeline AI calls → `PIPELINE_AI_MODEL` (Haiku) from `config.py`
@@ -523,11 +590,38 @@ backtester.py — historical score simulation. CLI: `py backtester.py --portfoli
 - [x] 4-webhook Discord structure: RANKINGS, ALERTS, DEEP_ANALYSIS, DAILY_BRIEFING
 - [x] Disclosure monitor (15-min PSE Edge feed polling)
 
-### Phase 11 — Next (Backlog)
-- [ ] Run full weekly scrape to restore 3-year history for all stocks (currently only 6 qualify due to 2-year data)
+### Phase 11 — Data Quality & Scoring Recalibration ✅ COMPLETE (2026-03-20)
+**Spec:** `docs/superpowers/specs/2026-03-17-data-quality-scoring-recalibration-design.md`
+
+**Phase A — Data Quality Hardening:**
+- [x] Scraper change detection (canary fields + admin DM alerts) ✅ Task 13 — `scraper/scraper_canary.py`
+- [ ] Unit detection hardening (mandatory currency line, cross-validation) — deferred to Phase 12
+- [x] Dividend fiscal year attribution (ex-date → fiscal year mapping) ✅ Task 4
+- [x] Tighten write-time gates (25%/35% yield, 40% completeness, ROE/P/B hard blocks) ✅ Task 5
+- [x] Fix REIT misclassification (VREIT, PREIT, MREIT, AREIT) ✅ Task 5
+- [x] Market cap / price staleness cross-validation ✅ Task 14 — `check_price_staleness()` in `validator.py`
+- [x] Staleness prevention (freshness gates, scheduler heartbeat) ✅ Task 15 — `_check_price_freshness()`, `_record_heartbeat()`, `check_scheduler_health()`
+
+**Phase B — Scoring Recalibration:**
+- [x] Historical backfill scraper (2018-2023 from PSE Edge) ✅ Task 8 — `pse_financial_reports.py`
+- [x] Health threshold recalibration (PSE percentile-based, sector-relative) ✅ Task 9 — `calibrate_thresholds.py`
+- [x] Confidence-weighted scoring (5yr=1.0 → 2yr=0.65) ✅ Task 10 — `calc_data_confidence()` in `validator.py`
+- [x] Filter relaxed from 3-year to 2-year minimum ✅ Task 10 — `filters_v2.py`
+- [x] Portfolio-specific weights (pure_dividend, dividend_growth, value) ✅ Task 12 — `SCORER_WEIGHTS` in `config.py`
+- [x] Unified PDF with three ranked sections ✅ Task 12 — `pdf_portfolio_sections.py`, `pdf_generator.py`
+- [x] Persistence magnitude awareness (direction + magnitude + streak) ✅ Task 2 — `scorer_persistence.py`
+- [x] MoS risk-adjusted discount rate (size + sector premiums) ✅ Task 11 — `mos.py`
+- [x] Sector medians expansion (8 metrics, market-cap weighted, PE<50 filter) ✅ Task 6 — `sector_stats.py`
+- [x] Improvement recency weighting (50/30/20) ✅ Task 1 — `scorer_improvement.py`
+- [x] ROE delta year validation (index by fiscal year, not array position) ✅ Task 1 — `scorer_improvement.py`
+- [x] Acceleration weight reduced to 5%, wider scoring bands ✅ Task 3 — `scorer_acceleration.py`
+
+### Phase 12 — Next (Backlog)
+- [ ] Unit detection hardening (mandatory currency line, cross-validation) — deferred from Phase 11
 - [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
 - [ ] REIT FFO-based FCF coverage exemption
 - [ ] Export rankings to CSV/Excel from dashboard
+- [ ] Scheduler health page in dashboard (display `check_scheduler_health()` output)
 - [ ] Educational auto-poster — 52-topic Wednesday rotation to #learn-investing
 - [ ] Daily public briefing webhook — top 3 grades to #daily-briefing (separate from weekly)
 
@@ -549,6 +643,7 @@ py scheduler.py
 py scheduler.py --run-now           # full scoring cycle
 py scheduler.py --run-alerts        # alert check
 py scheduler.py --run-weekly        # full financial scrape (+ data quality)
+py scheduler.py --run-backfill      # historical backfill 2018-2023 (one-time)
 py scheduler.py --run-score         # 4 PM scoring phase only
 py scheduler.py --run-report        # 6 PM report phase only
 py scheduler.py --run-sotw          # Stock of the Week
@@ -575,6 +670,9 @@ py alerts/alert_engine.py --check earnings
 
 # Sentiment test
 py engine/sentiment_engine.py --ticker DMC
+
+# Threshold calibration (run after weekly scrape or backfill)
+py engine/calibrate_thresholds.py
 
 # Tests
 py tests/test_metrics.py
@@ -695,6 +793,6 @@ The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
 
 ---
 
-*Last updated: Phase 10 complete — Discord bot, data quality pipeline, 4-webhook structure (2026-03-15)*
+*Last updated: Phase 11 complete — Data quality hardening & scoring recalibration (2026-03-20)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

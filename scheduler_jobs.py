@@ -319,6 +319,19 @@ def run_daily_score():
         print(f"  PSE QUANT SAAS — 4 PM Scoring Run  {today}  {now}")
         print(f"{'='*55}")
 
+        # ── Freshness gate: skip scoring if prices are stale ──
+        if not _check_price_freshness():
+            try:
+                db.log_activity(
+                    'pipeline', 'scoring_skipped',
+                    'Stale price data — scoring aborted. Check price scraper.',
+                    status='warn',
+                )
+            except Exception:
+                pass
+            print("  Scoring aborted due to stale price data.")
+            return
+
         # ── Step 1: Scrape latest prices (from PSE Edge) ──────
         print("\n[1/3]  Scraping latest prices...")
         if scrape_daily_prices:
@@ -436,11 +449,13 @@ def run_daily_score():
 
         # ── Save scores ────────────────────────────────────────
         try:
-            db.save_scores(today, ranked, 'unified')   # legacy table (backward compat)
-            db.save_scores_v2(today, ranked)            # new clean scores_v2 table
+            db.save_scores(today, ranked, 'unified')              # legacy table (backward compat)
+            db.save_scores_v2(today, ranked, portfolio_type='unified')  # new clean scores_v2 table
             print("  Scores saved to DB (scores + scores_v2).")
         except Exception as e:
             print(f"  DB save error: {e}")
+
+        _record_heartbeat('daily_score')
 
         print(f"\n{'='*55}")
         print(f"  4 PM scoring complete.  {datetime.now().strftime('%H:%M:%S')}")
@@ -530,10 +545,9 @@ def run_daily_report():
     pdf_path = os.path.join(DESKTOP, filename)
 
     generate_report(
-        portfolio_type        = 'unified',
-        ranked_stocks         = ranked,
-        output_path           = pdf_path,
-        total_stocks_screened = len(all_stocks),
+        ranked_sections        = {'unified': ranked},
+        output_path            = pdf_path,
+        total_stocks_screened  = len(all_stocks),
     )
 
     webhook_url = WEBHOOKS.get('rankings', '')
@@ -795,6 +809,8 @@ def run_weekly_scrape():
         print("  VACUUM complete — disk space reclaimed.")
     except Exception as e:
         print(f"  Cleanup failed: {e}")
+
+    _record_heartbeat('weekly_scrape')
 
     print(f"\n{'='*55}")
     print(f"  Weekly scrape complete.  {datetime.now().strftime('%H:%M:%S')}")
@@ -1360,3 +1376,186 @@ def run_monthly_jobs():
     run_monthly_dividend_calendar()
     run_monthly_model_performance()
     print(f"\n  Monthly reports complete.")
+
+
+def run_backfill():
+    """One-time historical backfill: fetch 2018-2023 financials for all active tickers."""
+    from scraper.pse_financial_reports import backfill_historical_financials
+    from scraper.pse_session import create_session
+    from db.database import get_all_tickers, get_all_cmpy_ids
+
+    tickers = get_all_tickers(active_only=True)
+    cmpy_ids = get_all_cmpy_ids()
+    session = create_session()
+
+    total = len(tickers)
+    cumulative = {'fetched': 0, 'skipped': 0, 'errors': 0}
+    for i, ticker in enumerate(tickers):
+        cmpy_id = cmpy_ids.get(ticker)
+        if not cmpy_id:
+            cumulative['skipped'] += 1
+            continue
+        stats = backfill_historical_financials(session, cmpy_id, ticker)
+        for k in cumulative:
+            cumulative[k] += stats.get(k, 0)
+        if (i + 1) % 10 == 0 or (i + 1) == total:
+            print(f"  Backfill progress: {i+1}/{total} tickers "
+                  f"(total fetched={cumulative['fetched']}, "
+                  f"skipped={cumulative['skipped']}, "
+                  f"errors={cumulative['errors']})")
+
+    print(f"  Backfill complete: {total} tickers processed, "
+          f"{cumulative['fetched']} years fetched")
+
+
+# ── Alert check wrapper with heartbeat ───────────────────────
+
+def run_alert_check_with_heartbeat(dry_run: bool = False):
+    """
+    Thin wrapper around run_alert_check() that records a scheduler heartbeat
+    on successful completion. Used by the live scheduler so we can track
+    that the alert job is still running.
+    """
+    try:
+        from alerts.alert_engine import run_alert_check
+    except ImportError:
+        try:
+            from alert_engine import run_alert_check
+        except ImportError as e:
+            print(f"  [alert_check] import failed: {e}")
+            return
+    try:
+        run_alert_check(dry_run=dry_run)
+    finally:
+        _record_heartbeat('alert_check')
+
+
+# ── Heartbeat & Freshness Gate ────────────────────────────────
+
+def _record_heartbeat(job_name: str):
+    """
+    Write job completion timestamp to the settings table.
+    Non-fatal — any DB or import error is silently logged to console.
+    key: 'scheduler_heartbeat_{job_name}'
+    value: ISO-format datetime of successful completion
+    """
+    try:
+        from db.db_connection import get_connection
+        ts = datetime.now().isoformat()
+        key = f'scheduler_heartbeat_{job_name}'
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, ts, ts),
+        )
+        conn.commit()
+        conn.close()
+        print(f"  [heartbeat] {job_name} recorded at {ts[:19]}")
+    except Exception as e:
+        print(f"  [heartbeat] write failed for {job_name}: {e}")
+
+
+def _check_price_freshness() -> bool:
+    """
+    Returns True if price data is fresh enough to score.
+    Queries: SELECT COUNT(*) FROM prices WHERE date >= date('now', '-N days')
+    If count == 0, prices are stale — sends admin DM and returns False.
+    N is PRICE_STALENESS_ERROR_DAYS from config.py.
+    """
+    try:
+        from config import PRICE_STALENESS_ERROR_DAYS
+    except ImportError:
+        PRICE_STALENESS_ERROR_DAYS = 30
+
+    try:
+        from db.db_connection import get_connection
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM prices WHERE date >= date('now', ?)",
+            (f'-{PRICE_STALENESS_ERROR_DAYS} days',),
+        ).fetchone()
+        conn.close()
+        count = row['cnt'] if row else 0
+    except Exception as e:
+        print(f"  [freshness] DB query failed — skipping gate: {e}")
+        return True  # fail-open: don't block scoring on a DB error
+
+    if count == 0:
+        msg = (
+            f"[PSE Quant] STALE PRICE DATA — no prices updated in the last "
+            f"{PRICE_STALENESS_ERROR_DAYS} days. Scoring skipped. "
+            f"Check PSE Edge scraper or price pipeline."
+        )
+        print(f"  [freshness] {msg}")
+        try:
+            admin_id = os.environ.get('ADMIN_DISCORD_ID', '')
+            if admin_id:
+                from discord.discord_dm import send_dm_text
+                send_dm_text(admin_id, msg)
+        except Exception as dm_err:
+            print(f"  [freshness] admin DM failed: {dm_err}")
+        return False
+
+    return True
+
+
+def check_scheduler_health() -> dict:
+    """
+    Returns a status dict showing the last heartbeat time for each scheduled job.
+    Used by the dashboard to display scheduler health at a glance.
+
+    Return format:
+    {
+        'daily_score':   {'last_run': '2026-03-19T17:30:00', 'hours_ago': 23.5, 'ok': True},
+        'weekly_scrape': {'last_run': None, 'hours_ago': None, 'ok': False},
+        'alert_check':   {'last_run': '2026-03-19T06:30:00', 'hours_ago': 11.0, 'ok': True},
+    }
+    'ok' is True if last_run is within SCHEDULER_HEARTBEAT_WARN_HOURS hours (or never run yet
+    for weekly_scrape, which is tolerated for up to 8 days).
+    """
+    try:
+        from config import SCHEDULER_HEARTBEAT_WARN_HOURS
+    except ImportError:
+        SCHEDULER_HEARTBEAT_WARN_HOURS = 26
+
+    JOB_WARN_HOURS = {
+        'daily_score':   SCHEDULER_HEARTBEAT_WARN_HOURS,
+        'weekly_scrape': 24 * 8,   # 8 days — runs once a week
+        'alert_check':   SCHEDULER_HEARTBEAT_WARN_HOURS,
+    }
+
+    result = {}
+    try:
+        from db.db_connection import get_connection
+        conn = get_connection()
+        for job_name, warn_hours in JOB_WARN_HOURS.items():
+            key = f'scheduler_heartbeat_{job_name}'
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+            if row and row['value']:
+                last_run = row['value']
+                try:
+                    dt = datetime.fromisoformat(last_run)
+                    hours_ago = (datetime.now() - dt).total_seconds() / 3600
+                    ok = hours_ago <= warn_hours
+                except Exception:
+                    hours_ago = None
+                    ok = False
+            else:
+                last_run = None
+                hours_ago = None
+                ok = (job_name == 'weekly_scrape')  # never run yet is OK for weekly
+
+            result[job_name] = {
+                'last_run':  last_run,
+                'hours_ago': round(hours_ago, 1) if hours_ago is not None else None,
+                'ok':        ok,
+            }
+        conn.close()
+    except Exception as e:
+        print(f"  [check_scheduler_health] DB query failed: {e}")
+        for job_name in JOB_WARN_HOURS:
+            result.setdefault(job_name, {'last_run': None, 'hours_ago': None, 'ok': False})
+
+    return result

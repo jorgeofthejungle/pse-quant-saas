@@ -6,7 +6,7 @@
 # Dividends are now a scoring signal, not a filter requirement.
 #
 # Hard requirements (any failure = rejected):
-#   1. Minimum 3 years of EPS, Revenue, and OCF data
+#   1. Minimum 2 years of EPS, Revenue, and OCF data (confidence multiplier handles penalty)
 #   2. 3-year normalized EPS > 0 (no persistent losses)
 #   3. No persistent negative OCF (2+ consecutive negative years)
 #   4. D/E within sector-appropriate limits
@@ -27,7 +27,7 @@ def filter_unified(stock: dict) -> tuple[bool, str]:
     Dividends are NOT required. Returns (eligible, reason).
 
     Evaluates:
-      1. Data completeness (3+ years of EPS, Revenue, OCF)
+      1. Data completeness (2+ years of EPS, Revenue, OCF)
       2. Earnings quality (3Y avg EPS > 0)
       3. Cash flow health (no 2+ consecutive negative OCF years)
       4. Leverage limits (sector-appropriate D/E cap)
@@ -45,12 +45,12 @@ def filter_unified(stock: dict) -> tuple[bool, str]:
     rev_vals = [v for v in rev_hist if v is not None]
     ocf_vals = [v for v in ocf_hist if v is not None]
 
-    if len(eps_vals) < 3:
+    if len(eps_vals) < 2:
         return False, (f"{ticker}: insufficient EPS history "
-                       f"({len(eps_vals)} year(s), need 3)")
-    if len(rev_vals) < 3:
+                       f"({len(eps_vals)} year(s), need 2)")
+    if len(rev_vals) < 2:
         return False, (f"{ticker}: insufficient revenue history "
-                       f"({len(rev_vals)} year(s), need 3)")
+                       f"({len(rev_vals)} year(s), need 2)")
     if len(ocf_vals) < 2:
         return False, (f"{ticker}: insufficient OCF history "
                        f"({len(ocf_vals)} year(s), need 2)")

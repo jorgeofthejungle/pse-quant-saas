@@ -43,10 +43,12 @@ SCORED_FIELDS = [
 # Hard-block thresholds: values so extreme they indicate bad data.
 # Stocks that trip these are blocked (valid=False), not just warned.
 BLOCK_THRESHOLDS = {
-    # P/B > 100x almost always means equity is in wrong units
-    'pb': ('>', 100.0,
-           "P/B of {v:.1f}x exceeds 100x — "
-           "likely a unit error in equity data (check millions vs thousands)"),
+    # P/B > 50x almost always means equity is in wrong units
+    'pb': ('>', 50.0,
+           "P/B of {v:.1f}x above 50 — likely data error"),
+    # ROE below -50% indicates distressed or data error
+    'roe': ('<', -50.0,
+            "ROE of {v:.1f}% below -50% — distressed or data error"),
 }
 
 # Thresholds for suspicious-value warnings (not hard errors).
@@ -103,7 +105,7 @@ WARN_LOW_THRESHOLDS = {
 
 # Minimum completeness score to be considered usable.
 # Below this, the stock is hard-blocked.
-MIN_COMPLETENESS = 0.25   # need at least 25% of scored fields populated
+MIN_COMPLETENESS = 0.40   # need at least 40% of scored fields populated
 
 # Yield cap for special dividend detection.
 # Philippine stocks paying >20% yield almost always include a one-time
@@ -158,6 +160,107 @@ def _detect_and_cap_special_dividend(stock: dict, warnings: list) -> None:
     )
 
 
+# ── Price staleness checker ───────────────────────────────────
+
+def check_price_staleness(stock: dict) -> dict:
+    """
+    Checks how stale the price data is for a stock.
+
+    Returns a dict:
+    {
+        'price_date':   str | None,   # ISO date string of last price ('YYYY-MM-DD')
+        'days_stale':   int | None,   # calendar days since last price
+        'is_stale':     bool,         # True if > PRICE_STALENESS_WARN_DAYS
+        'is_critical':  bool,         # True if > PRICE_STALENESS_ERROR_DAYS
+        'warning':      str | None,   # human-readable warning message
+    }
+
+    Priority for price_date:
+      1. stock['price_date'] if present
+      2. Query SELECT MAX(date) FROM prices WHERE ticker = ?
+      3. None (is_critical=True if current_price is also None)
+    """
+    try:
+        from config import PRICE_STALENESS_WARN_DAYS, PRICE_STALENESS_ERROR_DAYS
+    except ImportError:
+        PRICE_STALENESS_WARN_DAYS, PRICE_STALENESS_ERROR_DAYS = 5, 30
+
+    ticker     = stock.get('ticker', 'UNKNOWN')
+    price_date = stock.get('price_date')
+
+    # Fallback: query DB if stock dict has no price_date
+    if not price_date:
+        try:
+            import sys
+            from pathlib import Path
+            _root = Path(__file__).resolve().parent.parent
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+            from db.db_connection import get_connection
+            conn = get_connection()
+            row = conn.execute(
+                "SELECT MAX(date) AS max_date FROM prices WHERE ticker = ?",
+                (ticker,)
+            ).fetchone()
+            conn.close()
+            if row and row['max_date']:
+                price_date = row['max_date']
+        except Exception:
+            pass   # DB unavailable — treat as no date
+
+    # No date at all
+    if not price_date:
+        no_price = stock.get('current_price') is None
+        return {
+            'price_date':  None,
+            'days_stale':  None,
+            'is_stale':    True,
+            'is_critical': True,
+            'warning':     (
+                f"{ticker}: No price date found in stock dict or database. "
+                f"Price data may be missing entirely."
+            ),
+        }
+
+    # Parse and compare dates
+    try:
+        from datetime import date
+        pd_date    = date.fromisoformat(price_date)
+        days_stale = (date.today() - pd_date).days
+    except (ValueError, TypeError):
+        return {
+            'price_date':  price_date,
+            'days_stale':  None,
+            'is_stale':    False,
+            'is_critical': False,
+            'warning':     f"{ticker}: Could not parse price_date '{price_date}'.",
+        }
+
+    is_stale    = days_stale > PRICE_STALENESS_WARN_DAYS
+    is_critical = days_stale > PRICE_STALENESS_ERROR_DAYS
+
+    warning = None
+    if is_critical:
+        warning = (
+            f"{ticker}: Price data is {days_stale} days old (last: {price_date}). "
+            f"Stock may be suspended, delisted, or the data pipeline has stalled. "
+            f"Scoring results may be unreliable."
+        )
+    elif is_stale:
+        warning = (
+            f"{ticker}: Price data is {days_stale} days old (last: {price_date}). "
+            f"This may reflect a public holiday or thin trading week."
+        )
+
+    return {
+        'price_date':  price_date,
+        'days_stale':  days_stale,
+        'is_stale':    is_stale,
+        'is_critical': is_critical,
+        'warning':     warning,
+    }
+
+
 # ── Core validator ────────────────────────────────────────────
 
 def validate_stock(stock: dict) -> dict:
@@ -194,15 +297,23 @@ def validate_stock(stock: dict) -> dict:
     # ── Stop here if hard errors exist ───────────────────────
     if errors:
         return {
-            'ticker':       ticker,
-            'valid':        False,
-            'completeness': 0.0,
-            'errors':       errors,
-            'warnings':     warnings,
-            'missing_fields': [],
+            'ticker':          ticker,
+            'valid':           False,
+            'completeness':    0.0,
+            'errors':          errors,
+            'warnings':        warnings,
+            'missing_fields':  [],
+            'price_staleness': check_price_staleness(stock),
         }
 
-    # ── Stale price detection ─────────────────────────────────
+    # ── Stale price detection (hard-block for old data) ───────
+    # check_price_staleness() is the fine-grained reporter;
+    # this block uses the broader STALE_PRICE_BLOCK_DAYS gate to
+    # hard-block stocks that PSE Edge likely no longer lists.
+    price_staleness = check_price_staleness(stock)
+    if price_staleness['warning']:
+        warnings.append(price_staleness['warning'])
+
     try:
         from config import STALE_PRICE_WARN_DAYS, STALE_PRICE_BLOCK_DAYS
     except ImportError:
@@ -221,18 +332,14 @@ def validate_stock(stock: dict) -> dict:
                     f"Excluded from scoring until fresh price data is available."
                 )
                 return {
-                    'ticker':        ticker,
-                    'valid':         False,
-                    'completeness':  0.0,
-                    'errors':        errors,
-                    'warnings':      warnings,
-                    'missing_fields': [],
+                    'ticker':          ticker,
+                    'valid':           False,
+                    'completeness':    0.0,
+                    'errors':          errors,
+                    'warnings':        warnings,
+                    'missing_fields':  [],
+                    'price_staleness': price_staleness,
                 }
-            elif age_days > STALE_PRICE_WARN_DAYS:
-                warnings.append(
-                    f"{ticker}: Price data is {age_days} days old (last: {price_date}) — "
-                    f"stock may be thinly traded or temporarily suspended."
-                )
         except (ValueError, TypeError):
             pass   # malformed date — skip staleness check
 
@@ -263,12 +370,13 @@ def validate_stock(stock: dict) -> dict:
             + (f" and {len(missing)-5} more" if len(missing) > 5 else "")
         )
         return {
-            'ticker':        ticker,
-            'valid':         False,
-            'completeness':  completeness,
-            'errors':        errors,
-            'warnings':      warnings,
-            'missing_fields': missing,
+            'ticker':          ticker,
+            'valid':           False,
+            'completeness':    completeness,
+            'errors':          errors,
+            'warnings':        warnings,
+            'missing_fields':  missing,
+            'price_staleness': price_staleness,
         }
 
     # ── Hard-block extreme values ─────────────────────────────
@@ -282,12 +390,13 @@ def validate_stock(stock: dict) -> dict:
 
     if errors:
         return {
-            'ticker':        ticker,
-            'valid':         False,
-            'completeness':  completeness,
-            'errors':        errors,
-            'warnings':      warnings,
-            'missing_fields': missing,
+            'ticker':          ticker,
+            'valid':           False,
+            'completeness':    completeness,
+            'errors':          errors,
+            'warnings':        warnings,
+            'missing_fields':  missing,
+            'price_staleness': price_staleness,
         }
 
     # ── Suspicious value warnings ─────────────────────────────
@@ -351,13 +460,34 @@ def validate_stock(stock: dict) -> dict:
         )
 
     return {
-        'ticker':        ticker,
-        'valid':         True,
-        'completeness':  completeness,
-        'errors':        [],
-        'warnings':      warnings,
-        'missing_fields': missing,
+        'ticker':          ticker,
+        'valid':           True,
+        'completeness':    completeness,
+        'errors':          [],
+        'warnings':        warnings,
+        'missing_fields':  missing,
+        'price_staleness': price_staleness,
     }
+
+
+def calc_data_confidence(stock: dict) -> float:
+    """
+    Returns a confidence multiplier (0.0-1.0) based on years of complete data.
+    Complete = EPS, Revenue, and OCF all present for a given year.
+    Uses minimum series length as an approximation of co-present years.
+    """
+    from config import CONFIDENCE_TIERS
+
+    eps_vals = [v for v in (stock.get('eps_5y') or []) if v is not None]
+    rev_vals = [v for v in (stock.get('revenue_5y') or []) if v is not None]
+    ocf_vals = [v for v in (stock.get('operating_cf_history') or []) if v is not None]
+
+    complete_years = min(len(eps_vals), len(rev_vals), len(ocf_vals))
+
+    for threshold in sorted(CONFIDENCE_TIERS.keys(), reverse=True):
+        if complete_years >= threshold:
+            return CONFIDENCE_TIERS[threshold]
+    return 0.0
 
 
 def validate_all(stocks: list) -> tuple[list, list]:

@@ -234,12 +234,66 @@ def init_db():
         "ALTER TABLE scores ADD COLUMN unified_rank  INTEGER",
         # Stage 4.3: subscription tier for access control ('free' or 'paid')
         "ALTER TABLE members ADD COLUMN tier TEXT DEFAULT 'paid'",
+        # Phase 11: fiscal year end month for dividend attribution
+        "ALTER TABLE stocks ADD COLUMN fiscal_year_end_month INTEGER DEFAULT 12",
     ]
     for sql in migrations:
         try:
             conn.execute(sql)
         except Exception:
             pass   # column already exists — safe to ignore
+    conn.commit()
+
+    # Migration: add confidence column to scores_v2
+    cur = conn.cursor()
+    cols_v2 = [row[1] for row in cur.execute("PRAGMA table_info(scores_v2)").fetchall()]
+    if 'confidence' not in cols_v2:
+        cur.execute("ALTER TABLE scores_v2 ADD COLUMN confidence REAL DEFAULT 1.0")
+    conn.commit()
+
+    # Migration: add portfolio_type column + fix UNIQUE constraint
+    # SQLite cannot modify UNIQUE constraints, so we recreate the table.
+    cols_v2 = [row[1] for row in cur.execute("PRAGMA table_info(scores_v2)").fetchall()]
+    if 'portfolio_type' not in cols_v2:
+        cur.execute("ALTER TABLE scores_v2 RENAME TO scores_v2_old")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scores_v2 (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker         TEXT NOT NULL,
+                run_date       TEXT NOT NULL,
+                portfolio_type TEXT NOT NULL DEFAULT 'unified',
+                score          REAL,
+                confidence     REAL DEFAULT 1.0,
+                rank           INTEGER,
+                category       TEXT,
+                breakdown_json TEXT,
+                UNIQUE(ticker, run_date, portfolio_type)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO scores_v2
+                (ticker, run_date, portfolio_type, score,
+                 confidence, rank, category, breakdown_json)
+            SELECT ticker, run_date, 'unified', score,
+                   COALESCE(confidence, 1.0), rank, category, breakdown_json
+            FROM scores_v2_old
+        """)
+        cur.execute("DROP TABLE scores_v2_old")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scores_v2_run_date ON scores_v2(run_date)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_scores_v2_ticker ON scores_v2(ticker)"
+        )
+        conn.commit()
+
+    # Migration: fix REIT misclassification
+    for reit_ticker in ('VREIT', 'PREIT', 'MREIT', 'AREIT'):
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE stocks SET is_reit = 1 WHERE ticker = ?", (reit_ticker,))
+        except Exception:
+            pass
     conn.commit()
 
     # Add the status index only after the column migration has run

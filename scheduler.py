@@ -38,7 +38,10 @@ from scheduler_jobs import (
     run_expiry_notifications, run_weekly_briefing, run_stock_of_week,
     run_weekly_digest, run_monthly_jobs,
     run_monthly_dividend_calendar, run_monthly_model_performance,
+    run_backfill,
     _run_score_pipeline, _top5_changed, _significant_score_change, _build_changes,
+    run_alert_check_with_heartbeat, check_scheduler_health,
+    _record_heartbeat, _check_price_freshness,
 )
 _score_and_rank = _run_score_pipeline   # backward-compat alias
 
@@ -58,11 +61,14 @@ __all__ = [
     'run_expiry_notifications', 'run_weekly_briefing', 'run_stock_of_week',
     'run_weekly_digest', 'run_monthly_jobs',
     'run_monthly_dividend_calendar', 'run_monthly_model_performance',
+    'run_backfill',
     '_score_and_rank', '_run_score_pipeline',
     '_top5_changed', '_significant_score_change', '_build_changes',
     'load_sample_stocks', '_load_stocks',
     'FILTERS', 'SCORERS', 'PORTFOLIO_NAMES',
     'run_alert_check', 'run_disclosure_check',
+    'run_alert_check_with_heartbeat', 'check_scheduler_health',
+    '_record_heartbeat', '_check_price_freshness',
     'start_scheduler', 'main',
 ]
 
@@ -104,7 +110,7 @@ def start_scheduler():
         misfire_grace_time=120,
     )
     scheduler.add_job(
-        run_alert_check,
+        run_alert_check_with_heartbeat,
         CronTrigger(day_of_week='mon-fri', hour=alert_h, minute=alert_m),
         id='daily_alert_check',
         name='PSE Alert Check (price/dividend/earnings)',
@@ -270,6 +276,11 @@ def main():
         action='store_true',
         help='Run the 6 PM report phase only (sends PDF if pending)',
     )
+    parser.add_argument(
+        '--run-backfill',
+        action='store_true',
+        help='One-time historical backfill (2018-2023)',
+    )
     args = parser.parse_args()
 
     db.init_db()
@@ -314,6 +325,9 @@ def main():
         print("Running disclosure feed check now...")
         n = run_disclosure_check(dry_run=args.dry_run)
         print(f"  {n} disclosure(s) {'detected' if args.dry_run else 'sent'}.")
+    elif args.run_backfill:
+        print("Running historical backfill (2018-2023) now...")
+        run_backfill()
     else:
         start_scheduler()
 

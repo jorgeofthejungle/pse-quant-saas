@@ -31,17 +31,17 @@ def test_healthy_stock_passes():
 # ── Minimum data requirement ─────────────────────────────────
 
 def test_insufficient_eps_data():
-    s = dict(PASS_STOCK, eps_3y=[1.5, 1.3])
+    s = dict(PASS_STOCK, eps_3y=[1.5])
     eligible, reason = filter_unified(s)
-    assert not eligible, "Should fail: only 2 EPS years"
+    assert not eligible, "Should fail: only 1 EPS year"
     assert 'EPS' in reason or 'data' in reason.lower()
     print('  insufficient EPS data rejected: PASS')
 
 
 def test_insufficient_revenue_data():
-    s = dict(PASS_STOCK, revenue_5y=[20000, 18000])
+    s = dict(PASS_STOCK, revenue_5y=[20000])
     eligible, reason = filter_unified(s)
-    assert not eligible, "Should fail: only 2 revenue years"
+    assert not eligible, "Should fail: only 1 revenue year"
     print('  insufficient revenue data rejected: PASS')
 
 

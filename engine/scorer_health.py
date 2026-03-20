@@ -20,6 +20,18 @@
 from __future__ import annotations
 
 
+def _score_with_sector_blend(absolute_score: float, value, sector_median,
+                              higher_is_better: bool = True) -> float:
+    """Blend absolute score 70% with sector-relative score 30%."""
+    if sector_median is None or value is None:
+        return absolute_score
+    if higher_is_better:
+        sector_score = 65.0 if value > sector_median else 35.0
+    else:
+        sector_score = 65.0 if value < sector_median else 35.0
+    return round(absolute_score * 0.70 + sector_score * 0.30, 1)
+
+
 def _normalise(value, thresholds: list) -> float:
     """
     Piecewise threshold normalisation.
@@ -183,8 +195,8 @@ def _score_pe_vs_sector(pe: float | None,
 
 # ── Main scorer ───────────────────────────────────────────────
 
-def score_health(stock: dict, sector_median_pe: float | None = None
-                 ) -> tuple[float, dict]:
+def score_health(stock: dict, sector_median_pe: float | None = None,
+                 sector_medians: dict | None = None) -> tuple[float, dict]:
     """
     Layer 1 — Health Score.
     Evaluates current financial strength. Returns (score 0-100, breakdown).
@@ -193,29 +205,59 @@ def score_health(stock: dict, sector_median_pe: float | None = None
         roe, operating_cf, revenue_5y, de_ratio, fcf_yield,
         eps_3y or eps_5y, is_bank, is_reit
     Optional:
-        pe, sector_median_pe (passed separately for sector-adjusted scoring)
+        sector_median_pe — PE median for this stock's sector (backward compat)
+        sector_medians   — dict with sector medians for roe, ocf_margin,
+                           fcf_yield, de_ratio; used for 70/30 absolute/sector blend
     """
     is_bank = bool(stock.get('is_bank'))
     is_reit = bool(stock.get('is_reit'))
+    sm = sector_medians or {}
 
     # ── Compute sub-scores ────────────────────────────────────
-    roe_s   = _score_roe(stock.get('roe'))
-    de_s    = _score_de_ratio(stock.get('de_ratio'), is_bank, is_reit)
-    fcfy_s  = _score_fcf_yield(stock.get('fcf_yield'))
+    roe_raw   = _score_roe(stock.get('roe'))
+    de_s      = _score_de_ratio(stock.get('de_ratio'), is_bank, is_reit)
+    fcfy_raw  = _score_fcf_yield(stock.get('fcf_yield'))
 
     # OCF margin uses most recent revenue
     rev_hist = stock.get('revenue_5y') or []
     rev_curr = rev_hist[0] if rev_hist else None
-    ocf_s = _score_ocf_margin(stock.get('operating_cf'), rev_curr)
+    ocf_raw = _score_ocf_margin(stock.get('operating_cf'), rev_curr)
+    ocf_margin_val = (
+        round(stock.get('operating_cf') / rev_curr * 100, 1)
+        if stock.get('operating_cf') is not None and rev_curr else None
+    )
 
     # EPS stability — prefer 5y, fall back to 3y
     eps_hist = stock.get('eps_5y') or stock.get('eps_3y') or []
     eps_s = _score_eps_stability(eps_hist)
 
-    # Sector-adjusted PE (optional modifier)
+    # Sector-adjusted PE (optional modifier — backward compat)
     pe_vs_sector_s = _score_pe_vs_sector(
         stock.get('pe'), sector_median_pe
     )
+
+    # ── Apply 70/30 sector blend where sector medians are available ───
+    roe_s  = _score_with_sector_blend(
+        roe_raw, stock.get('roe'), sm.get('roe'),
+        higher_is_better=True
+    ) if roe_raw is not None else None
+
+    ocf_s  = _score_with_sector_blend(
+        ocf_raw, ocf_margin_val, sm.get('ocf_margin'),
+        higher_is_better=True
+    ) if ocf_raw is not None else None
+
+    fcfy_s = _score_with_sector_blend(
+        fcfy_raw, stock.get('fcf_yield'), sm.get('fcf_yield'),
+        higher_is_better=True
+    ) if fcfy_raw is not None else None
+
+    # D/E: apply blend only if sector median available (lower is better)
+    if de_s is not None and sm.get('de_ratio') is not None:
+        de_s = _score_with_sector_blend(
+            de_s, stock.get('de_ratio'), sm.get('de_ratio'),
+            higher_is_better=False
+        )
 
     # ── Weighted blend ────────────────────────────────────────
     # Base 5 factors (equal weight within layer 1)
@@ -243,8 +285,7 @@ def score_health(stock: dict, sector_median_pe: float | None = None
         'ocf_margin': {
             'score':       ocf_s,
             'weight':      0.20,
-            'value':       round((stock.get('operating_cf') or 0) / rev_curr * 100, 1)
-                           if rev_curr else None,
+            'value':       ocf_margin_val,
             'explanation': _explain_ocf_margin(stock.get('operating_cf'), rev_curr),
         },
         'de_ratio': {

@@ -81,7 +81,14 @@ def _score_single_persistence(series: list | None,
                                min_years: int = 2) -> float | None:
     """
     Scores persistence for a single metric series (0-100).
-    Combines ratio score with a streak bonus.
+    Blended formula: direction (60pts) + magnitude (20pts) + streak (20pts).
+
+    Magnitude scoring (avg positive YoY change):
+        >= 15%  ->  20 pts
+        10-15%  ->  15 pts
+         5-10%  ->  10 pts
+          1-5%  ->   5 pts
+          < 1%  ->   2 pts
     """
     if not series:
         return None
@@ -92,13 +99,37 @@ def _score_single_persistence(series: list | None,
     ratio, pos, total = _persistence_ratio(series, years=5)
     streak = _consecutive_streak(series)
 
-    # Base score: ratio (0.0 to 1.0) → 0-80 points
-    base = ratio * 80
+    # -- Direction score: 0-60 points --
+    direction = ratio * 60
 
-    # Streak bonus: +5 per consecutive year, max +20
+    # -- Magnitude score: 0-20 points --
+    changes = []
+    for i in range(len(clean) - 1):
+        prior = clean[i + 1]
+        curr  = clean[i]
+        if prior != 0:
+            pct = (curr - prior) / abs(prior) * 100
+            if pct > 0:
+                changes.append(pct)
+    if changes:
+        avg_positive = sum(changes) / len(changes)
+        if avg_positive >= 15:
+            magnitude = 20
+        elif avg_positive >= 10:
+            magnitude = 15
+        elif avg_positive >= 5:
+            magnitude = 10
+        elif avg_positive >= 1:
+            magnitude = 5
+        else:
+            magnitude = 2
+    else:
+        magnitude = 0
+
+    # -- Streak bonus: 0-20 points --
     bonus = min(streak * 5, 20)
 
-    raw_score = base + bonus
+    raw_score = direction + magnitude + bonus
 
     # Penalty: if streak is 0 (most recent year declined), cap at 65
     if streak == 0 and raw_score > 65:

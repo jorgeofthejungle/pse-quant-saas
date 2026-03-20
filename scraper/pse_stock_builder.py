@@ -106,10 +106,10 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
     revenue_5y = [f['revenue']    for f in fins if f['revenue']    is not None]
     operating_cf_history = [f['operating_cf'] for f in fins if f['operating_cf'] is not None]
 
-    # ── Completed-year DPS ────────────────────────────────────
-    current_year  = datetime.now().year
+    # ── Completed-year DPS (exclude current fiscal year — may be partial) ─
+    current_fiscal_year = datetime.now().year
     completed_dps = [(f['year'], f['dps']) for f in fins
-                     if f['dps'] is not None and f['year'] < current_year]
+                     if f['dps'] is not None and f['year'] < current_fiscal_year]
 
     dps_last = (completed_dps[0][1] if completed_dps
                 else (dps_vals[0] if dps_vals else None))
@@ -196,6 +196,7 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
         'is_bank':          bool(stock_row['is_bank']),
         # Price
         'current_price':    current_price,
+        'market_cap':       market_cap,         # PHP — used for sector cap-weighted medians
         'price_date':       price_date,         # 'YYYY-MM-DD' — used by validator staleness check
         # Dividend
         'dividend_yield':   div_yield,

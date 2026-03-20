@@ -51,52 +51,112 @@ def _median(values: list) -> float | None:
     return (clean[mid - 1] + clean[mid]) / 2
 
 
+def _cap_weighted_median(values: list, caps: list) -> float:
+    """Compute market-cap weighted median."""
+    if not values:
+        return 0.0
+    total_cap = sum(caps) if caps else 0
+    if total_cap == 0:
+        # Fallback to simple median if no cap data
+        sorted_vals = sorted(values)
+        n = len(sorted_vals)
+        return sorted_vals[n // 2] if n % 2 else (sorted_vals[n//2-1] + sorted_vals[n//2]) / 2
+
+    # Sort by value, accumulate cap weight
+    paired = sorted(zip(values, caps), key=lambda x: x[0])
+    cumulative = 0.0
+    for val, cap in paired:
+        cumulative += cap / total_cap
+        if cumulative >= 0.5:
+            return val
+    return paired[-1][0]
+
+
 def compute_sector_stats(all_stocks: list) -> dict:
     """
-    Computes dynamic sector medians from the full stock universe.
-    Returns dict: sector_name → {median_pe, median_pb, median_ev_ebitda}.
+    Computes market-cap weighted medians for 8 metrics per sector.
+    Filters: PE<50, PB<20, EV/EBITDA<50 to exclude outliers.
+    Minimum sector size: 3 stocks with valid data.
 
-    all_stocks: list of stock dicts (same format as engine stock dict).
-    Each stock needs: sector, pe, pb, ev_ebitda.
+    Returns: {sector: {pe, pb, ev_ebitda, roe, fcf_yield, dividend_yield, de_ratio, ocf_margin}}
     """
-    # Group valid values by sector
-    sector_data: dict[str, dict[str, list]] = {}
-    for stock in all_stocks:
-        sector = (stock.get('sector') or 'Unknown').strip()
-        if sector not in sector_data:
-            sector_data[sector] = {'pe': [], 'pb': [], 'ev_ebitda': []}
-        pe       = stock.get('pe')
-        pb       = stock.get('pb')
-        ev_ebitda = stock.get('ev_ebitda')
-        # Only include reasonable values (filter out extreme outliers)
-        if pe is not None and 0 < pe < 200:
+    from collections import defaultdict
+
+    # Group valid data by sector
+    sector_data = defaultdict(lambda: {
+        'pe': [], 'pb': [], 'ev_ebitda': [], 'roe': [],
+        'fcf_yield': [], 'dividend_yield': [], 'de_ratio': [], 'ocf_margin': [],
+    })
+    sector_caps = defaultdict(lambda: {
+        'pe': [], 'pb': [], 'ev_ebitda': [], 'roe': [],
+        'fcf_yield': [], 'dividend_yield': [], 'de_ratio': [], 'ocf_margin': [],
+    })
+
+    for s in all_stocks:
+        sector = s.get('sector') or 'Unknown'
+        cap = s.get('market_cap') or 0
+
+        # PE: filter PE > 50 (outlier) and PE <= 0
+        pe = s.get('pe')
+        if pe and 0 < pe <= 50:
             sector_data[sector]['pe'].append(pe)
-        if pb is not None and 0 < pb < 50:
+            sector_caps[sector]['pe'].append(cap)
+
+        # PB: filter PB > 20
+        pb = s.get('pb')
+        if pb and 0 < pb <= 20:
             sector_data[sector]['pb'].append(pb)
-        if ev_ebitda is not None and 0 < ev_ebitda < 200:
-            sector_data[sector]['ev_ebitda'].append(ev_ebitda)
+            sector_caps[sector]['pb'].append(cap)
 
+        # EV/EBITDA: filter > 50
+        ev = s.get('ev_ebitda')
+        if ev and 0 < ev <= 50:
+            sector_data[sector]['ev_ebitda'].append(ev)
+            sector_caps[sector]['ev_ebitda'].append(cap)
+
+        # ROE: any value (can be negative for banks at times)
+        roe = s.get('roe')
+        if roe is not None:
+            sector_data[sector]['roe'].append(roe)
+            sector_caps[sector]['roe'].append(cap)
+
+        # FCF Yield: positive only
+        fcfy = s.get('fcf_yield')
+        if fcfy and fcfy > 0:
+            sector_data[sector]['fcf_yield'].append(fcfy)
+            sector_caps[sector]['fcf_yield'].append(cap)
+
+        # Dividend yield: positive only
+        divy = s.get('dividend_yield')
+        if divy and divy > 0:
+            sector_data[sector]['dividend_yield'].append(divy)
+            sector_caps[sector]['dividend_yield'].append(cap)
+
+        # D/E: non-negative
+        de = s.get('de_ratio')
+        if de is not None and de >= 0:
+            sector_data[sector]['de_ratio'].append(de)
+            sector_caps[sector]['de_ratio'].append(cap)
+
+        # OCF Margin: ocf / revenue (most recent year)
+        ocf = s.get('operating_cf')
+        rev_hist = s.get('revenue_5y') or []
+        rev = rev_hist[0] if rev_hist else None
+        if ocf is not None and rev and rev > 0:
+            ocf_margin = (ocf / rev) * 100
+            sector_data[sector]['ocf_margin'].append(ocf_margin)
+            sector_caps[sector]['ocf_margin'].append(cap)
+
+    # Compute cap-weighted medians (minimum 2 stocks per metric)
     result = {}
-    for sector, data in sector_data.items():
-        med_pe  = _median(data['pe'])
-        med_pb  = _median(data['pb'])
-        med_ev  = _median(data['ev_ebitda'])
-
-        # Check if we have enough data points
-        if len(data['pe']) >= _MIN_SECTOR_SIZE and med_pe is not None:
-            result[sector] = {
-                'median_pe':       med_pe,
-                'median_pb':       med_pb,
-                'median_ev_ebitda': med_ev,
-                'n_stocks':        len(data['pe']),
-                'source':          'dynamic',
-            }
-        else:
-            # Fall back to fixed benchmarks
-            fallback = _get_fallback(sector)
-            if fallback:
-                result[sector] = {**fallback, 'n_stocks': len(data['pe']),
-                                   'source': 'fallback'}
+    for sector, metrics in sector_data.items():
+        sector_result = {}
+        for metric, values in metrics.items():
+            caps = sector_caps[sector][metric]
+            if len(values) >= 2:  # minimum 2 stocks with valid data
+                sector_result[metric] = _cap_weighted_median(values, caps)
+        if sector_result:
+            result[sector] = sector_result
 
     return result
 
@@ -105,9 +165,12 @@ def get_sector_pe(sector: str, sector_stats: dict) -> float | None:
     """
     Returns the sector median PE for a given sector name.
     Tries dynamic stats first, then fallback benchmarks.
+    Supports both new format (key: 'pe') and legacy format (key: 'median_pe').
     """
     if sector in sector_stats:
-        return sector_stats[sector].get('median_pe')
+        stats = sector_stats[sector]
+        # New format uses 'pe'; legacy format used 'median_pe'
+        return stats.get('pe') or stats.get('median_pe')
     return _get_fallback_pe(sector)
 
 

@@ -449,9 +449,37 @@ def run_daily_score():
 
         # ── Save scores ────────────────────────────────────────
         try:
+            from engine.filters_v2   import filter_unified_batch
+            from engine.scorer_v2    import rank_stocks_v2
+            from engine.sector_stats import compute_sector_stats
+            from config import SCORER_WEIGHTS
+
             db.save_scores(today, ranked, 'unified')              # legacy table (backward compat)
             db.save_scores_v2(today, ranked, portfolio_type='unified')  # new clean scores_v2 table
-            print("  Scores saved to DB (scores + scores_v2).")
+
+            # Also score and save each portfolio type (pure_dividend, dividend_growth, value)
+            _all_stocks_pt  = _load_stocks()
+            _sector_stats   = compute_sector_stats(_all_stocks_pt)
+            _eligible_pt, _ = filter_unified_batch(_all_stocks_pt)
+            _fins_map = {}
+            for _s in _eligible_pt:
+                try:
+                    _fins_map[_s['ticker']] = db.get_financials(_s['ticker'], years=10)
+                except Exception:
+                    _fins_map[_s['ticker']] = []
+
+            for pt in [p for p in SCORER_WEIGHTS.keys() if p != 'unified']:
+                try:
+                    ranked_pt = rank_stocks_v2(
+                        _eligible_pt, sector_stats=_sector_stats,
+                        financials_map=_fins_map, portfolio_type=pt,
+                    )
+                    db.save_scores_v2(today, ranked_pt, portfolio_type=pt)
+                    print(f"  Scores saved for portfolio_type={pt}.")
+                except Exception as e:
+                    print(f"  DB save error for portfolio_type={pt}: {e}")
+
+            print("  Scores saved to DB (scores + scores_v2 all portfolio types).")
         except Exception as e:
             print(f"  DB save error: {e}")
 
@@ -1381,12 +1409,12 @@ def run_monthly_jobs():
 def run_backfill():
     """One-time historical backfill: fetch 2018-2023 financials for all active tickers."""
     from scraper.pse_financial_reports import backfill_historical_financials
-    from scraper.pse_session import create_session
+    from scraper.pse_session import make_session
     from db.database import get_all_tickers, get_all_cmpy_ids
 
     tickers = get_all_tickers(active_only=True)
     cmpy_ids = get_all_cmpy_ids()
-    session = create_session()
+    session = make_session()
 
     total = len(tickers)
     cumulative = {'fetched': 0, 'skipped': 0, 'errors': 0}

@@ -113,13 +113,17 @@ def score_unified(stock: dict,
     """
     weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
 
-    # Resolve sector median PE for this stock's sector
-    sector_pe = None
-    if sector_stats:
-        sector_pe = get_sector_pe(stock.get('sector', ''), sector_stats)
+    # Resolve sector medians for this stock's sector
+    stock_sector = stock.get('sector', '')
+    sector_medians = sector_stats.get(stock_sector, {}) if sector_stats else {}
+    sector_pe = sector_medians.get('pe') if sector_medians else get_sector_pe(stock_sector, sector_stats or {})
 
     # ── Layer 1: Health ───────────────────────────────────────
-    h_score, h_breakdown = score_health(stock, sector_median_pe=sector_pe)
+    h_score, h_breakdown = score_health(
+        stock,
+        sector_median_pe=sector_pe,
+        sector_medians=sector_medians,
+    )
 
     # ── Layer 2: Improvement ──────────────────────────────────
     i_score, i_breakdown = score_improvement(stock, financials_history)

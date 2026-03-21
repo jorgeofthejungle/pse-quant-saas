@@ -219,8 +219,7 @@ def score_persistence(stock: dict) -> tuple[float, dict]:
             'weight':      0.20,
             'value':       f"{ocf_pos}/{ocf_total}" if ocf_total > 0 else None,
             'explanation': _explain_persistence(
-                'Operating Cash Flow',
-                *(_persistence_ratio(ocf_series)[:2]),
+                'Operating Cash Flow', ocf_pos, ocf_total,
                 _consecutive_streak(ocf_series)),
         },
         'direction_consistency': {

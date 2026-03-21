@@ -247,7 +247,7 @@ def get_top10_embed(discord_id: str = None) -> dict:
     is_paid = check_access(discord_id, 'top10') if discord_id else False
     limit   = 10 if is_paid else 3
 
-    scores = db.get_last_scores_v2() or []
+    scores = db.get_last_scores_v2(portfolio_type='unified') or []
     if not scores:
         scores_raw = db.get_last_scores('unified') or []
         scores = [{'ticker': s['ticker'], 'score': s.get('score', 0)} for s in scores_raw]
@@ -255,7 +255,13 @@ def get_top10_embed(discord_id: str = None) -> dict:
     if not scores:
         return {'error': 'No rankings available yet. Run the scoring pipeline first.'}
 
-    ranked = sorted(scores, key=lambda x: x.get('score', 0) or 0, reverse=True)[:limit]
+    # Deduplicate by ticker — keep highest score per ticker (handles multiple run_dates)
+    seen = {}
+    for s in scores:
+        t = s['ticker']
+        if t not in seen or (s.get('score') or 0) > (seen[t].get('score') or 0):
+            seen[t] = s
+    ranked = sorted(seen.values(), key=lambda x: x.get('score', 0) or 0, reverse=True)[:limit]
 
     conn = db.get_connection()
     rows = conn.execute("SELECT ticker, name FROM stocks").fetchall()

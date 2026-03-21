@@ -373,7 +373,7 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
         elements.append(Spacer(1, 3 * mm))
 
     # ── Score breakdown with stock-specific explanations ──
-    breakdown = stock.get('score_breakdown', {})
+    breakdown = stock.get('breakdown') or stock.get('score_breakdown') or {}
     if breakdown:
         elements.append(Paragraph('SCORE BREAKDOWN', styles['GoldLabel']))
         elements.append(Paragraph(

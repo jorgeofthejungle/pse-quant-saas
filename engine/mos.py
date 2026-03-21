@@ -23,24 +23,14 @@
 # They are NOT buy/sell recommendations.
 # ============================================================
 
-# Philippine 10-year Treasury Bond rate (risk-free rate)
-# Update this periodically to reflect current PH rates
-PH_RISK_FREE_RATE = 0.065   # 6.5%
+from config import (
+    PH_RISK_FREE_RATE, EQUITY_RISK_PREMIUM, DDM_MAX_GROWTH_RATE,
+    DEFAULT_TARGET_PE, CONGLOMERATE_DISCOUNT,
+    MOS_SIZE_PREMIUM, MOS_SECTOR_PREMIUM, MOS_SECTOR_PREMIUM_DEFAULT,
+)
 
-# Equity Risk Premium for Philippine market
-EQUITY_RISK_PREMIUM = 0.05  # 5.0%
-
-# Default required rate of return
+# Default required rate of return (derived from config constants)
 DEFAULT_REQUIRED_RETURN = PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM  # 11.5%
-
-# Maximum growth rate allowed in DDM to prevent model explosion
-DDM_MAX_GROWTH_RATE = 0.07  # 7.0%
-
-# Default target PE multiple for Philippine market
-DEFAULT_TARGET_PE = 15.0
-
-# Conglomerate IV discount (Holding Firms sector)
-CONGLOMERATE_DISCOUNT = 0.20
 
 # Margin of Safety targets per portfolio
 MOS_TARGET = {
@@ -83,11 +73,7 @@ def apply_conglomerate_discount(intrinsic_value: float, sector: str) -> float:
     if intrinsic_value is None:
         return None
     if sector == 'Holding Firms':
-        try:
-            from config import CONGLOMERATE_DISCOUNT as _disc
-        except ImportError:
-            _disc = CONGLOMERATE_DISCOUNT
-        return round(intrinsic_value * (1 - _disc), 2)
+        return round(intrinsic_value * (1 - CONGLOMERATE_DISCOUNT), 2)
     return intrinsic_value
 
 
@@ -393,10 +379,6 @@ def calc_required_return(market_cap: float | None, sector: str | None) -> float:
     Sector premiums range 0% (Banking/Utilities) to 2% (Mining and Oil).
     Unrecognised sectors use MOS_SECTOR_PREMIUM_DEFAULT (1.0%).
     """
-    from config import (PH_RISK_FREE_RATE, EQUITY_RISK_PREMIUM,
-                        MOS_SIZE_PREMIUM, MOS_SECTOR_PREMIUM,
-                        MOS_SECTOR_PREMIUM_DEFAULT)
-
     base = PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM  # 11.5%
 
     # Size premium

@@ -304,10 +304,11 @@ def _build_export_rows() -> list:
                 except (ValueError, TypeError):
                     breakdown = {}
 
-            health  = breakdown.get('health_score')
-            improve = breakdown.get('improvement_score')
-            accel   = breakdown.get('acceleration_score')
-            persist = breakdown.get('persistence_score')
+            layers  = breakdown.get('layers', {})
+            health  = layers.get('health', {}).get('score')
+            improve = layers.get('improvement', {}).get('score')
+            accel   = layers.get('acceleration', {}).get('score')
+            persist = layers.get('persistence', {}).get('score')
 
             confidence_raw = sr['confidence']
             confidence_pct = (

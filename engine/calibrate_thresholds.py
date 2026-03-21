@@ -9,6 +9,8 @@ settings first, falling back to config.py HEALTH_THRESHOLDS.
 import json
 import sys
 import os
+import statistics
+from collections import defaultdict
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from db.database import get_connection
@@ -100,7 +102,35 @@ def calibrate_health_thresholds() -> dict:
             'p25': _percentile(fcf_vals, 25),
         }
 
+    # ── EPS Stability CV ──────────────────────────────────────
+    # CV = stdev(eps) / mean(abs(eps)) per ticker, then PSE percentiles
+    rows = cur.execute("""
+        SELECT ticker, eps FROM financials
+        WHERE eps IS NOT NULL AND year >= 2018
+        ORDER BY ticker, year
+    """).fetchall()
+
     conn.close()
+
+    ticker_eps = defaultdict(list)
+    for r in rows:
+        ticker_eps[r[0]].append(r[1])
+
+    cv_vals = []
+    for eps_list in ticker_eps.values():
+        if len(eps_list) >= 3:
+            mean_abs = sum(abs(e) for e in eps_list) / len(eps_list)
+            if mean_abs > 0:
+                stdev = statistics.stdev(eps_list)
+                cv_vals.append(stdev / mean_abs)
+    cv_vals = sorted(cv_vals)
+    if len(cv_vals) >= 10:
+        thresholds['eps_stability_cv'] = {
+            'p90': _percentile(cv_vals, 90),
+            'p75': _percentile(cv_vals, 75),
+            'p50': _percentile(cv_vals, 50),
+            'p25': _percentile(cv_vals, 25),
+        }
 
     # Write to settings table
     for metric, vals in thresholds.items():

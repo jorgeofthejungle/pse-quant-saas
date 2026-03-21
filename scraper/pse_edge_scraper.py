@@ -86,7 +86,16 @@ def scrape_company_full(session, ticker: str, cmpy_id: str) -> dict | None:
     pb         = stock_data.get('pb')    # will be None from scrape (AJAX)
 
     time.sleep(SCRAPE_DELAY_SECS)
-    div_history = scrape_dividend_history(session, cmpy_id)
+    try:
+        _fy_conn = db.get_connection()
+        _fy_row  = _fy_conn.execute(
+            "SELECT fiscal_year_end_month FROM stocks WHERE ticker = ?", (ticker,)
+        ).fetchone()
+        _fy_conn.close()
+        fy_end_month = _fy_row['fiscal_year_end_month'] if _fy_row and _fy_row['fiscal_year_end_month'] else 12
+    except Exception:
+        fy_end_month = 12
+    div_history = scrape_dividend_history(session, cmpy_id, fiscal_year_end_month=fy_end_month)
 
     dps_last     = div_history[0]['dps'] if div_history else None
     dividends_5y = [d['dps'] for d in div_history[:5]]

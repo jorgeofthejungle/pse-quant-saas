@@ -1,0 +1,8 @@
+.env
+__pycache__
+*.pyc
+*.pyo
+.git
+data/raw
+data/parsed
+data/reports

@@ -411,11 +411,13 @@ if __name__ == '__main__':
         print('Get a bot token at: https://discord.com/developers/applications')
         sys.exit(1)
 
-    print('=' * 55)
-    print('  StockPilot PH — Discord Bot')
-    print('  Commands: /stock /top10 /help')
-    print('  Press Ctrl+C to stop')
-    print('=' * 55)
+    admin_id = os.getenv('ADMIN_DISCORD_ID', '').strip()
+    print('=' * 55, flush=True)
+    print('  StockPilot PH — Discord Bot', flush=True)
+    print('  Commands: /stock /top10 /help', flush=True)
+    print(f'  ADMIN_DISCORD_ID={admin_id!r}', flush=True)
+    print('  Press Ctrl+C to stop', flush=True)
+    print('=' * 55, flush=True)
 
     try:
         client.run(token)

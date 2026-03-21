@@ -3,6 +3,5 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python dashboard/app.py"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10

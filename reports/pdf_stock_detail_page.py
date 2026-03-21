@@ -251,22 +251,22 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     if portfolio_type in ('pure_dividend', 'dividend_growth'):
         price_data += [
             ['DIVIDEND YIELD',
-             f"{stock.get('dividend_yield', 0):.2f}%",
+             f"{stock.get('dividend_yield') or 0:.2f}%",
              'Annual cash income per P100 invested'],
             ['PAYOUT RATIO',
-             f"{stock.get('payout_ratio', 0):.1f}%",
+             f"{stock.get('payout_ratio') or 0:.1f}%",
              '% of profits paid as dividends (30-70% is healthy)'],
         ]
     if portfolio_type == 'value':
         price_data += [
             ['P/E RATIO',
-             f"{stock.get('pe', 0):.1f}x",
+             f"{stock.get('pe') or 0:.1f}x",
              'Price per P1 of annual profit (lower = cheaper)'],
             ['ROE',
-             f"{stock.get('roe', 0):.1f}%",
+             f"{stock.get('roe') or 0:.1f}%",
              'How efficiently management uses your money'],
             ['DEBT / EQUITY',
-             f"{stock.get('de_ratio', 0):.2f}x",
+             f"{stock.get('de_ratio') or 0:.2f}x",
              'How much debt vs assets (lower = safer)'],
         ]
     if portfolio_type == 'unified':

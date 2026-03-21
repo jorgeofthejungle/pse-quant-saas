@@ -236,6 +236,9 @@ def init_db():
         "ALTER TABLE members ADD COLUMN tier TEXT DEFAULT 'paid'",
         # Phase 11: fiscal year end month for dividend attribution
         "ALTER TABLE stocks ADD COLUMN fiscal_year_end_month INTEGER DEFAULT 12",
+        # Phase 11: depreciation and amortization for REIT FFO calculation
+        "ALTER TABLE financials ADD COLUMN depreciation REAL",
+        "ALTER TABLE financials ADD COLUMN amortization  REAL",
     ]
     for sql in migrations:
         try:

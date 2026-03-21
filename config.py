@@ -128,6 +128,16 @@ IMPROVEMENT_RECENCY_WEIGHTS = [0.50, 0.30, 0.20]  # newest first
 # Tickers that must always be classified as REIT (is_reit=1).
 # These were initially misclassified during scraping.
 REIT_WHITELIST = {'VREIT', 'PREIT', 'MREIT', 'AREIT'}
+#
+# REIT FFO Exemption (scorer_health.py):
+# REITs are legally required to distribute 90%+ of distributable income as
+# dividends. This means their FCF (after mandatory distributions) is
+# structurally near zero or negative — not because they are unhealthy, but
+# by design. For REITs, scorer_health.py substitutes FFO yield (Funds From
+# Operations = Net Income + Depreciation) in place of FCF yield.
+# If depreciation data is unavailable, the FCF component scores as neutral
+# (50/100) rather than zero, avoiding unfair penalisation.
+# FFO data source: requires 'depreciation' field in financials table (Phase 12).
 
 # ── Data Confidence Tiers ────────────────────────────────────
 # Multiplier applied to final score based on years of complete data.

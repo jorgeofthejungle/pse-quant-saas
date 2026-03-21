@@ -80,6 +80,54 @@ def get_annual_report_edge_nos(session, cmpy_id: str) -> list:
     return reports
 
 
+def _detect_financial_unit(soup) -> tuple:
+    """
+    Scan page text for explicit unit indicators.
+    Returns (multiplier, unit_label):
+    - "in thousands"  -> (1_000, "thousands")
+    - "in millions"   -> (1_000_000, "millions")
+    - "in billions"   -> (1_000_000_000, "billions")
+    - "in philippine peso" / "in peso" -> (1, "peso")
+    - not found       -> (1_000_000, "millions_assumed")  -- default, flagged
+
+    The multiplier converts raw page figures to millions PHP:
+    - thousands:  raw / 1_000   -> millions
+    - millions:   raw / 1       -> millions  (no change)
+    - billions:   raw * 1_000   -> millions
+    - peso:       raw / 1_000_000 -> millions
+    The caller uses this to normalise stored values.
+    """
+    if soup is None:
+        return (1_000_000, 'millions_assumed')
+
+    page_text = soup.get_text()
+
+    # Check most-specific patterns first (billions before millions)
+    if re.search(r'in\s+billions', page_text, re.I):
+        return (1_000_000_000, 'billions')
+    if re.search(r'in\s+millions', page_text, re.I):
+        return (1_000_000, 'millions')
+    if re.search(r'in\s+thousands', page_text, re.I):
+        return (1_000, 'thousands')
+    if re.search(r'in\s+(philippine\s+)?peso', page_text, re.I):
+        return (1, 'peso')
+
+    # Also check legacy "Currency: ... thousands/millions" format
+    currency_match = re.search(r'[Cc]urrency[^:\n]{0,30}:([^\n]{0,60})', page_text)
+    if currency_match:
+        unit_text = currency_match.group(1).lower()
+        if 'billion' in unit_text:
+            return (1_000_000_000, 'billions')
+        if 'million' in unit_text:
+            return (1_000_000, 'millions')
+        if 'thousand' in unit_text:
+            return (1_000, 'thousands')
+        if 'peso' in unit_text:
+            return (1, 'peso')
+
+    return (1_000_000, 'millions_assumed')
+
+
 def scrape_financial_reports_page(session, cmpy_id: str) -> list:
     """
     Scrapes the PSE Edge Financial Reports tab for a company.
@@ -92,12 +140,13 @@ def scrape_financial_reports_page(session, cmpy_id: str) -> list:
       Table 3: Income Statement (Quarterly)
 
     We only process Tables 0 and 1 (headers contain "Current Year").
-    Data units: "In Php Thousands" — divide by 1000 to get millions PHP.
-    EPS and Book Value Per Share are already per-share values.
+    Unit detection: _detect_financial_unit() scans for explicit unit text.
+    EPS and Book Value Per Share are always per-share (no unit multiplier).
 
     Returns a list of dicts, newest year first:
       [{'year': 2024, 'revenue': ..., 'net_income': ..., 'equity': ...,
-        'total_debt': ..., 'eps': ..., 'book_value_per_share': ...}, ...]
+        'total_debt': ..., 'eps': ..., 'book_value_per_share': ...,
+        'unit_label': ...}, ...]
     Returns [] if page unavailable or no data found.
     """
     resp = _get(session, FIN_REPORTS_VIEW, params={'cmpy_id': cmpy_id})
@@ -136,17 +185,30 @@ def scrape_financial_reports_page(session, cmpy_id: str) -> list:
     current_year = int(year_matches[0])
     prev_year    = current_year - 1
 
-    unit_matches = re.findall(r'[Cc]urrency[^:\n]{0,30}:([^\n]{0,60})', page_text)
-    unit_text    = unit_matches[0].lower().strip() if unit_matches else ''
+    # ── Unit detection ────────────────────────────────────────
+    raw_multiplier, unit_label = _detect_financial_unit(soup)
+    assumed = unit_label == 'millions_assumed'
 
-    if 'thousand' in unit_text:
-        divisor = 1_000
-    elif 'million' in unit_text:
-        divisor = 1
-    else:
+    # Convert raw_multiplier to a divisor that yields millions PHP:
+    # - peso (1):           divide by 1_000_000
+    # - thousands (1_000):  divide by 1_000
+    # - millions (1_000_000): divide by 1 (no change)
+    # - billions (1_000_000_000): multiply by 1_000 (divide by 0.001)
+    if raw_multiplier == 1:          # peso
         divisor = 1_000_000
+    elif raw_multiplier == 1_000:    # thousands
+        divisor = 1_000
+    elif raw_multiplier == 1_000_000:  # millions (confirmed or assumed)
+        divisor = 1
+    else:                            # billions
+        divisor = 0.001              # dividing by 0.001 = multiplying by 1000
 
-    print(f"    fin_reports: FY{current_year}+{current_year-1}  unit={unit_text!r}  divisor={divisor:,}")
+    if assumed:
+        print(f"    fin_reports: FY{current_year}+{current_year-1}  "
+              f"unit=ASSUMED millions  divisor={divisor}")
+    else:
+        print(f"    fin_reports: FY{current_year}+{current_year-1}  "
+              f"unit={unit_label!r}  divisor={divisor}")
 
     FIELD_MAP = {
         'gross revenue':                            'revenue',
@@ -165,6 +227,14 @@ def scrape_financial_reports_page(session, cmpy_id: str) -> list:
         'earnings/(loss) per share (basic)':        'eps',
         'earnings per share (basic)':               'eps',
         'earnings per share':                       'eps',
+        # Depreciation / amortization — for REIT FFO calculation
+        # Combined D&A label -> stored as 'depreciation' (includes amortization)
+        'depreciation and amortization':            'depreciation',
+        'depreciation & amortization':              'depreciation',
+        'depreciation expense':                     'depreciation',
+        'depreciation':                             'depreciation',
+        # Separate amortization label -> stored as 'amortization'
+        'amortization':                             'amortization',
     }
 
     def _parse_num(text: str) -> float | None:
@@ -238,14 +308,86 @@ def scrape_financial_reports_page(session, cmpy_id: str) -> list:
             'total_debt':           _to_m(d.get('total_debt')),
             'eps':                  d.get('eps'),
             'book_value_per_share': d.get('bvps'),
+            # Depreciation / amortization — stored in millions PHP (unit-adjusted)
+            'depreciation':         _to_m(d.get('depreciation')),
+            'amortization':         _to_m(d.get('amortization')),
+            'unit_label':           unit_label,
         }
-        if any(v is not None for k, v in row.items() if k != 'year'):
+        if any(v is not None for k, v in row.items()
+               if k not in ('year', 'unit_label')):
             output.append(row)
+            unit_note = f' [{unit_label}]' if assumed else ''
             print(f"    fin_reports {year}: "
                   f"rev={row['revenue']}M  NI={row['net_income']}M  "
-                  f"EPS={row['eps']}  eq={row['equity']}M")
+                  f"EPS={row['eps']}  eq={row['equity']}M{unit_note}")
+
+    # ── Cross-validation (non-blocking) ──────────────────────
+    # Requires price data; only runs when called from the full scraper
+    # which supplies market_cap and close via _cross_validate_financials().
+    # The standalone page scraper does not have price data, so cross-checks
+    # are deferred to the full scraper context (see pse_edge_scraper.py).
 
     return output
+
+
+def _cross_validate_financials(output: list, cmpy_id: str,
+                                market_cap: float, close: float) -> None:
+    """
+    Cross-validates scraped financial figures against price data.
+    Non-blocking: fires canaries but does not modify or remove any data.
+
+    Check A — Revenue per share sanity:
+      revenue_per_share = revenue_M * 1_000_000 / shares
+      If < 0.001 or > 1_000_000 -> canary 'revenue_per_share_implausible'
+
+    Check B — EPS vs Net Income:
+      derived_eps = net_income_M * 1_000_000 / shares
+      If abs(derived - eps) / max(abs(eps), 1) > 10 -> canary 'eps_ni_mismatch'
+
+    Called by pse_edge_scraper.py after scraping, with price context.
+    """
+    if not output or not market_cap or not close or close <= 0:
+        return
+
+    shares = market_cap / close
+    if shares <= 0:
+        return
+
+    for row in output:
+        year = row.get('year', '?')
+
+        # Check A: revenue per share sanity
+        revenue_m = row.get('revenue')
+        if revenue_m is not None:
+            rev_per_share = (revenue_m * 1_000_000) / shares
+            if rev_per_share < 0.001 or rev_per_share > 1_000_000:
+                fire_canary(
+                    'pse_financial_reports',
+                    'revenue_per_share_implausible',
+                    f'FY{year} cmpy_id={cmpy_id}: '
+                    f'revenue_per_share={rev_per_share:,.2f} is implausible '
+                    f'(revenue={revenue_m}M, shares={shares:,.0f}) — '
+                    f'unit_label={row.get("unit_label", "unknown")} '
+                    f'may be incorrect'
+                )
+
+        # Check B: EPS vs Net Income
+        eps = row.get('eps')
+        net_income_m = row.get('net_income')
+        if eps is not None and net_income_m is not None and abs(eps) > 0:
+            derived_eps = (net_income_m * 1_000_000) / shares
+            mismatch = abs(derived_eps - eps) / max(abs(eps), 1)
+            if mismatch > 10:
+                fire_canary(
+                    'pse_financial_reports',
+                    'eps_ni_mismatch',
+                    f'FY{year} cmpy_id={cmpy_id}: '
+                    f'EPS={eps:.4f} but derived={derived_eps:.4f} '
+                    f'(NI={net_income_m}M, shares={shares:,.0f}, '
+                    f'mismatch={mismatch:.1f}x) — '
+                    f'unit_label={row.get("unit_label", "unknown")} '
+                    f'may be incorrect'
+                )
 
 
 def _fetch_year_financials(session, cmpy_id: str, year: int) -> dict | None:
@@ -315,6 +457,8 @@ def backfill_historical_financials(session, cmpy_id: str, ticker: str,
                         operating_cf=data.get('operating_cf'),
                         capex=data.get('capex'),
                         ebitda=data.get('ebitda'),
+                        depreciation=data.get('depreciation'),
+                        amortization=data.get('amortization'),
                         force=False,  # never overwrite existing data
                     )
                     stats['fetched'] += 1

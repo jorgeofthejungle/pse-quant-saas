@@ -20,6 +20,12 @@ from dashboard.background import (
 )
 from config import DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE
 
+try:
+    from scheduler import check_scheduler_health
+    _HEALTH_AVAILABLE = True
+except Exception:
+    _HEALTH_AVAILABLE = False
+
 pipeline_bp = Blueprint('pipeline', __name__)
 
 
@@ -154,3 +160,15 @@ def bot_stop():
 @pipeline_bp.route('/bot/status')
 def bot_status():
     return jsonify(get_bot_status())
+
+
+@pipeline_bp.route('/api/scheduler/health')
+def scheduler_health():
+    """JSON: last heartbeat timestamps for each scheduled job."""
+    if not _HEALTH_AVAILABLE:
+        return jsonify({'error': 'check_scheduler_health not available'})
+    try:
+        data = check_scheduler_health()
+        return jsonify(data)
+    except Exception as exc:
+        return jsonify({'error': str(exc)})

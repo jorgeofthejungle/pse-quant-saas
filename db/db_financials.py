@@ -13,6 +13,7 @@ def upsert_financials(ticker: str, year: int,
                       cash: float = None, operating_cf: float = None,
                       capex: float = None, ebitda: float = None,
                       eps: float = None, dps: float = None,
+                      depreciation: float = None, amortization: float = None,
                       force: bool = False):
     """
     Inserts or updates one year of financial data for a ticker.
@@ -32,42 +33,50 @@ def upsert_financials(ticker: str, year: int,
         conn.execute("""
             INSERT INTO financials
                 (ticker, year, revenue, net_income, equity, total_debt,
-                 cash, operating_cf, capex, ebitda, eps, dps, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cash, operating_cf, capex, ebitda, eps, dps,
+                 depreciation, amortization, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ticker, year) DO UPDATE SET
-                revenue      = excluded.revenue,
-                net_income   = excluded.net_income,
-                equity       = excluded.equity,
-                total_debt   = excluded.total_debt,
-                cash         = excluded.cash,
-                operating_cf = excluded.operating_cf,
-                capex        = excluded.capex,
-                ebitda       = excluded.ebitda,
-                eps          = excluded.eps,
-                dps          = excluded.dps,
-                updated_at   = excluded.updated_at
+                revenue       = excluded.revenue,
+                net_income    = excluded.net_income,
+                equity        = excluded.equity,
+                total_debt    = excluded.total_debt,
+                cash          = excluded.cash,
+                operating_cf  = excluded.operating_cf,
+                capex         = excluded.capex,
+                ebitda        = excluded.ebitda,
+                eps           = excluded.eps,
+                dps           = excluded.dps,
+                depreciation  = excluded.depreciation,
+                amortization  = excluded.amortization,
+                updated_at    = excluded.updated_at
         """, (ticker, year, revenue, net_income, equity, total_debt,
-              cash, operating_cf, capex, ebitda, eps, dps, now))
+              cash, operating_cf, capex, ebitda, eps, dps,
+              depreciation, amortization, now))
     else:
         conn.execute("""
             INSERT INTO financials
                 (ticker, year, revenue, net_income, equity, total_debt,
-                 cash, operating_cf, capex, ebitda, eps, dps, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cash, operating_cf, capex, ebitda, eps, dps,
+                 depreciation, amortization, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ticker, year) DO UPDATE SET
-                revenue      = COALESCE(excluded.revenue,      revenue),
-                net_income   = COALESCE(excluded.net_income,   net_income),
-                equity       = COALESCE(excluded.equity,       equity),
-                total_debt   = COALESCE(excluded.total_debt,   total_debt),
-                cash         = COALESCE(excluded.cash,         cash),
-                operating_cf = COALESCE(excluded.operating_cf, operating_cf),
-                capex        = COALESCE(excluded.capex,        capex),
-                ebitda       = COALESCE(excluded.ebitda,       ebitda),
-                eps          = COALESCE(excluded.eps,          eps),
-                dps          = COALESCE(excluded.dps,          dps),
-                updated_at   = excluded.updated_at
+                revenue       = COALESCE(excluded.revenue,       revenue),
+                net_income    = COALESCE(excluded.net_income,    net_income),
+                equity        = COALESCE(excluded.equity,        equity),
+                total_debt    = COALESCE(excluded.total_debt,    total_debt),
+                cash          = COALESCE(excluded.cash,          cash),
+                operating_cf  = COALESCE(excluded.operating_cf,  operating_cf),
+                capex         = COALESCE(excluded.capex,         capex),
+                ebitda        = COALESCE(excluded.ebitda,        ebitda),
+                eps           = COALESCE(excluded.eps,           eps),
+                dps           = COALESCE(excluded.dps,           dps),
+                depreciation  = COALESCE(excluded.depreciation,  depreciation),
+                amortization  = COALESCE(excluded.amortization,  amortization),
+                updated_at    = excluded.updated_at
         """, (ticker, year, revenue, net_income, equity, total_debt,
-              cash, operating_cf, capex, ebitda, eps, dps, now))
+              cash, operating_cf, capex, ebitda, eps, dps,
+              depreciation, amortization, now))
 
     conn.commit()
     conn.close()
@@ -81,7 +90,8 @@ def get_financials(ticker: str, years: int = 5) -> list:
     conn = get_connection()
     rows = conn.execute("""
         SELECT year, revenue, net_income, equity, total_debt, cash,
-               operating_cf, capex, ebitda, eps, dps
+               operating_cf, capex, ebitda, eps, dps,
+               depreciation, amortization
         FROM financials
         WHERE ticker = ?
         ORDER BY year DESC

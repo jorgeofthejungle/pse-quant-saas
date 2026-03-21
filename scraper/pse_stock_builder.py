@@ -25,7 +25,7 @@ import database as db
 from metrics import (calculate_roe, calculate_de, calculate_dividend_yield,
                      calculate_payout_ratio, calculate_cagr, calculate_fcf,
                      calculate_fcf_yield, calculate_fcf_coverage,
-                     calculate_ev_ebitda)
+                     calculate_ev_ebitda, calc_ffo, calc_ffo_yield)
 
 
 def build_stock_dict_from_db(ticker: str) -> dict | None:
@@ -71,7 +71,8 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
 
     fin_rows = conn.execute("""
         SELECT year, revenue, net_income, equity, total_debt, cash,
-               operating_cf, capex, ebitda, eps, dps
+               operating_cf, capex, ebitda, eps, dps,
+               depreciation, amortization
         FROM financials
         WHERE ticker = ? ORDER BY year DESC LIMIT 10
     """, (ticker,)).fetchall()
@@ -176,6 +177,17 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
         if f.get('operating_cf') is not None and f.get('capex') is not None:
             fcf_3y.append(calculate_fcf(f['operating_cf'], f['capex']))
 
+    # ── FFO metrics (REIT FFO exemption) ─────────────────────
+    # FFO = Net Income + Depreciation - Gains on Sale.
+    # Depreciation is now stored in the financials table (Phase 11).
+    # The scorer_health.py REIT exemption handles None gracefully (neutral score)
+    # when depreciation has not yet been scraped for a given ticker/year.
+    depreciation_m = f0.get('depreciation')
+    ffo_m = calc_ffo(f0.get('net_income'), depreciation_m)
+    ffo_yield_val = None
+    if ffo_m is not None and market_cap:
+        ffo_yield_val = calc_ffo_yield(ffo_m * 1_000_000, market_cap)
+
     # ── EV/EBITDA ─────────────────────────────────────────────
     ebitda     = f0.get('ebitda')
     total_debt = f0.get('total_debt')
@@ -216,6 +228,9 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
         'fcf_yield':        fcf_yield_val,
         'fcf_per_share':    fcf_per_share,
         'fcf_3y':           fcf_3y,
+        # REIT FFO metrics (populated when depreciation has been scraped)
+        'ffo':              ffo_m,
+        'ffo_yield':        ffo_yield_val,
         # Valuation
         'pe':               pe,
         'pb':               pb,

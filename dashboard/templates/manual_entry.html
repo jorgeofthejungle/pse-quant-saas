@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Manual Data Entry{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Manual Financial Entry</h1>
+  <span class="timestamp">Admin — correct or fill missing PSE Edge data</span>
+</div>
+
+<!-- ── Search bar ── -->
+<form method="GET" action="{{ url_for('manual_entry.index') }}"
+      class="inline-form full-width" style="margin-bottom:1.5rem;"
+      autocomplete="off">
+  <div style="position:relative;display:inline-block;">
+    <input type="text" id="me-search" name="ticker"
+           value="{{ ticker or '' }}"
+           class="form-input" placeholder="Enter ticker e.g. GSMI, GLO"
+           style="width:260px;text-transform:uppercase;"
+           autocomplete="off" autofocus>
+    <div id="me-dropdown" style="
+      display:none; position:absolute; top:100%; left:0; width:100%;
+      background:var(--white); border:1px solid var(--border); border-top:none;
+      border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
+      z-index:100; max-height:240px; overflow-y:auto;">
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Go</button>
+  {% if ticker %}
+    <a href="{{ url_for('manual_entry.index') }}" class="btn btn-secondary">Clear</a>
+  {% endif %}
+</form>
+
+<!-- ── Note ── -->
+<div class="banner banner-info" style="margin-bottom:1.5rem;font-size:0.82rem;">
+  Values in <strong>PHP millions</strong> except EPS and DPS (per share in PHP).
+  All saves use <code>force=True</code> — existing data will be overwritten.
+  Leave a field blank to keep its current value unchanged.
+</div>
+
+{% if ticker %}
+<!-- ── Ticker header ── -->
+<div class="card full-width" style="margin-bottom:1.25rem;border-top:4px solid var(--navy);">
+  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+    <span style="font-size:1.5rem;font-weight:700;color:var(--navy);">{{ ticker }}</span>
+    {% if stock_name %}
+      <span style="color:var(--text-muted);">{{ stock_name }}</span>
+    {% else %}
+      <span class="badge badge-expired">Not in stocks table — financials only</span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Existing financials table + inline edit forms ── -->
+{% if financials %}
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2 style="margin-bottom:1rem;">Existing Data ({{ financials|length }} year(s))</h2>
+  {% for row in financials %}
+  <details style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:6px;">
+    <summary style="
+      padding:0.6rem 0.9rem; cursor:pointer; background:var(--bg);
+      border-radius:6px; font-size:0.9rem; font-weight:600;
+      display:flex; align-items:center; gap:0.75rem; list-style:none;">
+      <span style="color:var(--navy);">{{ row.year }}</span>
+      <span style="color:var(--text-muted);font-weight:400;font-size:0.82rem;">
+        Rev: {% if row.revenue %}₱{{ '{:,.0f}'.format(row.revenue) }}M{% else %}—{% endif %} &nbsp;|&nbsp;
+        NI: {% if row.net_income %}₱{{ '{:,.0f}'.format(row.net_income) }}M{% else %}—{% endif %} &nbsp;|&nbsp;
+        EPS: {% if row.eps %}{{ '%.2f'|format(row.eps) }}{% else %}—{% endif %} &nbsp;|&nbsp;
+        DPS: {% if row.dps %}{{ '%.4f'|format(row.dps) }}{% else %}—{% endif %}
+      </span>
+      <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted);font-weight:400;">
+        Updated: {{ row.updated_at[:10] if row.updated_at else 'unknown' }} &mdash; click to edit
+      </span>
+    </summary>
+    <div style="padding:1rem;">
+      <form method="POST"
+            action="{{ url_for('manual_entry.save_financials', ticker=ticker, year=row.year) }}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1rem;">
+          {% for field, label, unit in fields %}
+          <div>
+            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
+              {{ label }} <span style="color:var(--text-muted);font-size:0.75rem;">({{ unit }})</span>
+            </label>
+            <input type="number" step="any" name="{{ field }}"
+                   value="{{ row[field] if row[field] is not none else '' }}"
+                   class="form-input" style="width:100%;"
+                   placeholder="blank = keep current">
+          </div>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary" style="font-size:0.85rem;">
+          Save {{ ticker }} {{ row.year }}
+        </button>
+      </form>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% else %}
+<div class="banner banner-info" style="margin-bottom:1.25rem;">
+  No existing financial data for <strong>{{ ticker }}</strong>. Use the form below to add the first year.
+</div>
+{% endif %}
+
+<!-- ── Add new year form ── -->
+<div class="card full-width" style="margin-bottom:1.5rem;">
+  <h2 style="margin-bottom:1rem;">Add New Year</h2>
+  <form method="POST"
+        action="{{ url_for('manual_entry.save_financials', ticker=ticker, year=0) }}"
+        id="new-year-form">
+    <!-- Intercept to inject actual year before submit -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1rem;">
+      <div>
+        <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
+          Year <span style="color:var(--red);font-size:0.75rem;">*required</span>
+        </label>
+        <input type="number" id="new-year-input" name="_year_input"
+               min="2010" max="2035" step="1"
+               class="form-input" style="width:100%;"
+               placeholder="e.g. 2022" required>
+      </div>
+      {% for field, label, unit in fields %}
+      <div>
+        <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
+          {{ label }} <span style="color:var(--text-muted);font-size:0.75rem;">({{ unit }})</span>
+        </label>
+        <input type="number" step="any" name="{{ field }}"
+               class="form-input" style="width:100%;"
+               placeholder="leave blank to skip">
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-primary" onclick="submitNewYear()" style="font-size:0.85rem;">
+      Save New Year for {{ ticker }}
+    </button>
+  </form>
+</div>
+
+{% else %}
+<!-- No ticker selected yet -->
+<div class="card full-width" style="margin-bottom:1.25rem;">
+  <h2>Select a Stock</h2>
+  <p style="color:var(--text-muted);margin-bottom:1rem;font-size:0.88rem;">
+    Enter a ticker above or choose from stocks with existing financials:
+  </p>
+  {% if tickers %}
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+    {% for t in tickers %}
+    <a href="{{ url_for('manual_entry.entry_form', ticker=t) }}"
+       class="btn btn-secondary" style="font-size:0.82rem;padding:0.3rem 0.7rem;">
+      {{ t }}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color:var(--text-muted);font-size:0.85rem;">No financial data in database yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Disclaimer ── -->
+<div class="banner banner-info" style="font-size:0.8rem;">
+  Manual entries are for correcting data not available on PSE Edge (e.g. missing fiscal years).
+  All changes are logged in the activity log. Re-run the scoring pipeline after edits to update rankings.
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Autocomplete for ticker search using existing /api/stocks/search endpoint
+let _meTimer = null;
+const meInput  = document.getElementById('me-search');
+const meDropdown = document.getElementById('me-dropdown');
+
+if (meInput) {
+  meInput.addEventListener('input', function () {
+    clearTimeout(_meTimer);
+    const val = this.value.trim();
+    if (val.length < 1) { meDropdown.style.display = 'none'; return; }
+    _meTimer = setTimeout(() => {
+      fetch('/api/stocks/search?q=' + encodeURIComponent(val))
+        .then(r => r.json())
+        .then(items => {
+          if (!items.length) { meDropdown.style.display = 'none'; return; }
+          meDropdown.innerHTML = items.map(it =>
+            `<div style="padding:0.5rem 0.75rem;cursor:pointer;font-size:0.875rem;
+                         display:flex;gap:0.6rem;align-items:baseline;"
+                 onmousedown="document.getElementById('me-search').value='${it.ticker}';meDropdown.style.display='none';"
+                 onmouseenter="this.style.background='var(--bg)'"
+                 onmouseleave="this.style.background=''">
+              <span style="font-weight:700;color:var(--navy);min-width:52px;">${it.ticker}</span>
+              <span style="color:var(--text-muted);font-size:0.82rem;">${it.name}</span>
+            </div>`
+          ).join('');
+          meDropdown.style.display = 'block';
+        });
+    }, 160);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!meInput.contains(e.target) && !meDropdown.contains(e.target))
+      meDropdown.style.display = 'none';
+  });
+}
+
+// New year form — redirect to correct URL with the entered year
+function submitNewYear() {
+  const yearInput = document.getElementById('new-year-input');
+  if (!yearInput) return;
+  const year = parseInt(yearInput.value, 10);
+  if (!year || year < 2010 || year > 2035) {
+    alert('Please enter a valid year between 2010 and 2035.');
+    yearInput.focus();
+    return;
+  }
+  const form = document.getElementById('new-year-form');
+  // Update action URL with the real year
+  const action = form.action.replace('/0', '/' + year);
+  form.action = action;
+  // Remove the helper _year_input field so it is not sent as a form field
+  yearInput.removeAttribute('name');
+  form.submit();
+}
+</script>
+{% endblock %}

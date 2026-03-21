@@ -26,6 +26,7 @@
       <li><a href="{{ url_for('stocks.index') }}"     class="{{ 'active' if request.blueprint == 'stocks' }}">Stock Lookup</a></li>
       <li><a href="{{ url_for('conglomerates.index') }}" class="{{ 'active' if request.blueprint == 'conglomerates' }}">Conglomerates</a></li>
       <li><a href="{{ url_for('portal.index') }}"        class="{{ 'active' if request.blueprint == 'portal' }}">Portal</a></li>
+      <li><a href="{{ url_for('manual_entry.index') }}"  class="{{ 'active' if request.blueprint == 'manual_entry' }}">Manual Entry</a></li>
     </ul>
     <div class="sidebar-footer">
       <span>v1.0 &bull; Local</span>

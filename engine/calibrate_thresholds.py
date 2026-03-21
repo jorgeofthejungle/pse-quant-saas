@@ -74,9 +74,10 @@ def calibrate_health_thresholds() -> dict:
         }
 
     # ── FCF Yield ────────────────────────────────────────
-    # FCF yield = (operating_cf - capex) / market_cap * 100
+    # FCF yield = (operating_cf - capex) * 1e6 / market_cap * 100
+    # operating_cf/capex are in PHP millions; market_cap is in absolute PHP
     rows = cur.execute("""
-        SELECT (f.operating_cf - COALESCE(f.capex, 0)) / p.market_cap * 100 as fcf_yield
+        SELECT (f.operating_cf - COALESCE(f.capex, 0)) * 1000000.0 / p.market_cap * 100 as fcf_yield
         FROM financials f
         JOIN (
             SELECT ticker, market_cap FROM prices

@@ -73,6 +73,7 @@ def create_app() -> Flask:
     from dashboard.routes_stocks   import stocks_bp
     from dashboard.routes_portal        import portal_bp
     from dashboard.routes_conglomerates import conglomerates_bp
+    from dashboard.routes_manual_entry  import manual_entry_bp
 
     app.register_blueprint(home_bp)
     app.register_blueprint(pipeline_bp,  url_prefix='/pipeline')
@@ -83,6 +84,7 @@ def create_app() -> Flask:
     app.register_blueprint(stocks_bp)
     app.register_blueprint(portal_bp,          url_prefix='/portal')
     app.register_blueprint(conglomerates_bp,   url_prefix='/conglomerates')
+    app.register_blueprint(manual_entry_bp,    url_prefix='/manual')
 
     return app
 

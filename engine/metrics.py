@@ -144,3 +144,47 @@ def calculate_ev_ebitda(
         return None
     ev = market_cap + total_debt - cash
     return round(ev / ebitda, 2)
+
+
+# ── REIT FFO Metrics ───────────────────────────────────────────────────────
+# REITs are legally required to distribute 90%+ of distributable income as
+# dividends. This means FCF (after dividends) is structurally near zero or
+# negative — not a sign of weakness, but by design.
+# FFO (Funds From Operations) is the standard REIT profitability metric.
+# FFO = Net Income + Depreciation - Gains on Property Sales.
+
+def calc_ffo(net_income: float, depreciation: float, gains_on_sale: float = None):
+    """
+    FFO = Net Income + Depreciation - Gains on Property Sales.
+    Standard REIT profitability metric. Depreciation add-back removes the
+    distortion of non-cash real estate write-downs from reported net income.
+    Returns float (PHP M) or None if insufficient data.
+    """
+    if net_income is None or depreciation is None:
+        return None
+    gains = gains_on_sale or 0.0
+    return net_income + depreciation - gains
+
+
+def calc_ffo_yield(ffo: float, market_cap: float):
+    """
+    FFO Yield = FFO / Market Cap * 100.
+    Equivalent to FCF yield for REITs — measures cash generation relative
+    to market value. Higher is better.
+    Returns % or None.
+    """
+    if ffo is None or not market_cap:
+        return None
+    return round(ffo / market_cap * 100, 2)
+
+
+def calc_ffo_payout(dps: float, shares_outstanding: float, ffo: float):
+    """
+    FFO Payout Ratio = (DPS * shares) / FFO * 100.
+    For REITs, this is more meaningful than EPS-based payout ratio
+    because FFO better represents distributable cash than net income.
+    Returns % or None.
+    """
+    if dps is None or shares_outstanding is None or not ffo:
+        return None
+    return round((dps * shares_outstanding) / ffo * 100, 2)

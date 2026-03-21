@@ -180,13 +180,15 @@ def _save_company(company_info: dict, stock_data: dict):
 
     for fin in stock_data.get('fin_data', []):
         db.upsert_financials(
-            ticker     = ticker,
-            year       = fin['year'],
-            revenue    = fin.get('revenue'),
-            net_income = fin.get('net_income'),
-            equity     = fin.get('equity'),
-            total_debt = fin.get('total_debt'),
-            eps        = fin.get('eps'),
+            ticker        = ticker,
+            year          = fin['year'],
+            revenue       = fin.get('revenue'),
+            net_income    = fin.get('net_income'),
+            equity        = fin.get('equity'),
+            total_debt    = fin.get('total_debt'),
+            eps           = fin.get('eps'),
+            depreciation  = fin.get('depreciation'),
+            amortization  = fin.get('amortization'),
         )
 
 

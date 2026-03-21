@@ -7,10 +7,18 @@ import sys
 import os
 import csv
 import io
+import json
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, render_template, jsonify, Response
 from dashboard.security import rate_limit
+
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'db'))
@@ -142,6 +150,187 @@ def api_rankings_export():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=pse_rankings_{today}.csv'},
     )
+
+
+@home_bp.route('/export/rankings.csv')
+def export_rankings_csv():
+    """CSV download of current StockPilot PH Rankings (all portfolio types)."""
+    try:
+        rows = _build_export_rows()
+        if not rows:
+            return jsonify({'error': 'No rankings data available. Run the pipeline first.'}), 404
+
+        output = io.StringIO()
+        fieldnames = [
+            'rank', 'ticker', 'name', 'sector', 'portfolio_type',
+            'score', 'confidence', 'health_score', 'improvement_score',
+            'acceleration_score', 'persistence_score', 'run_date',
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename=stockpilot_rankings_{today}.csv'},
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@home_bp.route('/export/rankings.xlsx')
+def export_rankings_xlsx():
+    """Excel download of current StockPilot PH Rankings (4 sheets, one per portfolio type)."""
+    if not EXCEL_AVAILABLE:
+        return jsonify({'error': 'openpyxl not installed. Run: py -m pip install openpyxl'}), 200
+
+    try:
+        rows = _build_export_rows()
+        if not rows:
+            return jsonify({'error': 'No rankings data available. Run the pipeline first.'}), 404
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)  # remove default empty sheet
+
+        PORTFOLIO_TYPES = ['unified', 'pure_dividend', 'dividend_growth', 'value']
+        HEADERS = [
+            'Rank', 'Ticker', 'Name', 'Sector', 'Score', 'Confidence',
+            'Health', 'Improvement', 'Acceleration', 'Persistence', 'Run Date',
+        ]
+        FIELD_KEYS = [
+            'rank', 'ticker', 'name', 'sector', 'score', 'confidence',
+            'health_score', 'improvement_score', 'acceleration_score',
+            'persistence_score', 'run_date',
+        ]
+
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(fill_type='solid', fgColor='1F4E79')
+        header_align = Alignment(horizontal='center', vertical='center')
+
+        for pt in PORTFOLIO_TYPES:
+            pt_rows = [r for r in rows if r['portfolio_type'] == pt]
+            sheet_name = pt.replace('_', ' ').title()
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Write header row
+            ws.append(HEADERS)
+            for cell in ws[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_align
+
+            # Freeze top row
+            ws.freeze_panes = 'A2'
+
+            # Write data rows
+            for row in pt_rows:
+                ws.append([row.get(k, '') for k in FIELD_KEYS])
+
+            # Auto-fit column widths (approximate)
+            col_widths = [6, 10, 35, 20, 8, 12, 10, 12, 14, 14, 12]
+            for i, width in enumerate(col_widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        return Response(
+            output.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename=stockpilot_rankings_{today}.xlsx'},
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _build_export_rows() -> list:
+    """
+    Fetches scores_v2 for all portfolio types and builds flat export rows.
+    Each row contains rank, ticker, name, sector, portfolio_type, score,
+    confidence (as %), layer sub-scores, and run_date.
+    """
+    PORTFOLIO_TYPES = ['unified', 'pure_dividend', 'dividend_growth', 'value']
+
+    # Fetch stock metadata (name, sector)
+    conn = db.get_connection()
+    name_map = {}
+    try:
+        meta_rows = conn.execute(
+            "SELECT ticker, name, sector FROM stocks"
+        ).fetchall()
+        name_map = {r['ticker']: {'name': r['name'] or '', 'sector': r['sector'] or ''}
+                    for r in meta_rows}
+    finally:
+        conn.close()
+
+    all_rows = []
+    for pt in PORTFOLIO_TYPES:
+        # Get latest run_date for this portfolio type
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT MAX(run_date) AS latest FROM scores_v2 "
+                "WHERE rank IS NOT NULL AND portfolio_type = ?",
+                (pt,)
+            ).fetchone()
+            if not row or not row['latest']:
+                continue
+            latest = row['latest']
+
+            # Fetch scores WITH breakdown_json
+            score_rows = conn.execute(
+                """SELECT ticker, score, rank, confidence, breakdown_json, run_date
+                   FROM scores_v2
+                   WHERE run_date = ? AND portfolio_type = ? AND rank IS NOT NULL
+                   ORDER BY rank""",
+                (latest, pt)
+            ).fetchall()
+        finally:
+            conn.close()
+
+        for sr in score_rows:
+            ticker = sr['ticker']
+            meta = name_map.get(ticker, {'name': '', 'sector': ''})
+
+            # Parse breakdown JSON safely
+            breakdown = {}
+            if sr['breakdown_json']:
+                try:
+                    breakdown = json.loads(sr['breakdown_json'])
+                except (ValueError, TypeError):
+                    breakdown = {}
+
+            health  = breakdown.get('health_score')
+            improve = breakdown.get('improvement_score')
+            accel   = breakdown.get('acceleration_score')
+            persist = breakdown.get('persistence_score')
+
+            confidence_raw = sr['confidence']
+            confidence_pct = (
+                f"{round(confidence_raw * 100)}%"
+                if confidence_raw is not None else ''
+            )
+
+            all_rows.append({
+                'rank':               sr['rank'],
+                'ticker':             ticker,
+                'name':               meta['name'],
+                'sector':             meta['sector'],
+                'portfolio_type':     pt,
+                'score':              round(sr['score'], 2) if sr['score'] is not None else '',
+                'confidence':         confidence_pct,
+                'health_score':       round(health, 2) if health is not None else '',
+                'improvement_score':  round(improve, 2) if improve is not None else '',
+                'acceleration_score': round(accel, 2) if accel is not None else '',
+                'persistence_score':  round(persist, 2) if persist is not None else '',
+                'run_date':           sr['run_date'] or '',
+            })
+
+    return all_rows
 
 
 @home_bp.route('/api/health')

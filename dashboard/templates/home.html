@@ -59,7 +59,13 @@
 
   <!-- Unified Top Rankings -->
   <div class="card">
-    <h2>Stockpilot PH Rankings</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+      <h2 style="margin:0;">Stockpilot PH Rankings</h2>
+      <div style="display:flex; gap:0.5rem;">
+        <a href="/export/rankings.csv" class="btn btn-sm">Export CSV</a>
+        <a href="/export/rankings.xlsx" class="btn btn-sm">Export Excel</a>
+      </div>
+    </div>
     {% if unified_rankings %}
     <table class="data-table">
       <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>

@@ -66,6 +66,27 @@
   </div>
 </div>
 
+<!-- Scheduler Health -->
+<div class="card full-width" id="sched-health-card" style="margin-bottom:1.25rem;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+    <h2 style="margin-bottom:0;">Scheduler Health</h2>
+    <span style="font-size:0.8rem;color:var(--text-muted);" id="sched-health-updated">Loading...</span>
+  </div>
+  <table class="data-table" id="sched-health-table">
+    <thead>
+      <tr>
+        <th>Job</th>
+        <th>Last Run</th>
+        <th>Hours Ago</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="sched-health-body">
+      <tr><td colspan="4" style="color:var(--text-muted);text-align:center;">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+
 <!-- Run Controls -->
 <div class="card-row">
   <div class="card">
@@ -239,6 +260,71 @@ function controlBot(action) {
       btn.disabled = false;
     });
 }
+
+// ── Scheduler Health Panel ─────────────────────────────────
+const JOB_LABELS = {
+  daily_score:   'Daily Score',
+  weekly_scrape: 'Weekly Scrape',
+  alert_check:   'Alert Check',
+};
+
+function renderHealthRow(jobKey, data) {
+  const label    = JOB_LABELS[jobKey] || jobKey;
+  const lastRun  = data.last_run
+    ? data.last_run.replace('T', ' ').substring(0, 16)
+    : '—';
+  const hoursAgo = data.hours_ago !== null && data.hours_ago !== undefined
+    ? data.hours_ago + 'h ago'
+    : '—';
+
+  let badgeHtml;
+  if (data.last_run === null || data.last_run === undefined) {
+    badgeHtml = '<span style="background:var(--text-muted);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">No data</span>';
+  } else if (data.ok) {
+    badgeHtml = '<span style="background:var(--green);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">OK</span>';
+  } else {
+    badgeHtml = '<span style="background:var(--orange);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">Late</span>';
+  }
+
+  return `<tr>
+    <td><strong>${label}</strong></td>
+    <td style="font-family:monospace;">${lastRun}</td>
+    <td>${hoursAgo}</td>
+    <td>${badgeHtml}</td>
+  </tr>`;
+}
+
+function loadSchedulerHealth() {
+  fetch('/pipeline/api/scheduler/health')
+    .then(r => r.json())
+    .then(d => {
+      const tbody = document.getElementById('sched-health-body');
+      const updEl = document.getElementById('sched-health-updated');
+
+      if (d.error) {
+        tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red);">Error: ${d.error}</td></tr>`;
+        return;
+      }
+
+      const order = ['daily_score', 'weekly_scrape', 'alert_check'];
+      const rows  = order
+        .filter(k => d[k] !== undefined)
+        .map(k => renderHealthRow(k, d[k]))
+        .join('');
+
+      tbody.innerHTML = rows || '<tr><td colspan="4" style="color:var(--text-muted);">No data yet.</td></tr>';
+
+      const now = new Date();
+      updEl.textContent = 'Updated ' + now.toLocaleTimeString();
+    })
+    .catch(() => {
+      document.getElementById('sched-health-body').innerHTML =
+        '<tr><td colspan="4" style="color:var(--text-muted);">Could not reach endpoint.</td></tr>';
+    });
+}
+
+loadSchedulerHealth();
+setInterval(loadSchedulerHealth, 60000);
 
 // Check if a pipeline job is already running on page load
 fetch('/pipeline/status').then(r => r.json()).then(d => {

@@ -617,13 +617,22 @@ backtester.py — historical score simulation. CLI: `py backtester.py --portfoli
 - [x] Acceleration weight reduced to 5%, wider scoring bands ✅ Task 3 — `scorer_acceleration.py`
 
 ### Phase 12 — Next (Backlog)
-- [ ] Unit detection hardening (mandatory currency line, cross-validation) — deferred from Phase 11
-- [ ] Manual data entry UI — for GSMI 2022, GLO 2022 (missing from PSE Edge)
-- [ ] REIT FFO-based FCF coverage exemption
-- [ ] Export rankings to CSV/Excel from dashboard
-- [ ] Scheduler health page in dashboard (display `check_scheduler_health()` output)
+- [x] Scheduler health panel on Pipeline page (`/pipeline/api/scheduler/health`, 60s auto-refresh) ✅ 2026-03-20
+- [x] Unit detection hardening — `_detect_financial_unit()` in `pse_financial_reports.py`; cross-validates revenue/share and EPS/NI; fires canary on mismatch ✅ 2026-03-20
+- [x] Manual data entry UI — `/manual/` page, add/edit any stock/year with force=True ✅ 2026-03-20
+- [x] REIT FFO-based FCF coverage exemption — neutral score (50) when depreciation unavailable; FFO yield scored when available ✅ 2026-03-20
+- [x] Export rankings to CSV/Excel from dashboard — `/export/rankings.csv` and `/export/rankings.xlsx` (4 sheets) ✅ 2026-03-20
 - [ ] Educational auto-poster — 52-topic Wednesday rotation to #learn-investing
 - [ ] Daily public briefing webhook — top 3 grades to #daily-briefing (separate from weekly)
+
+**Housekeeping completed 2026-03-20:**
+- [x] Depreciation/amortization added to DB schema + scraper → enables real REIT FFO scoring
+- [x] FCF yield unit bug fixed in `calibrate_thresholds.py` (multiplier was missing 1e6)
+- [x] `openpyxl` added to package list
+- [x] 29 new unit tests in `tests/test_phase12.py` (FFO, staleness, canary, unit detection, health thresholds)
+- [x] End-to-end pipeline dry run passes — PDF generates cleanly
+- [x] Fixed `None` format string crash in `pdf_rankings_table.py` and `pdf_stock_detail_page.py`
+- [ ] Run `py scheduler.py --run-backfill` (requires PSE Edge login, ~2 hrs) then re-run `py engine/calibrate_thresholds.py`
 
 ---
 
@@ -691,10 +700,13 @@ Location: `C:\Users\Josh\AppData\Local\Python\pythoncore-3.14-64\`
 ```
 requests, beautifulsoup4, pdfplumber, reportlab,
 apscheduler, pydantic, pandas, pytest,
-python-dotenv, lxml, anthropic, flask, discord.py
+python-dotenv, lxml, anthropic, flask, discord.py,
+openpyxl
 ```
 
 Install missing: `py -m pip install <package_name>`
+
+`openpyxl` — required for Excel export (`/export/rankings.xlsx` in dashboard)
 
 ---
 

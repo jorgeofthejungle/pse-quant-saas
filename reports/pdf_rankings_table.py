@@ -81,8 +81,8 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 stock.get('name', ''),
                 f"{sc}/100",
                 f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('dividend_yield', 0):.1f}%",
-                f"{stock.get('payout_ratio', 0):.1f}%",
+                f"{stock.get('dividend_yield') or 0:.1f}%",
+                f"{stock.get('payout_ratio') or 0:.1f}%",
                 f"{mp:.1f}%" if mp is not None else 'N/A',
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',
@@ -94,8 +94,8 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 stock.get('name', ''),
                 f"{sc}/100",
                 f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('dividend_yield', 0):.1f}%",
-                f"+{stock.get('dividend_cagr_5y', 0):.1f}%/yr",
+                f"{stock.get('dividend_yield') or 0:.1f}%",
+                f"+{stock.get('dividend_cagr_5y') or 0:.1f}%/yr",
                 f"{mp:.1f}%" if mp is not None else 'N/A',
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',
@@ -107,8 +107,8 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 stock.get('name', ''),
                 f"{sc}/100",
                 f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('pe', 0):.1f}x",
-                f"{stock.get('roe', 0):.1f}%",
+                f"{stock.get('pe') or 0:.1f}x",
+                f"{stock.get('roe') or 0:.1f}%",
                 f"{mp:.1f}%" if mp is not None else 'N/A',
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',

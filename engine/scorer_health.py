@@ -142,6 +142,31 @@ def _score_fcf_yield(fcf_yield: float | None) -> float | None:
     ])
 
 
+def _score_reit_coverage(stock: dict) -> float:
+    """
+    REIT FCF exemption: score based on FFO yield when available.
+    REITs must distribute 90%+ of income by law — near-zero FCF is
+    structural, not a sign of financial weakness. We use FFO yield
+    (Net Income + Depreciation relative to market cap) as the proxy.
+
+    If FFO yield is available → score on FFO yield thresholds.
+    If FFO data is not available (depreciation missing from DB) →
+      return neutral 50/100 rather than penalising the REIT.
+    """
+    ffo_yield = stock.get('ffo_yield')
+    if ffo_yield is not None:
+        # FFO yield thresholds calibrated for typical PH REIT levels
+        if ffo_yield >= 6:
+            return 90.0
+        if ffo_yield >= 4:
+            return 70.0
+        if ffo_yield >= 2:
+            return 50.0
+        return 30.0
+    # FFO not computable (depreciation not in DB) — neutral score
+    return 50.0
+
+
 def _score_eps_stability(eps_history: list | None) -> float | None:
     """
     EPS Stability: Coefficient of Variation (StdDev / |Mean|).
@@ -216,7 +241,15 @@ def score_health(stock: dict, sector_median_pe: float | None = None,
     # ── Compute sub-scores ────────────────────────────────────
     roe_raw   = _score_roe(stock.get('roe'))
     de_s      = _score_de_ratio(stock.get('de_ratio'), is_bank, is_reit)
-    fcfy_raw  = _score_fcf_yield(stock.get('fcf_yield'))
+
+    # FCF yield: REITs use FFO-based scoring to avoid penalising mandatory
+    # dividend distributions. Non-REITs use standard FCF yield scoring.
+    if is_reit:
+        fcfy_raw = _score_reit_coverage(stock)
+        fcfy_s   = fcfy_raw  # no sector blend for REIT FFO proxy
+    else:
+        fcfy_raw = _score_fcf_yield(stock.get('fcf_yield'))
+        fcfy_s   = None  # computed in sector-blend block below
 
     # OCF margin uses most recent revenue
     rev_hist = stock.get('revenue_5y') or []
@@ -247,10 +280,12 @@ def score_health(stock: dict, sector_median_pe: float | None = None,
         higher_is_better=True
     ) if ocf_raw is not None else None
 
-    fcfy_s = _score_with_sector_blend(
-        fcfy_raw, stock.get('fcf_yield'), sm.get('fcf_yield'),
-        higher_is_better=True
-    ) if fcfy_raw is not None else None
+    # For non-REITs: apply sector blend to FCF yield
+    if not is_reit:
+        fcfy_s = _score_with_sector_blend(
+            fcfy_raw, stock.get('fcf_yield'), sm.get('fcf_yield'),
+            higher_is_better=True
+        ) if fcfy_raw is not None else None
 
     # D/E: apply blend only if sector median available (lower is better)
     if de_s is not None and sm.get('de_ratio') is not None:
@@ -297,8 +332,11 @@ def score_health(stock: dict, sector_median_pe: float | None = None,
         'fcf_yield': {
             'score':       fcfy_s,
             'weight':      0.20,
-            'value':       stock.get('fcf_yield'),
-            'explanation': _explain_fcf_yield(stock.get('fcf_yield')),
+            'value':       stock.get('ffo_yield') if is_reit else stock.get('fcf_yield'),
+            'explanation': (
+                _explain_reit_ffo(stock.get('ffo_yield'))
+                if is_reit else _explain_fcf_yield(stock.get('fcf_yield'))
+            ),
         },
         'eps_stability': {
             'score':       eps_s,
@@ -380,6 +418,31 @@ def _explain_fcf_yield(fcfy):
     if fcfy >= 0:
         return f"FCF yield of {fcfy:.1f}% — thin. Limited free cash generation."
     return f"FCF yield of {fcfy:.1f}% — negative. Business burning cash."
+
+
+def _explain_reit_ffo(ffo_yield):
+    """
+    Plain-English explanation for the REIT FFO yield sub-score.
+    REITs must distribute 90%+ of income by law, so standard FCF
+    (which deducts dividends) is structurally near zero — this is
+    normal and healthy for a REIT, not a warning sign.
+    """
+    if ffo_yield is not None:
+        if ffo_yield >= 6:
+            return (f"FFO yield of {ffo_yield:.1f}% — strong. "
+                    f"This REIT generates ample funds from operations relative to its price.")
+        if ffo_yield >= 4:
+            return (f"FFO yield of {ffo_yield:.1f}% — adequate. "
+                    f"FFO (net income + depreciation) supports dividend distributions.")
+        if ffo_yield >= 2:
+            return (f"FFO yield of {ffo_yield:.1f}% — below average for a REIT. "
+                    f"Dividend sustainability may be tighter.")
+        return (f"FFO yield of {ffo_yield:.1f}% — low. "
+                f"Limited FFO relative to market price.")
+    return ("FFO data not available (depreciation not scraped). "
+            "REITs must distribute 90%+ of income by law — "
+            "near-zero FCF is structurally expected, not a red flag. "
+            "Scored as neutral until FFO data becomes available.")
 
 
 def _explain_eps_stability(eps_hist):

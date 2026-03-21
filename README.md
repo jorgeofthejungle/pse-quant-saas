@@ -402,4 +402,4 @@ Sentiment analysis powered by Claude (Anthropic), for informational purposes onl
 ---
 
 *StockPilot PH — Built for the Philippine retail investor.*
-*Version: Phase 11 complete (data quality + scoring recalibration) | Last updated: 2026-03-20*
+*Version: Phase 12 (manual entry, REIT FFO, exports, scheduler health) | Last updated: 2026-03-20*

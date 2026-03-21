@@ -568,9 +568,13 @@ def run_daily_report():
     enriched = sum(1 for s in ranked if s.get('mos_pct') is not None)
     print(f"  MoS enriched: {enriched}/{len(ranked)} stocks")
 
-    DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
+    from config import REPORTS_DIR
+    _desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+    _out_dir = os.environ.get('PDF_OUTPUT_DIR',
+                              _desktop if os.path.isdir(_desktop) else REPORTS_DIR)
+    os.makedirs(_out_dir, exist_ok=True)
     filename = f"PSE_UNIFIED_RANKINGS_{today}.pdf"
-    pdf_path = os.path.join(DESKTOP, filename)
+    pdf_path = os.path.join(_out_dir, filename)
 
     generate_report(
         ranked_sections        = {'unified': ranked},

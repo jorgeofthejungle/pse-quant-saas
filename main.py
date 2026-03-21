@@ -215,9 +215,13 @@ def run_pipeline(dry_run: bool = False) -> bool:
 
     # ── Step 4: Generate unified PDF ─────────────────────────
     print(f"\n[4/5]  Generating unified PDF report...")
-    DESKTOP  = os.path.join(os.path.expanduser('~'), 'Desktop')
+    from config import REPORTS_DIR
+    _desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+    _out_dir = os.environ.get('PDF_OUTPUT_DIR',
+                              _desktop if os.path.isdir(_desktop) else REPORTS_DIR)
+    os.makedirs(_out_dir, exist_ok=True)
     filename = f"PSE_UNIFIED_RANKINGS_{run_date}.pdf"
-    pdf_path = os.path.join(DESKTOP, filename)
+    pdf_path = os.path.join(_out_dir, filename)
 
     generate_report(
         ranked_sections        = ranked_sections,

@@ -288,6 +288,15 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
                 continue
 
         print(f"  [{i}/{len(all_companies)}] {ticker}...", end=' ', flush=True)
+        try:
+            import db.db_connection as _dbc
+            _dbc.get_connection().execute(
+                "INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,datetime('now'))",
+                ('scrape_progress', f'{i}/{len(all_companies)} — {ticker}')
+            )
+            _dbc.get_connection().commit()
+        except Exception:
+            pass
         stock_data = scrape_company_full(session, ticker, cmpy_id)
 
         if stock_data:

@@ -116,6 +116,7 @@
   <h2>Full Data Scrape</h2>
   <p>Scrapes all financial data from PSE Edge. Run this to populate the database on a fresh deployment. Takes 30-90 minutes.</p>
   <div id="scrape-result" class="result-box" style="display:none"></div>
+  <div id="scrape-progress" style="display:none; margin-top:0.5rem; font-family:monospace; color:#aaa;"></div>
   <button class="btn btn-warning" id="btn-scrape" onclick="triggerScrape()">
     Run Full Scrape Now
   </button>
@@ -159,8 +160,9 @@
 {% block scripts %}
 <script>
 function triggerScrape() {
-  const btn      = document.getElementById('btn-scrape');
-  const resultEl = document.getElementById('scrape-result');
+  const btn        = document.getElementById('btn-scrape');
+  const resultEl   = document.getElementById('scrape-result');
+  const progressEl = document.getElementById('scrape-progress');
   btn.disabled = true;
   btn.textContent = 'Scraping... (30-90 min)';
   fetch('/pipeline/scrape', {method: 'POST', body: new FormData()})
@@ -169,7 +171,9 @@ function triggerScrape() {
       resultEl.style.display = 'block';
       if (d.started) {
         resultEl.className = 'result-box result-ok';
-        resultEl.textContent = 'Scrape started in background. Check activity log for progress.';
+        resultEl.textContent = 'Scrape running in background...';
+        progressEl.style.display = 'block';
+        pollScrapeProgress();
       } else {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
@@ -177,6 +181,20 @@ function triggerScrape() {
         btn.textContent = 'Run Full Scrape Now';
       }
     });
+}
+
+function pollScrapeProgress() {
+  const progressEl = document.getElementById('scrape-progress');
+  const interval = setInterval(() => {
+    fetch('/pipeline/scrape/progress')
+      .then(r => r.json())
+      .then(d => {
+        progressEl.textContent = 'Progress: ' + d.progress;
+        if (d.progress && d.progress.includes('complete')) {
+          clearInterval(interval);
+        }
+      });
+  }, 5000);
 }
 
 function triggerJob(type) {

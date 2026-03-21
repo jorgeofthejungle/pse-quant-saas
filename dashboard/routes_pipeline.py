@@ -94,6 +94,16 @@ def job_status():
     return jsonify(get_status())
 
 
+@pipeline_bp.route('/scrape/progress')
+def scrape_progress():
+    """JSON: current scrape progress from settings table."""
+    try:
+        row = db.get_setting('scrape_progress')
+        return jsonify({'progress': row or 'Starting...'})
+    except Exception:
+        return jsonify({'progress': 'Unknown'})
+
+
 @pipeline_bp.route('/scheduler/start', methods=['POST'])
 def scheduler_start():
     ok, msg = start_scheduler()

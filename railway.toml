@@ -1,7 +1,8 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python3.12 dashboard/app.py"
+startCommand = "python dashboard/app.py"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10

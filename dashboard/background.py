@@ -58,6 +58,11 @@ def run_alerts(dry_run: bool = False) -> tuple[bool, str]:
     return _launch('alerts', _do_alerts, dry_run)
 
 
+def run_scrape(dry_run: bool = False) -> tuple[bool, str]:
+    """Launches the full weekly scrape in a background thread."""
+    return _launch('scrape', _do_scrape, dry_run)
+
+
 # ── Internal helpers ──────────────────────────────────────────
 
 def _launch(job_type: str, target, *args) -> tuple[bool, str]:
@@ -103,6 +108,12 @@ def _do_scoring(portfolio: str, dry_run: bool):
     # run_daily_job handles all portfolios internally
     run_daily_job()
     return 'Scoring complete'
+
+
+def _do_scrape(dry_run: bool):
+    from scheduler_jobs import run_weekly_scrape
+    run_weekly_scrape()
+    return 'Weekly scrape complete'
 
 
 def _do_alerts(dry_run: bool):

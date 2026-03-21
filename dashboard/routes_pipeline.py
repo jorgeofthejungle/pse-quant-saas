@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 import database as db
 from dashboard.background import (
-    run_scoring, run_alerts, get_status, is_running,
+    run_scoring, run_alerts, run_scrape, get_status, is_running,
     start_scheduler, stop_scheduler, get_scheduler_status,
     start_bot, stop_bot, get_bot_status,
 )
@@ -78,6 +78,13 @@ def trigger_alerts():
     """Start the alert check in background."""
     dry_run = request.form.get('dry_run') == '1'
     started, msg = run_alerts(dry_run=dry_run)
+    return jsonify({'started': started, 'message': msg})
+
+
+@pipeline_bp.route('/scrape', methods=['POST'])
+def trigger_scrape():
+    """Start the full weekly scrape in background."""
+    started, msg = run_scrape()
     return jsonify({'started': started, 'message': msg})
 
 

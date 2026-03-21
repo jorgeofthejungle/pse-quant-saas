@@ -219,6 +219,7 @@ tree.add_command(watchlist_group)
 
 def _is_admin(discord_id: str) -> bool:
     admin_id = os.getenv('ADMIN_DISCORD_ID', '')
+    print(f'[ADMIN CHECK] user={discord_id!r} admin_id={admin_id!r} match={discord_id == admin_id}')
     return bool(admin_id) and discord_id == admin_id
 
 

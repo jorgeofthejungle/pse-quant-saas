@@ -132,10 +132,9 @@ def generate_report(
         ranked_sections = {'unified': ranked_sections}
 
     names = {
-        'pure_dividend':   'PURE DIVIDEND',
-        'dividend_growth': 'DIVIDEND GROWTH',
-        'value':           'VALUE',
-        'unified':         'UNIFIED STOCK RANKINGS',
+        'dividend': 'DIVIDEND',
+        'value':    'VALUE',
+        'unified':  'UNIFIED STOCK RANKINGS',
     }
     run_date = datetime.now().strftime('%B %d, %Y')
 
@@ -172,25 +171,34 @@ def generate_report(
     )
 
     # ── Ranked tables — one per section ──────────────────────
-    section_order = ['pure_dividend', 'dividend_growth', 'value']
+    section_order = ['dividend', 'value']
     ordered_sections = [k for k in section_order if k in ranked_sections]
     ordered_sections += [k for k in section_keys if k not in section_order]
 
+    first_section = True
     for pt in ordered_sections:
         stocks = ranked_sections[pt]
         if not stocks:
             continue
+        if not first_section:
+            elements.append(PageBreak())
+        first_section = False
         elements += build_section_header(pt)
         elements += build_rankings_table(styles, stocks, pt)
         elements.append(Spacer(1, 6 * mm))
 
+
     elements.append(PageBreak())
 
     # ── Detailed stock pages — one per section ────────────────
+    first_detail = True
     for pt in ordered_sections:
         stocks = ranked_sections[pt]
         if not stocks:
             continue
+        if not first_detail:
+            elements.append(PageBreak())
+        first_detail = False
         elements += build_section_header(pt)
         elements.append(Paragraph(
             f'DETAILED STOCK ANALYSIS — ALL {len(stocks)} QUALIFYING STOCKS',

@@ -187,7 +187,7 @@ def run_pipeline(dry_run: bool = False) -> bool:
 
     # Score each portfolio type separately with portfolio-specific weights
     from db.db_scores import save_scores_v2
-    portfolio_types  = ['pure_dividend', 'dividend_growth', 'value']
+    portfolio_types  = ['dividend', 'value']
     ranked_sections  = {}
     run_date         = datetime.now().strftime('%Y-%m-%d')
 
@@ -199,9 +199,9 @@ def run_pipeline(dry_run: bool = False) -> bool:
         ranked_sections[pt] = ranked_pt
         print(f"       {pt}: {len(ranked_pt)} stock(s) scored")
 
-    # Use pure_dividend ranking as the primary list for sentiment + alerts
-    ranked = ranked_sections.get('pure_dividend', [])
-    print(f"\n  Top 10 (Pure Dividend weights):")
+    # Use dividend ranking as the primary list for sentiment + alerts
+    ranked = ranked_sections.get('dividend', [])
+    print(f"\n  Top 10 (Dividend weights):")
     for s in ranked[:10]:
         cat = s.get('category', '')
         print(f"    #{s['rank']:2}  {s['ticker']:6}  {s['score']:.1f}  [{cat}]")
@@ -210,8 +210,8 @@ def run_pipeline(dry_run: bool = False) -> bool:
     for pt in portfolio_types:
         ranked_sections[pt] = _enrich_mos(ranked_sections[pt])
 
-    # ── Step 3c: Sentiment enrichment (top 10 from pure_dividend) ──
-    _try_enrich_with_sentiment(ranked_sections['pure_dividend'][:10])
+    # ── Step 3c: Sentiment enrichment (top 10 from dividend) ──
+    _try_enrich_with_sentiment(ranked_sections['dividend'][:10])
 
     # ── Step 4: Generate unified PDF ─────────────────────────
     print(f"\n[4/5]  Generating unified PDF report...")
@@ -237,19 +237,19 @@ def run_pipeline(dry_run: bool = False) -> bool:
         print("  No Discord webhook set. Add DISCORD_WEBHOOK_RANKINGS to .env")
         return True
 
-    # Send using the pure_dividend ranked list for the embed summary
+    # Send using the dividend ranked list for the embed summary
     success = send_report(
         webhook_url    = webhook_url,
         pdf_path       = pdf_path,
         portfolio_type = 'unified',
-        ranked_stocks  = ranked_sections['pure_dividend'],
+        ranked_stocks  = ranked_sections['dividend'],
     )
     if success:
-        print("  Delivered to #pse-value channel.")
+        print("  Delivered to Discord.")
     else:
         print(f"  Discord delivery failed. PDF saved at: {pdf_path}")
 
-    _send_opportunistic_alerts(ranked_sections['pure_dividend'])
+    _send_opportunistic_alerts(ranked_sections['dividend'])
     return True
 
 

@@ -6,22 +6,17 @@
 # sections in the unified StockPilot PH Rankings PDF.
 # ============================================================
 
-from reportlab.platypus import Paragraph, Spacer, HRFlowable
+from reportlab.platypus import Paragraph, Spacer, HRFlowable, KeepTogether
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors as rl_colors
 
 
 # Section display information keyed by portfolio_type
 SECTION_INFO = {
-    'pure_dividend': {
-        'title':    'Pure Dividend Portfolio',
-        'subtitle': 'Stocks ranked for yield consistency and dividend reliability',
+    'dividend': {
+        'title':    'Dividend Portfolio',
+        'subtitle': 'Stocks ranked for yield, dividend consistency, and income reliability',
         'color':    '#1a5276',
-    },
-    'dividend_growth': {
-        'title':    'Dividend Growth Portfolio',
-        'subtitle': 'Stocks ranked for sustainable dividend growth trajectory',
-        'color':    '#1e8449',
     },
     'value': {
         'title':    'Value Portfolio',
@@ -63,13 +58,15 @@ def build_section_header(portfolio_type: str) -> list:
     )
 
     return [
-        Spacer(1, 12),
-        Paragraph(info['title'], style_title),
-        Paragraph(info['subtitle'], style_sub),
-        HRFlowable(
-            width='100%',
-            thickness=1,
-            color=rl_colors.HexColor(info['color']),
-        ),
-        Spacer(1, 8),
+        KeepTogether([
+            Spacer(1, 12),
+            Paragraph(info['title'], style_title),
+            Paragraph(info['subtitle'], style_sub),
+            HRFlowable(
+                width='100%',
+                thickness=1,
+                color=rl_colors.HexColor(info['color']),
+            ),
+            Spacer(1, 8),
+        ]),
     ]

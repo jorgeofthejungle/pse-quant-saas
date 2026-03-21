@@ -63,7 +63,7 @@ def scores():
 
         # Get last 10 run dates
         dates = conn.execute("""
-            SELECT DISTINCT run_date FROM scores
+            SELECT DISTINCT run_date FROM scores_v2
             ORDER BY run_date DESC LIMIT 10
         """).fetchall()
         run_dates = [r['run_date'] for r in reversed(dates)]
@@ -72,23 +72,23 @@ def scores():
             conn.close()
             return jsonify({'labels': [], 'datasets': []})
 
-        # Get top 5 tickers from most recent run (pure_dividend)
+        # Get top 5 tickers from most recent run (dividend portfolio)
         latest = run_dates[-1]
         top5_rows = conn.execute("""
-            SELECT ticker FROM scores
-            WHERE run_date = ?
-              AND pure_dividend_rank IS NOT NULL
-            ORDER BY pure_dividend_rank ASC LIMIT 5
+            SELECT ticker FROM scores_v2
+            WHERE run_date = ? AND portfolio_type = 'dividend'
+              AND rank IS NOT NULL
+            ORDER BY rank ASC LIMIT 5
         """, (latest,)).fetchall()
         top5 = [r['ticker'] for r in top5_rows]
 
         if not top5:
             # Fallback: top 5 by value portfolio
             top5_rows = conn.execute("""
-                SELECT ticker FROM scores
-                WHERE run_date = ?
-                  AND value_rank IS NOT NULL
-                ORDER BY value_rank ASC LIMIT 5
+                SELECT ticker FROM scores_v2
+                WHERE run_date = ? AND portfolio_type = 'value'
+                  AND rank IS NOT NULL
+                ORDER BY rank ASC LIMIT 5
             """, (latest,)).fetchall()
             top5 = [r['ticker'] for r in top5_rows]
 
@@ -99,10 +99,9 @@ def scores():
             score_data = []
             for run_date in run_dates:
                 row = conn.execute("""
-                    SELECT COALESCE(pure_dividend_score, value_score,
-                                   dividend_growth_score) AS score
-                    FROM scores
+                    SELECT score FROM scores_v2
                     WHERE ticker = ? AND run_date = ?
+                      AND portfolio_type = 'dividend'
                 """, (ticker, run_date)).fetchone()
                 score_data.append(
                     round(row['score'], 1) if row and row['score'] else None

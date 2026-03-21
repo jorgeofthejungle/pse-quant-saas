@@ -248,7 +248,7 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
          'How far below intrinsic value the stock trades (higher = safer)'],
     ]
 
-    if portfolio_type in ('pure_dividend', 'dividend_growth'):
+    if portfolio_type == 'dividend':
         price_data += [
             ['DIVIDEND YIELD',
              f"{stock.get('dividend_yield') or 0:.2f}%",
@@ -371,92 +371,5 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
         ]))
         elements.append(seg_tbl)
         elements.append(Spacer(1, 3 * mm))
-
-    # ── Score breakdown with stock-specific explanations ──
-    breakdown = stock.get('breakdown') or stock.get('score_breakdown') or {}
-    if breakdown:
-        elements.append(Paragraph('SCORE BREAKDOWN', styles['GoldLabel']))
-        elements.append(Paragraph(
-            'Each factor below contributed points to the final score. '
-            'Full bar = top contributing factor; each bar shows points earned '
-            'relative to the highest contributor. '
-            'The explanation below each bar tells you exactly '
-            'why this stock scored what it scored.',
-            styles['ExplainText']
-        ))
-        elements.append(Spacer(1, 2 * mm))
-
-        max_contrib = max(
-            (d.get('score', 0) * d.get('weight', 0) for d in breakdown.values()),
-            default=1.0
-        ) or 1.0
-
-        for metric, data in breakdown.items():
-            sub         = data.get('score', 0)
-            wt          = data.get('weight', 0)
-            contrib     = round(sub * wt, 1)
-            bar_fill    = (sub * wt) / max_contrib
-            filled      = round(bar_fill * 10)
-            empty       = 10 - filled
-            bar_col     = score_color(sub)
-            explanation = data.get('explanation', '')
-
-            metric_name = metric.replace('_', ' ').upper()
-
-            bar_row = Table(
-                [[
-                    Paragraph(metric_name, ParagraphStyle(
-                        'MN', fontSize=8, textColor=NAVY,
-                        fontName='Helvetica-Bold'
-                    )),
-                    Paragraph(
-                        '█' * filled + '░' * empty,
-                        ParagraphStyle(
-                            'Bar', fontSize=9, textColor=bar_col,
-                            fontName='Courier'
-                        )
-                    ),
-                    Paragraph(
-                        f"{sub:.0f}/100  x{wt:.0%}  =  {contrib:.1f}pts",
-                        ParagraphStyle(
-                            'Pts', fontSize=8, textColor=NAVY,
-                            fontName='Helvetica-Bold',
-                            alignment=TA_RIGHT
-                        )
-                    ),
-                ]],
-                colWidths=[48*mm, 55*mm, CONTENT_WIDTH - 103*mm]
-            )
-            bar_row.setStyle(TableStyle([
-                ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-                ('TOPPADDING',    (0, 0), (-1, -1), 5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('BACKGROUND',    (0, 0), (-1, -1), LIGHT_GREY),
-            ]))
-            elements.append(bar_row)
-
-            if explanation:
-                exp_row = Table(
-                    [[Paragraph(
-                        explanation,
-                        ParagraphStyle(
-                            'Exp', fontSize=7.5, textColor=DARK_GREY,
-                            fontName='Helvetica-Oblique', leading=11
-                        )
-                    )]],
-                    colWidths=[CONTENT_WIDTH]
-                )
-                exp_row.setStyle(TableStyle([
-                    ('BACKGROUND',    (0, 0), (-1, -1), WHITE),
-                    ('LEFTPADDING',   (0, 0), (-1, -1), 10),
-                    ('TOPPADDING',    (0, 0), (-1, -1), 3),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                    ('LINEBEFORE',    (0, 0), (0, -1),  2, bar_col),
-                    ('LINEBELOW',     (0, 0), (-1, -1), 0.3, MID_GREY),
-                ]))
-                elements.append(exp_row)
-
-            elements.append(Spacer(1, 1 * mm))
-
 
     return elements

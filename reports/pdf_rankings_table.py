@@ -41,12 +41,7 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         fontName='Helvetica', alignment=TA_CENTER
     )
 
-    if portfolio_type == 'pure_dividend':
-        headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'Yield', 'Payout', 'MoS%', 'Buy Price', 'Signal']
-        col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
-                   14*mm, 14*mm, 12*mm, 18*mm, 26*mm]
-    elif portfolio_type == 'dividend_growth':
+    if portfolio_type == 'dividend':
         headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
                    'Yield', 'CAGR', 'MoS%', 'Buy Price', 'Signal']
         col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
@@ -75,20 +70,7 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         mp  = stock.get('mos_pct', None)
         sig = mos_signal(mp)
 
-        if portfolio_type == 'pure_dividend':
-            cols = [
-                str(i+1), stock.get('ticker', ''),
-                stock.get('name', ''),
-                f"{sc}/100",
-                f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('dividend_yield') or 0:.1f}%",
-                f"{stock.get('payout_ratio') or 0:.1f}%",
-                f"{mp:.1f}%" if mp is not None else 'N/A',
-                f"P{stock.get('mos_price', 0):.2f}"
-                if stock.get('mos_price') else 'N/A',
-                sig,
-            ]
-        elif portfolio_type == 'dividend_growth':
+        if portfolio_type == 'dividend':
             cols = [
                 str(i+1), stock.get('ticker', ''),
                 stock.get('name', ''),
@@ -231,7 +213,7 @@ def generate_overall_assessment(stock, score, portfolio_type):
     _bond_rate = 6.5
     ey_spread = round((1 / pe) * 100 - _bond_rate, 1) if pe and pe > 0 else None
 
-    if portfolio_type in ('pure_dividend', 'dividend_growth'):
+    if portfolio_type == 'dividend':
         if dy >= 7:
             strengths.append(
                 f"a high dividend yield of {dy:.1f}%. "
@@ -301,8 +283,8 @@ def generate_overall_assessment(stock, score, portfolio_type):
                     f"operations. This gap deserves scrutiny before trusting the dividend"
                 )
 
-    if portfolio_type == 'dividend_growth':
-        # Growth Consistency for dividend growth
+    if portfolio_type == 'dividend':
+        # Growth Consistency for dividend portfolio
         revenue_5y = stock.get('revenue_5y', [])
         if len(revenue_5y) >= 3:
             valid_rev = [r for r in revenue_5y if r and r > 0]
@@ -490,9 +472,8 @@ def generate_overall_assessment(stock, score, portfolio_type):
         return "  ".join(u_lines)
 
     _display = {
-        'pure_dividend':   'Pure Dividend',
-        'dividend_growth': 'Dividend Growth',
-        'value':           'Value',
+        'dividend': 'Dividend',
+        'value':    'Value',
     }
     lines = [f"{ticker} earns a {grade_str} score of {score}/100 for the "
              f"{_display.get(portfolio_type, portfolio_type)} portfolio."]

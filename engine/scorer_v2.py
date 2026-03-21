@@ -107,9 +107,9 @@ def score_unified(stock: dict,
                             sector-adjusted PE scoring in Layer 1
         financials_history: Annual DB rows (newest first) for ROE delta
                             in Layer 2. If None, ROE delta is skipped.
-        portfolio_type:     One of 'unified', 'pure_dividend',
-                            'dividend_growth', 'value'. Selects the
-                            correct layer weights from config.SCORER_WEIGHTS.
+        portfolio_type:     One of 'unified', 'dividend', 'value'.
+                            Selects the correct layer weights from
+                            config.SCORER_WEIGHTS.
     """
     weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
 
@@ -216,8 +216,8 @@ def rank_stocks_v2(stocks: list,
         sector_stats:    Output of compute_sector_stats(all_stocks)
         financials_map:  Dict of {ticker: [annual_rows]} from DB — used for
                          ROE delta. If None, ROE delta is skipped.
-        portfolio_type:  One of 'unified', 'pure_dividend', 'dividend_growth',
-                         'value'. Passed to score_unified for weight selection.
+        portfolio_type:  One of 'unified', 'dividend', 'value'.
+                         Passed to score_unified for weight selection.
 
     Returns:
         List of stock dicts sorted by score descending.
@@ -225,6 +225,9 @@ def rank_stocks_v2(stocks: list,
     """
     scored = []
     for stock in stocks:
+        # REITs are income vehicles — exclude from Value portfolio
+        if portfolio_type == 'value' and stock.get('is_reit'):
+            continue
         fins_history = (financials_map or {}).get(stock.get('ticker'), [])
         score, breakdown = score_unified(stock, sector_stats, fins_history,
                                         portfolio_type=portfolio_type)

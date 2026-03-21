@@ -110,7 +110,7 @@ def history():
     try:
         conn  = db.get_connection()
         dates = conn.execute("""
-            SELECT DISTINCT run_date FROM scores
+            SELECT DISTINCT run_date FROM scores_v2
             ORDER BY run_date DESC LIMIT 10
         """).fetchall()
         conn.close()
@@ -121,21 +121,16 @@ def history():
     result = []
     for run_date in run_dates:
         entry = {'run_date': run_date, 'portfolios': {}}
-        for pt in ['pure_dividend', 'dividend_growth', 'value']:
+        for pt in ['dividend', 'value']:
             try:
                 conn = db.get_connection()
                 rows = conn.execute("""
-                    SELECT ticker, COALESCE(pure_dividend_rank,
-                           dividend_growth_rank, value_rank) AS rnk
-                    FROM scores
-                    WHERE run_date = ?
-                      AND (
-                        (? = 'pure_dividend'   AND pure_dividend_rank   IS NOT NULL) OR
-                        (? = 'dividend_growth' AND dividend_growth_rank IS NOT NULL) OR
-                        (? = 'value'           AND value_rank           IS NOT NULL)
-                      )
+                    SELECT ticker, rank AS rnk
+                    FROM scores_v2
+                    WHERE run_date = ? AND portfolio_type = ?
+                      AND rank IS NOT NULL
                     ORDER BY rnk ASC LIMIT 5
-                """, (run_date, pt, pt, pt)).fetchall()
+                """, (run_date, pt)).fetchall()
                 conn.close()
                 entry['portfolios'][pt] = [r['ticker'] for r in rows]
             except Exception:

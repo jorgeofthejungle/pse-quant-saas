@@ -100,27 +100,30 @@ def _get_ranked_tickers() -> list:
     """
     conn = db.get_connection()
     latest = conn.execute(
-        "SELECT MAX(run_date) AS run_date FROM scores"
+        "SELECT MAX(run_date) AS run_date FROM scores_v2"
     ).fetchone()
     if not latest or not latest['run_date']:
         conn.close()
         return []
 
+    # Pivot scores_v2 rows into one row per ticker
     rows = conn.execute("""
-        SELECT s.ticker, st.name,
-               s.pure_dividend_score,   s.pure_dividend_rank,
-               s.dividend_growth_score, s.dividend_growth_rank,
-               s.value_score,           s.value_rank,
+        SELECT v.ticker, st.name,
+               MAX(CASE WHEN v.portfolio_type='dividend' THEN v.score END) AS dividend_score,
+               MAX(CASE WHEN v.portfolio_type='dividend' THEN v.rank  END) AS dividend_rank,
+               MAX(CASE WHEN v.portfolio_type='value'    THEN v.score END) AS value_score,
+               MAX(CASE WHEN v.portfolio_type='value'    THEN v.rank  END) AS value_rank,
                p.close AS current_price
-        FROM scores s
-        JOIN stocks st ON s.ticker = st.ticker
+        FROM scores_v2 v
+        JOIN stocks st ON v.ticker = st.ticker
         LEFT JOIN (
             SELECT ticker, close FROM prices
             WHERE (ticker, date) IN (
                 SELECT ticker, MAX(date) FROM prices GROUP BY ticker
             )
-        ) p ON s.ticker = p.ticker
-        WHERE s.run_date = ?
+        ) p ON v.ticker = p.ticker
+        WHERE v.run_date = ?
+        GROUP BY v.ticker
     """, (latest['run_date'],)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -145,9 +148,8 @@ def check_price_alerts(dry_run: bool = False) -> int:
     today = datetime.now().strftime('%Y-%m-%d')
 
     PORTFOLIO_COLS = [
-        ('pure_dividend',   'pure_dividend_score',   'pure_dividend_rank'),
-        ('dividend_growth', 'dividend_growth_score', 'dividend_growth_rank'),
-        ('value',           'value_score',           'value_rank'),
+        ('dividend', 'dividend_score', 'dividend_rank'),
+        ('value',    'value_score',    'value_rank'),
     ]
 
     for row in ranked:
@@ -169,10 +171,8 @@ def check_price_alerts(dry_run: bool = False) -> int:
             if score is None or rank is None or rank > 15:
                 continue
 
-            if portfolio_type == 'pure_dividend':
+            if portfolio_type == 'dividend':
                 iv = ddm_val
-            elif portfolio_type == 'dividend_growth':
-                iv, _ = calc_two_stage_ddm(dps_last, None)
             else:
                 iv, _ = calc_hybrid_intrinsic(ddm_val, eps_val, None)
 

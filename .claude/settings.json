@@ -4,5 +4,13 @@
       "Bash(py -c \":*)",
       "Bash(py -u -c \":*)"
     ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "C:\\Users\\Josh\\Documents\\pse-quant-saas"
+      ]
+    }
   }
 }
+

@@ -194,7 +194,7 @@ def export_rankings_xlsx():
         wb = openpyxl.Workbook()
         wb.remove(wb.active)  # remove default empty sheet
 
-        PORTFOLIO_TYPES = ['unified', 'pure_dividend', 'dividend_growth', 'value']
+        PORTFOLIO_TYPES = ['unified', 'dividend', 'value']
         HEADERS = [
             'Rank', 'Ticker', 'Name', 'Sector', 'Score', 'Confidence',
             'Health', 'Improvement', 'Acceleration', 'Persistence', 'Run Date',
@@ -253,7 +253,7 @@ def _build_export_rows() -> list:
     Each row contains rank, ticker, name, sector, portfolio_type, score,
     confidence (as %), layer sub-scores, and run_date.
     """
-    PORTFOLIO_TYPES = ['unified', 'pure_dividend', 'dividend_growth', 'value']
+    PORTFOLIO_TYPES = ['unified', 'dividend', 'value']
 
     # Fetch stock metadata (name, sector)
     conn = db.get_connection()

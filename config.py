@@ -14,10 +14,9 @@
 # 4. Paste the URL below for the matching channel
 
 DISCORD_WEBHOOKS = {
-    'pure_dividend':   '',   # paste #pse-dividend webhook URL here
-    'dividend_growth': '',   # paste #pse-hybrid webhook URL here
-    'value':           '',   # paste #pse-value webhook URL here
-    'alerts':          '',   # paste #pse-alerts webhook URL here (price/earnings alerts)
+    'dividend': '',   # paste #pse-dividend webhook URL here
+    'value':    '',   # paste #pse-value webhook URL here
+    'alerts':   '',   # paste #pse-alerts webhook URL here (price/earnings alerts)
 }
 
 # ── Report Output Directory ────────────────────────────────
@@ -189,8 +188,7 @@ MOS_SECTOR_PREMIUM_DEFAULT = 1.0  # fallback for unrecognised sectors
 # Portfolio-specific weights for the 4-layer scorer.
 # Acceleration kept at 5% until 80%+ of stocks have 5yr history.
 SCORER_WEIGHTS = {
-    'unified':         {'health': 0.25, 'improvement': 0.30, 'acceleration': 0.05, 'persistence': 0.40},
-    'pure_dividend':   {'health': 0.30, 'improvement': 0.20, 'acceleration': 0.05, 'persistence': 0.45},
-    'dividend_growth': {'health': 0.25, 'improvement': 0.35, 'acceleration': 0.05, 'persistence': 0.35},
-    'value':           {'health': 0.35, 'improvement': 0.25, 'acceleration': 0.05, 'persistence': 0.35},
+    'unified':  {'health': 0.25, 'improvement': 0.30, 'acceleration': 0.05, 'persistence': 0.40},
+    'dividend': {'health': 0.27, 'improvement': 0.27, 'acceleration': 0.05, 'persistence': 0.41},
+    'value':    {'health': 0.35, 'improvement': 0.25, 'acceleration': 0.05, 'persistence': 0.35},
 }

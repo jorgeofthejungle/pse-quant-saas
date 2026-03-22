@@ -64,122 +64,6 @@ PSE Edge → Scraper (canary checks) → Unit Validation → Database
 
 ---
 
-## 3. PROJECT STRUCTURE
-
-```
-pse-quant-saas/
-├── CLAUDE.md               ← YOU ARE HERE
-├── README.md               ← Public-facing system overview
-├── config.py               ← Central config (models, URLs, thresholds)
-├── .env                    ← API keys and secrets (never commit this)
-├── main.py                 ← Entry point — runs the full pipeline
-│
-├── engine/                 ← Core calculation logic (DETERMINISTIC)
-│   ├── metrics.py          ← Financial ratio calculators ✅
-│   ├── filters.py          ← Legacy portfolio eligibility filters ✅ (archived)
-│   ├── filters_v2.py       ← Unified health filter (pass/fail) ✅
-│   ├── scorer.py           ← Legacy scoring engine ✅ (archived facade)
-│   │   ├── scorer_utils.py
-│   │   ├── scorer_explanations.py
-│   │   └── scorer_momentum.py
-│   ├── scorer_v2.py        ← Unified 4-layer scorer ✅
-│   │   ├── scorer_health.py
-│   │   ├── scorer_improvement.py
-│   │   ├── scorer_acceleration.py
-│   │   ├── scorer_persistence.py
-│   │   └── scorer_explanations_value.py
-│   ├── sector_stats.py     ← Dynamic sector median computation (8 metrics, market-cap weighted) ✅
-│   ├── mos.py              ← Margin of Safety calculator (risk-adjusted discount rate) ✅
-│   ├── validator.py        ← Data validation layer + confidence calculator ✅
-│   ├── calibrate_thresholds.py ← Percentile-based threshold derivation from DB ✅
-│   ├── sentiment_engine.py ← Claude Haiku news sentiment ✅
-│   └── conglomerate_scorer.py ← Holding firm segment analysis ✅
-│
-├── scraper/                ← PSE Edge data collection
-│   ├── pse_edge_scraper.py ← Main scraper facade ✅
-│   │   ├── pse_session.py
-│   │   ├── pse_lookup.py
-│   │   ├── pse_stock_data.py   ← Dividend scraper (COMMON-only whitelist, deduped, fiscal year mapped) ✅
-│   │   └── pse_financial_reports.py ← Financial report parser + backfill scraper ✅
-│   ├── pse_stock_builder.py ← Builds stock dict from DB for scoring pipeline ✅
-│   ├── scraper_canary.py   ← Canary field checks + admin DM on pattern failure ✅
-│   └── news_fetcher.py     ← Yahoo Finance + news RSS ✅
-│
-├── db/                     ← Database layer
-│   ├── database.py         ← Facade (re-exports all DB functions) ✅
-│   ├── db_connection.py    ← SQLite connection + DB_PATH ✅
-│   ├── db_schema.py        ← Table creation (init_db) ✅
-│   ├── db_prices.py        ← Price data CRUD ✅
-│   ├── db_scores.py        ← Score storage + get_last_scores_v2 ✅
-│   ├── db_financials.py    ← Financial data CRUD ✅
-│   ├── db_sentiment.py     ← Sentiment cache CRUD ✅
-│   ├── db_conglomerates.py ← Conglomerate segment data CRUD ✅
-│   ├── db_data_quality.py  ← Post-scrape data quality auditor ✅
-│   └── db_maintenance.py   ← DPS auto-cleaner + stale data pruner ✅
-│
-├── reports/                ← PDF generation
-│   ├── pdf_generator.py    ← Facade ✅
-│   ├── pdf_styles.py
-│   ├── pdf_cover_page.py
-│   ├── pdf_rankings_table.py
-│   ├── pdf_stock_detail_page.py
-│   ├── pdf_portfolio_sections.py ← Multi-section layout for unified PDF ✅
-│   └── pdf_sentiment.py
-│
-├── discord/                ← Discord delivery and bot
-│   ├── publisher.py        ← Webhook sender facade ✅
-│   ├── discord_core.py
-│   ├── discord_reports.py
-│   ├── discord_alerts.py
-│   ├── discord_dm.py       ← Direct message via Discord REST API ✅
-│   ├── bot.py              ← Slash command bot entry point ✅
-│   ├── bot_commands.py     ← /stock, /top10, /help logic ✅
-│   ├── bot_subscribe.py    ← /subscribe, /mystatus logic ✅
-│   ├── bot_watchlist.py    ← /watchlist show/add/remove logic ✅
-│   └── bot_admin.py        ← /admin commands (Josh only) ✅
-│
-├── alerts/
-│   ├── alert_engine.py     ← Price, dividend, earnings alerts ✅
-│   └── disclosure_monitor.py ← PSE Edge feed monitor (15-min polling) ✅
-│
-├── dashboard/              ← Local Flask admin dashboard ✅
-│   ├── app.py              ← Flask app factory, runs on :8080
-│   ├── background.py       ← Thread-based pipeline runner + scheduler process control
-│   ├── access_control.py   ← Member tier checking (check_access, get_member_tier) ✅
-│   ├── security.py         ← Security utilities ✅
-│   ├── db_members.py       ← Members/subscriptions DB operations
-│   ├── routes_home.py      ← Overview page + /api/status (unified rankings)
-│   ├── routes_pipeline.py  ← Pipeline controls + scheduler start/stop
-│   ├── routes_members.py   ← Member CRUD + extend/cancel
-│   ├── routes_analytics.py ← Chart data JSON endpoints
-│   ├── routes_settings.py  ← Config display + webhook test
-│   ├── routes_paymongo.py  ← PayMongo payment link generation
-│   ├── routes_stocks.py    ← Stock Lookup page + autocomplete API
-│   ├── routes_portal.py    ← Public portal/landing page
-│   ├── routes_conglomerates.py ← Conglomerates deep-dive page
-│   ├── templates/          ← Jinja2 HTML templates
-│   └── static/             ← CSS + JS (style.css, dashboard.js)
-│
-├── scheduler.py            ← APScheduler facade ✅
-│   ├── scheduler_data.py   ← Ticker lists + run-date helpers
-│   └── scheduler_jobs.py   ← All scheduled job functions
-│
-├── data/
-│   ├── raw/                ← Raw scraped HTML/JSON
-│   ├── parsed/             ← Cleaned JSON ready for DB
-│   └── reports/            ← Generated PDF output files
-│
-└── tests/
-    ├── test_metrics.py     ✅
-    ├── test_filters.py     ✅
-    ├── test_scorer.py      ✅
-    ├── test_mos.py         ✅
-    ├── test_pdf.py         ✅
-    └── test_discord.py     ✅
-```
-
----
-
 ## 4. COMPLETED WORK — DO NOT MODIFY WITHOUT REASON
 
 The following files are complete and tested. Read them before
@@ -534,104 +418,29 @@ All core engine, reports, data pipeline, automation, dashboard, scoring, backtes
 ## 9. HOW TO RUN THE SYSTEM
 
 ```bash
-# Full unified pipeline (score + PDF + Discord)
-py main.py
-
-# Dry run (no Discord publish)
-py main.py --dry-run
-
-# Scheduler (continuous — runs on automatic schedule)
-py scheduler.py
-
-# Manual scheduler triggers
-py scheduler.py --run-now           # full scoring cycle
-py scheduler.py --run-alerts        # alert check
-py scheduler.py --run-weekly        # full financial scrape (+ data quality)
-py scheduler.py --run-backfill      # historical backfill 2018-2023 (one-time)
-py scheduler.py --run-score         # 4 PM scoring phase only
-py scheduler.py --run-report        # 6 PM report phase only
-py scheduler.py --run-sotw          # Stock of the Week
-py scheduler.py --run-digest        # Weekly Digest DMs
-py scheduler.py --run-monthly       # Monthly reports (calendar + performance)
-py scheduler.py --run-briefing      # Weekly public briefing
-py scheduler.py --run-disclosure    # One disclosure feed check
-
-# Discord bot (slash commands for members)
-py discord/bot.py
-
-# Local dashboard
-py dashboard/app.py                 # open http://localhost:8080
-
-# Data quality tools
-py db/db_data_quality.py            # full audit report
-py db/db_data_quality.py --ticker DMC  # audit one ticker
-
-# Alerts only
-py alerts/alert_engine.py --dry-run
-py alerts/alert_engine.py --check price
-py alerts/alert_engine.py --check dividend
-py alerts/alert_engine.py --check earnings
-
-# Sentiment test
-py engine/sentiment_engine.py --ticker DMC
-
-# Threshold calibration (run after weekly scrape or backfill)
-py engine/calibrate_thresholds.py
-
-# Tests
-py tests/test_metrics.py
-py tests/test_scorer.py
-py tests/test_mos.py
+py main.py                          # full pipeline (score + PDF + Discord)
+py main.py --dry-run                # no Discord publish
+py scheduler.py                     # continuous scheduler
+py scheduler.py --run-weekly        # manual full scrape
+py scheduler.py --run-backfill      # historical backfill (one-time)
+py dashboard/app.py                 # local dashboard → http://localhost:8080
+py engine/calibrate_thresholds.py   # recalibrate after scrape/backfill
+py db/db_data_quality.py            # data quality audit
 ```
 
-**Python command on this machine: `py` (not `python`)**
-Python version: 3.14.x
-Location: `C:\Users\Josh\AppData\Local\Python\pythoncore-3.14-64\`
+**Python command: `py` (not `python`). Version 3.14.x.**
 
 ---
 
-## 10. INSTALLED PACKAGES
+## 10. ENVIRONMENT VARIABLES (.env)
 
-```
-requests, beautifulsoup4, pdfplumber, reportlab,
-apscheduler, pydantic, pandas, pytest,
-python-dotenv, lxml, anthropic, flask, discord.py,
-openpyxl
-```
+Key vars: `PSE_EDGE_EMAIL`, `PSE_EDGE_PASSWORD`, `DISCORD_BOT_TOKEN`, `ADMIN_DISCORD_ID`,
+`DISCORD_WEBHOOK_RANKINGS`, `DISCORD_WEBHOOK_ALERTS`, `DISCORD_WEBHOOK_DEEP_ANALYSIS`,
+`DISCORD_WEBHOOK_DAILY_BRIEFING`, `DISCORD_INVITE_URL`, `DISCORD_GUILD_ID`,
+`ANTHROPIC_API_KEY`, `PAYMONGO_SECRET_KEY`, `MONTHLY_PRICE_CENTAVOS`, `ANNUAL_PRICE_CENTAVOS`,
+`PSE_DB_PATH` (Railway: `/app/data/pse_quant.db`), `PORT` (Railway: set automatically).
 
-Install missing: `py -m pip install <package_name>`
-
-`openpyxl` — required for Excel export (`/export/rankings.xlsx` in dashboard)
-
----
-
-## 11. ENVIRONMENT VARIABLES (.env)
-
-```
-# PSE Edge credentials
-PSE_EDGE_EMAIL=your@email.com
-PSE_EDGE_PASSWORD=yourpassword
-
-# Discord webhooks (4 channels)
-DISCORD_WEBHOOK_RANKINGS=https://discord.com/api/webhooks/...      # #rankings (premium PDF)
-DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...        # #alerts (public)
-DISCORD_WEBHOOK_DEEP_ANALYSIS=https://discord.com/api/webhooks/... # #deep-analysis (premium)
-DISCORD_WEBHOOK_DAILY_BRIEFING=https://discord.com/api/webhooks/.. # #daily-briefing (public)
-
-# Discord bot
-DISCORD_BOT_TOKEN=your_bot_token_here
-ADMIN_DISCORD_ID=your_discord_user_id     # Right-click name → Copy User ID
-DISCORD_INVITE_URL=https://discord.gg/... # Permanent server invite link
-DISCORD_GUILD_ID=your_server_id           # Optional: instant guild sync for testing
-
-# AI sentiment (optional)
-ANTHROPIC_API_KEY=sk-ant-...
-
-# PayMongo (optional)
-PAYMONGO_SECRET_KEY=sk_test_...
-MONTHLY_PRICE_CENTAVOS=9900
-ANNUAL_PRICE_CENTAVOS=99900
-```
+Install missing packages: `py -m pip install <package_name>`
 
 ---
 

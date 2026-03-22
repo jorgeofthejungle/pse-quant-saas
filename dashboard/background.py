@@ -63,6 +63,11 @@ def run_scrape(dry_run: bool = False) -> tuple[bool, str]:
     return _launch('scrape', _do_scrape, dry_run)
 
 
+def run_backfill() -> tuple[bool, str]:
+    """Launches the historical backfill scraper in a background thread."""
+    return _launch('backfill', _do_backfill)
+
+
 # ── Internal helpers ──────────────────────────────────────────
 
 def _launch(job_type: str, target, *args) -> tuple[bool, str]:
@@ -150,6 +155,12 @@ def _do_scrape(dry_run: bool):
     from scheduler_jobs import run_weekly_scrape
     run_weekly_scrape()
     return 'Weekly scrape complete'
+
+
+def _do_backfill(dry_run: bool = False):
+    from scheduler_jobs import run_backfill
+    run_backfill()
+    return 'Backfill complete'
 
 
 def _do_alerts(dry_run: bool):

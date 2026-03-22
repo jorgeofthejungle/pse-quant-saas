@@ -123,6 +123,16 @@
   <span class="text-muted" style="margin-left:1rem">Scheduled: Sundays 22:00 PHT</span>
 </div>
 
+<!-- Historical Backfill -->
+<div class="card full-width">
+  <h2>Historical Backfill (2018–2023)</h2>
+  <p>Fetches multi-year financial history from PSE Edge. Run this once on a fresh deployment so stocks have enough data to pass the 2-year minimum filter. Takes 2-4 hours.</p>
+  <div id="backfill-result" class="result-box" style="display:none"></div>
+  <button class="btn btn-secondary" id="btn-backfill" onclick="triggerBackfill()">
+    Run Historical Backfill
+  </button>
+</div>
+
 <!-- Latest Rankings -->
 <div class="card full-width">
   <h2>Latest Rankings</h2>
@@ -159,6 +169,27 @@
 
 {% block scripts %}
 <script>
+function triggerBackfill() {
+  const btn      = document.getElementById('btn-backfill');
+  const resultEl = document.getElementById('backfill-result');
+  btn.disabled = true;
+  btn.textContent = 'Running backfill... (2-4 hours)';
+  fetch('/pipeline/backfill', {method: 'POST', body: new FormData()})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.style.display = 'block';
+      if (d.started) {
+        resultEl.className = 'result-box result-ok';
+        resultEl.textContent = 'Backfill started. This will take 2-4 hours. Check activity log when done.';
+      } else {
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = d.message;
+        btn.disabled = false;
+        btn.textContent = 'Run Historical Backfill';
+      }
+    });
+}
+
 function triggerScrape() {
   const btn        = document.getElementById('btn-scrape');
   const resultEl   = document.getElementById('scrape-result');

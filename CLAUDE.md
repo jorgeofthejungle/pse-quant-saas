@@ -1,6 +1,5 @@
 # CLAUDE.md — PSE Quant SaaS Autonomous Development Guide
-> Place this file in the root of the project: `C:\Users\Josh\Documents\pse-quant-saas\CLAUDE.md`
-> Claude Code reads this file automatically at the start of every session.
+> This file is the source of truth. In any conflict between documents or instructions, CLAUDE.md wins.
 
 ---
 
@@ -8,17 +7,6 @@
 
 You are the lead developer of **PSE Quant SaaS** — a deterministic
 multi-factor Philippine equity ranking engine that runs locally on Windows.
-
-You work autonomously. When given a task you:
-1. Read the relevant files before writing any code
-2. Write the code
-3. Run it immediately to verify it works
-4. Fix any errors yourself without asking the user
-5. Only report back when the task is fully complete and tested
-
-You never ask the user to paste code, run commands, or fix errors manually
-unless the error requires something only they can provide
-(e.g. a missing API key, a PSE Edge login, or a file only they have).
 
 ### AI Model Policy
 - **Pipeline / classification tasks** (sentiment analysis, news scoring):
@@ -46,16 +34,16 @@ Never hardcode model strings. Always import from `config.py`.
 
 **Unified scoring system (StockPilot PH Rankings):**
 
-Default unified weights (portfolio-specific weights configured in `config.py SCORER_WEIGHTS`):
-| Layer | Unified | Pure Dividend | Div Growth | Value | What It Measures |
-|-------|---------|---------------|------------|-------|-----------------|
-| Health | 25% | 30% | 25% | 35% | Financial health today (ROE, margins, D/E, FCF, EPS stability) — sector-relative |
-| Improvement | 30% | 20% | 35% | 25% | Fundamentals improving (Revenue, EPS, OCF, ROE deltas) — recency-weighted |
-| Acceleration | 5% | 5% | 5% | 5% | Improvement getting stronger (2-year window delta-of-delta) |
-| Persistence | 40% | 45% | 35% | 35% | Improvement consistent and reliable (direction + magnitude + streak) |
+Portfolio-specific weights configured in `config.py SCORER_WEIGHTS`:
+| Layer | Unified | Dividend | Value | What It Measures |
+|-------|---------|----------|-------|-----------------|
+| Health | 25% | 27% | 35% | Financial health today (ROE, margins, D/E, FCF, EPS stability) — sector-relative |
+| Improvement | 30% | 27% | 25% | Fundamentals improving (Revenue, EPS, OCF, ROE deltas) — recency-weighted |
+| Acceleration | 5% | 5% | 5% | Improvement getting stronger (2-year window delta-of-delta) |
+| Persistence | 40% | 41% | 35% | Improvement consistent and reliable (direction + magnitude + streak) |
 
-Dividends are a bonus signal within the score — not a filter requirement.
-All PSE stocks compete in one unified ranking. The PDF contains three sections (Pure Dividend, Dividend Growth, Value) each scored with portfolio-specific weights. A stock can appear in multiple sections.
+Dividends are a bonus signal — not a filter requirement. REITs excluded from Value portfolio.
+PDF has two sections: **Dividend** and **Value**. A stock can appear in both.
 
 Health layer thresholds are calibrated from PSE market percentiles via `engine/calibrate_thresholds.py`. Each scored stock carries a data confidence multiplier (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65).
 
@@ -533,118 +521,13 @@ Clarity > Complexity | Education > Jargon | Risk > Optimism | Neutrality > Persu
 
 ## 8. PHASE ROADMAP
 
-### Phase 1 — Engine Core ✅ COMPLETE
-metrics.py, filters.py, scorer.py, mos.py, validator.py. All tested.
+### Phases 1–12 ✅ COMPLETE
+All core engine, reports, data pipeline, automation, dashboard, scoring, backtester, Discord bot, data quality, Railway deployment done. See Section 4 for key function signatures.
 
-### Phase 2 — Reports & Delivery ✅ COMPLETE
-pdf_generator.py, publisher.py, main.py.
-
-### Phase 3 — Data Pipeline ✅ COMPLETE
-database.py (+ sub-modules), pse_edge_scraper.py (+ sub-modules),
-news_fetcher.py, sentiment_engine.py. DB live at AppData/Local/pse_quant/.
-
-### Phase 4 — Automation ✅ COMPLETE
-scheduler.py — daily scoring 17:30 PHT, alert check 09:00 PHT.
-alert_engine.py — price, dividend, earnings alerts with atomic dedup.
-
-### Phase 5 — Dashboard ✅ COMPLETE
-Local Flask dashboard at http://localhost:8080.
-Member management, PayMongo payment links, pipeline controls, analytics.
-
-### Phase 6 — Scoring Enhancement ✅ COMPLETE
-Unified 4-layer scorer (scorer_v2.py). Fundamental Momentum layer in legacy scorer.
-
-### Phase 7 — Backtester ✅ COMPLETE
-backtester.py — historical score simulation. CLI: `py backtester.py --portfolio pure_dividend`
-
-### Phase 8 — Stability & Bug Fixes ✅ COMPLETE (2026-03-09)
-- PDF shows ALL qualifying stocks (no cap)
-- Atomic alert dedup via _claim_disclosure()
-- Production readiness audit passed
-
-### Phase 9 — Unified Scoring System ✅ COMPLETE (2026-03-14)
-- Unified 4-layer scorer (scorer_v2.py + 4 sub-modules)
-- Unified health filter (filters_v2.py)
-- Stock Lookup dashboard page (routes_stocks.py)
-- Scheduler start/stop from Pipeline page
-- Overview page shows unified StockPilot PH Rankings
-- Scheduler: alert 09:00 PHT, scoring 17:30 PHT
-
-### Phase 10 — Discord Bot + Data Quality ✅ COMPLETE (2026-03-15)
-- [x] Discord slash command bot (`discord/bot.py`)
-  - /stock, /top10 — premium DM-only with tier gating
-  - /subscribe, /mystatus — free DM-only
-  - /watchlist show/add/remove — premium DM-only
-  - /admin list/pending/confirm/extend/status — Josh-only DM
-  - All blocking calls wrapped in asyncio.to_thread()
-  - Guild sync via DISCORD_GUILD_ID for instant testing propagation
-- [x] Member access control (`dashboard/access_control.py`)
-- [x] Direct message delivery (`discord/discord_dm.py`)
-- [x] Financial data quality auditor (`db/db_data_quality.py`)
-  - Checks: yield, payout, EPS/NI mismatch, DPS jumps, negative revenue, net margin anomalies
-  - Penny stock and holding company exceptions built in
-  - `get_dividend_quality_flags()` used by calendar query
-- [x] Database maintenance (`db/db_maintenance.py`)
-  - `clean_bad_dps()` — auto-nulls implausible DPS
-  - `cleanup_stale_data()` — prunes old rows + VACUUM
-- [x] Weekly scrape now includes Steps 2c/2d: DPS auto-clean + full audit logged to activity_log
-- [x] 4-webhook Discord structure: RANKINGS, ALERTS, DEEP_ANALYSIS, DAILY_BRIEFING
-- [x] Disclosure monitor (15-min PSE Edge feed polling)
-
-### Phase 11 — Data Quality & Scoring Recalibration ✅ COMPLETE (2026-03-20)
-**Spec:** `docs/superpowers/specs/2026-03-17-data-quality-scoring-recalibration-design.md`
-
-**Phase A — Data Quality Hardening:**
-- [x] Scraper change detection (canary fields + admin DM alerts) ✅ Task 13 — `scraper/scraper_canary.py`
-- [ ] Unit detection hardening (mandatory currency line, cross-validation) — deferred to Phase 12
-- [x] Dividend fiscal year attribution (ex-date → fiscal year mapping) ✅ Task 4
-- [x] Tighten write-time gates (25%/35% yield, 40% completeness, ROE/P/B hard blocks) ✅ Task 5
-- [x] Fix REIT misclassification (VREIT, PREIT, MREIT, AREIT) ✅ Task 5
-- [x] Market cap / price staleness cross-validation ✅ Task 14 — `check_price_staleness()` in `validator.py`
-- [x] Staleness prevention (freshness gates, scheduler heartbeat) ✅ Task 15 — `_check_price_freshness()`, `_record_heartbeat()`, `check_scheduler_health()`
-
-**Phase B — Scoring Recalibration:**
-- [x] Historical backfill scraper (2018-2023 from PSE Edge) ✅ Task 8 — `pse_financial_reports.py`
-- [x] Health threshold recalibration (PSE percentile-based, sector-relative) ✅ Task 9 — `calibrate_thresholds.py`
-- [x] Confidence-weighted scoring (5yr=1.0 → 2yr=0.65) ✅ Task 10 — `calc_data_confidence()` in `validator.py`
-- [x] Filter relaxed from 3-year to 2-year minimum ✅ Task 10 — `filters_v2.py`
-- [x] Portfolio-specific weights (pure_dividend, dividend_growth, value) ✅ Task 12 — `SCORER_WEIGHTS` in `config.py`
-- [x] Unified PDF with three ranked sections ✅ Task 12 — `pdf_portfolio_sections.py`, `pdf_generator.py`
-- [x] Persistence magnitude awareness (direction + magnitude + streak) ✅ Task 2 — `scorer_persistence.py`
-- [x] MoS risk-adjusted discount rate (size + sector premiums) ✅ Task 11 — `mos.py`
-- [x] Sector medians expansion (8 metrics, market-cap weighted, PE<50 filter) ✅ Task 6 — `sector_stats.py`
-- [x] Improvement recency weighting (50/30/20) ✅ Task 1 — `scorer_improvement.py`
-- [x] ROE delta year validation (index by fiscal year, not array position) ✅ Task 1 — `scorer_improvement.py`
-- [x] Acceleration weight reduced to 5%, wider scoring bands ✅ Task 3 — `scorer_acceleration.py`
-
-### Phase 12 — Next (Backlog)
-- [x] Scheduler health panel on Pipeline page (`/pipeline/api/scheduler/health`, 60s auto-refresh) ✅ 2026-03-20
-- [x] Unit detection hardening — `_detect_financial_unit()` in `pse_financial_reports.py`; cross-validates revenue/share and EPS/NI; fires canary on mismatch ✅ 2026-03-20
-- [x] Manual data entry UI — `/manual/` page, add/edit any stock/year with force=True ✅ 2026-03-20
-- [x] REIT FFO-based FCF coverage exemption — neutral score (50) when depreciation unavailable; FFO yield scored when available ✅ 2026-03-20
-- [x] Export rankings to CSV/Excel from dashboard — `/export/rankings.csv` and `/export/rankings.xlsx` (4 sheets) ✅ 2026-03-20
+### Phase 12 — Pending
 - [ ] Educational auto-poster — 52-topic Wednesday rotation to #learn-investing
 - [ ] Daily public briefing webhook — top 3 grades to #daily-briefing (separate from weekly)
-
-**Housekeeping completed 2026-03-20/21:**
-- [x] Depreciation/amortization added to DB schema + scraper → enables real REIT FFO scoring
-- [x] FCF yield unit bug fixed in `calibrate_thresholds.py` (multiplier was missing 1e6)
-- [x] `eps_stability_cv` calibration added to `calibrate_thresholds.py`
-- [x] `openpyxl` added to package list
-- [x] 29 new unit tests in `tests/test_phase12.py` (FFO, staleness, canary, unit detection, health thresholds)
-- [x] End-to-end pipeline dry run passes — PDF generates cleanly
-- [x] Fixed `None` format string crash in `pdf_rankings_table.py` and `pdf_stock_detail_page.py`
-- [x] Fixed `pdf_stock_detail_page.py` score breakdown key (`score_breakdown` → `breakdown`)
-- [x] Fixed `routes_home.py` export layer scores (wrong JSON path → `layers.health.score` etc.)
-- [x] Fixed `scorer_persistence.py` OCF explanation wrong args (ratio passed as count)
-- [x] Fixed `scheduler_jobs.py` daily scorer now saves all 3 portfolio types (not just unified)
-- [x] Fixed `pse_edge_scraper.py` fiscal_year_end_month now passed to dividend scraper
-- [x] Fixed `scorer_v2.py` — `sector_medians` now passed to `score_health()` activating 70/30 blend
-- [x] Fixed `mos.py` — removed local constant duplicates, consolidated import from `config.py`
-- [x] Fixed `/top10` bot command — queries `portfolio_type='unified'` + deduplicates by ticker
-- [x] Pruned 35 stale duplicate score rows from `scores_v2`
-- [x] Deleted TEST1/TEST2 test artifacts from `scores_v2`
-- [ ] Run `py scheduler.py --run-backfill` (in progress) then re-run `py engine/calibrate_thresholds.py`
+- [ ] Run backfill then re-calibrate thresholds: `py engine/calibrate_thresholds.py`
 
 ---
 
@@ -754,14 +637,6 @@ ANNUAL_PRICE_CENTAVOS=99900
 
 ## 12. SELF-CORRECTION PROTOCOL
 
-When you encounter an error:
-
-1. **Read the full error message** — identify file, line, and type
-2. **Read the relevant source file** — understand context before fixing
-3. **Fix the minimal change needed** — do not refactor unrelated code
-4. **Re-run immediately** — confirm the fix works
-5. **If still failing after 3 attempts** — report the error to the user
-
 Common errors on this Windows setup:
 - `ModuleNotFoundError` → run `py -m pip install <module>`
 - `FileNotFoundError` → create the directory first with `os.makedirs`
@@ -774,27 +649,14 @@ Common errors on this Windows setup:
 
 ---
 
-## 13. DISCORD SETUP
-
-**4 channels needed:**
+## 13. DISCORD CHANNELS
 
 | Channel | Access | Webhook Env Var | Purpose |
 |---------|--------|----------------|---------|
-| `#rankings` | Premium only | `DISCORD_WEBHOOK_RANKINGS` | Full PDF rankings report |
-| `#deep-analysis` | Premium only | `DISCORD_WEBHOOK_DEEP_ANALYSIS` | Stock of the Week, monthly reports |
+| `#rankings` | Premium | `DISCORD_WEBHOOK_RANKINGS` | Full PDF rankings report |
+| `#deep-analysis` | Premium | `DISCORD_WEBHOOK_DEEP_ANALYSIS` | Stock of the Week, monthly reports |
 | `#alerts` | Public | `DISCORD_WEBHOOK_ALERTS` | Price, dividend, earnings alerts |
 | `#daily-briefing` | Public | `DISCORD_WEBHOOK_DAILY_BRIEFING` | Top 3 grades (no scores) |
-
-**Bot setup:**
-1. Create bot at discord.com/developers/applications
-2. Bot → Reset Token → copy to `DISCORD_BOT_TOKEN` in `.env`
-3. Invite bot with `bot` + `applications.commands` scopes
-4. Set `ADMIN_DISCORD_ID` to your Discord user ID (right-click name → Copy User ID)
-5. Set `DISCORD_GUILD_ID` to your server ID (right-click server → Copy Server ID) for instant sync
-6. Run: `py discord/bot.py`
-
-**Webhook URLs:**
-Discord → Channel Settings → Integrations → Webhooks → New Webhook → Copy URL
 
 ---
 

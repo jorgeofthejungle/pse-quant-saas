@@ -128,12 +128,26 @@ DISCORD_INVITE_URL = os.getenv('DISCORD_INVITE_URL', '#')
 def index():
     analysis = _get_sample_analysis()
     ticker   = analysis.get('stock', {}).get('ticker', FALLBACK_TICKER) if analysis.get('stock') else FALLBACK_TICKER
+
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'db'))
+        import database as db
+        conn = db.get_connection()
+        row  = conn.execute("SELECT COUNT(*) AS n FROM stocks WHERE status = 'active'").fetchone()
+        conn.close()
+        stock_count = row['n'] if row else 223
+    except Exception:
+        stock_count = 223
+
     return render_template(
         'portal.html',
         analysis           = analysis,
         ticker             = ticker,
         pricing            = PRICING,
         discord_invite_url = DISCORD_INVITE_URL,
+        stock_count        = stock_count,
     )
 
 

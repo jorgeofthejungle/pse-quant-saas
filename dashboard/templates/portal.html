@@ -7,7 +7,7 @@
   <div class="hero-inner">
 
     <div class="hero-text">
-      <span class="hero-eyebrow">223 PSE Stocks · Updated Daily</span>
+      <span class="hero-eyebrow">{{ stock_count }} PSE Stocks · Updated Daily</span>
       <h1>Stop Guessing.<br>Let the <span>Numbers</span> Decide.</h1>
       <p>
         StockPilot Philippines ranks every PSE-listed company using a
@@ -63,7 +63,7 @@
 <div class="trust-strip">
   <div class="trust-inner">
     <div class="trust-item">
-      <span class="trust-num">223</span>
+      <span class="trust-num">{{ stock_count }}</span>
       <span class="trust-desc">PSE stocks tracked</span>
     </div>
     <div class="trust-item">
@@ -107,7 +107,7 @@
   </div>
   <div class="hiw-step">
     <div class="hiw-num">3</div>
-    <strong>Rank All 223 Stocks</strong>
+    <strong>Rank All {{ stock_count }} Stocks</strong>
     <p>Every PSE stock competes in one unified list. No portfolios, no bias. The highest-scoring companies rise to the top.</p>
   </div>
   <div class="hiw-step">
@@ -318,7 +318,7 @@
       <li><span class="check">✓</span> Sample analysis (random top stock)</li>
       <li><span class="check">✓</span> Financial terms glossary</li>
       <li><span class="check">✓</span> How the scoring model works</li>
-      <li><span class="cross">✗</span> Full 223-stock rankings</li>
+      <li><span class="cross">✗</span> Full {{ stock_count }}-stock rankings</li>
       <li><span class="cross">✗</span> Daily score updates</li>
       <li><span class="cross">✗</span> Margin of safety data</li>
       <li><span class="cross">✗</span> Discord alerts</li>
@@ -336,7 +336,7 @@
     <div class="price-sub" id="sub-display">&nbsp;</div>
     <hr class="price-divider">
     <ul class="price-features">
-      <li><span class="check">✓</span> Full rankings — all 223 PSE stocks</li>
+      <li><span class="check">✓</span> Full rankings — all {{ stock_count }} PSE stocks</li>
       <li><span class="check">✓</span> Score + letter grade for every stock</li>
       <li><span class="check">✓</span> Margin of safety estimates</li>
       <li><span class="check">✓</span> Intrinsic value (DDM, EPS-PE, DCF)</li>
@@ -359,7 +359,7 @@
   <details class="faq-item">
     <summary>What is StockPilot Philippines?</summary>
     <div class="faq-body">
-      StockPilot Philippines is a fundamental stock ranking engine that scores all 223 PSE-listed
+      StockPilot Philippines is a fundamental stock ranking engine that scores all {{ stock_count }} PSE-listed
       companies using financial data from PSE Edge. It uses a deterministic 4-layer model —
       Health, Improvement, Acceleration, and Persistence — to give every stock a score from
       0 to 100 and a letter grade. There is no AI prediction, no tips, and no guesswork.

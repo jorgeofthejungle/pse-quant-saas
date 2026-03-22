@@ -103,10 +103,46 @@ def _wrapper(job_type: str, target, *args):
 
 
 def _do_scoring(portfolio: str, dry_run: bool):
-    """Calls run_daily_job() or a single-portfolio variant."""
-    from scheduler_jobs import run_daily_job
-    # run_daily_job handles all portfolios internally
-    run_daily_job()
+    """Runs the scoring pipeline directly, bypassing the freshness gate."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+    from config import SCORER_WEIGHTS
+    import database as db
+    from datetime import datetime
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    print(f"\n[Manual Score] Starting scoring run for {today}...")
+
+    from scraper.pse_stock_builder import build_all_stocks_from_db
+    from engine.sector_stats import compute_sector_stats
+    from engine.scorer_v2 import rank_stocks_v2
+
+    stocks = build_all_stocks_from_db()
+    print(f"  Loaded {len(stocks)} stocks from DB.")
+
+    fins_map = {}
+    try:
+        from db.db_financials import get_financials_history
+        for s in stocks:
+            fins_map[s['ticker']] = get_financials_history(s['ticker'])
+    except Exception as e:
+        print(f"  Warning: could not load financials history: {e}")
+
+    sector_stats = compute_sector_stats(stocks)
+
+    for pt in SCORER_WEIGHTS.keys():
+        try:
+            ranked = rank_stocks_v2(
+                stocks, sector_stats=sector_stats,
+                financials_map=fins_map, portfolio_type=pt,
+            )
+            db.save_scores_v2(today, ranked, portfolio_type=pt)
+            print(f"  Saved {len(ranked)} scores for portfolio_type={pt}.")
+        except Exception as e:
+            print(f"  Error scoring {pt}: {e}")
+
     return 'Scoring complete'
 
 

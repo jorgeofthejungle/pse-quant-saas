@@ -111,6 +111,16 @@ def scrape_progress():
         return jsonify({'progress': 'Unknown'})
 
 
+@pipeline_bp.route('/backfill/progress')
+def backfill_progress():
+    """JSON: current backfill progress from settings table."""
+    try:
+        row = db.get_setting('backfill_progress')
+        return jsonify({'progress': row or 'Starting...'})
+    except Exception:
+        return jsonify({'progress': 'Unknown'})
+
+
 @pipeline_bp.route('/scheduler/start', methods=['POST'])
 def scheduler_start():
     ok, msg = start_scheduler()

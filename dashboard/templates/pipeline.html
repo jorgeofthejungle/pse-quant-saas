@@ -128,6 +128,7 @@
   <h2>Historical Backfill (2018–2023)</h2>
   <p>Fetches multi-year financial history from PSE Edge. Run this once on a fresh deployment so stocks have enough data to pass the 2-year minimum filter. Takes 2-4 hours.</p>
   <div id="backfill-result" class="result-box" style="display:none"></div>
+  <div id="backfill-progress" style="display:none; margin-top:0.5rem; font-family:monospace; color:#aaa;"></div>
   <button class="btn btn-secondary" id="btn-backfill" onclick="triggerBackfill()">
     Run Historical Backfill
   </button>
@@ -170,8 +171,9 @@
 {% block scripts %}
 <script>
 function triggerBackfill() {
-  const btn      = document.getElementById('btn-backfill');
-  const resultEl = document.getElementById('backfill-result');
+  const btn        = document.getElementById('btn-backfill');
+  const resultEl   = document.getElementById('backfill-result');
+  const progressEl = document.getElementById('backfill-progress');
   btn.disabled = true;
   btn.textContent = 'Running backfill... (2-4 hours)';
   fetch('/pipeline/backfill', {method: 'POST', body: new FormData()})
@@ -180,7 +182,9 @@ function triggerBackfill() {
       resultEl.style.display = 'block';
       if (d.started) {
         resultEl.className = 'result-box result-ok';
-        resultEl.textContent = 'Backfill started. This will take 2-4 hours. Check activity log when done.';
+        resultEl.textContent = 'Backfill started — progress updates every 5 seconds below.';
+        progressEl.style.display = 'block';
+        pollBackfillProgress();
       } else {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
@@ -188,6 +192,23 @@ function triggerBackfill() {
         btn.textContent = 'Run Historical Backfill';
       }
     });
+}
+
+function pollBackfillProgress() {
+  const progressEl = document.getElementById('backfill-progress');
+  const btn        = document.getElementById('btn-backfill');
+  const interval = setInterval(() => {
+    fetch('/pipeline/backfill/progress')
+      .then(r => r.json())
+      .then(d => {
+        progressEl.textContent = 'Progress: ' + d.progress;
+        if (d.progress && d.progress.startsWith('Done')) {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.textContent = 'Run Historical Backfill';
+        }
+      });
+  }, 5000);
 }
 
 function triggerScrape() {

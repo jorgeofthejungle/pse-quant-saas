@@ -148,7 +148,7 @@
     </div>
   </div>
   <div class="layer-card">
-    <div class="layer-pct">15%</div>
+    <div class="layer-pct">5%</div>
     <div class="layer-name">Acceleration</div>
     <div class="layer-desc">Is the improvement speeding up? A company growing faster this year than last year is an early momentum signal.</div>
     <div class="layer-signals">
@@ -158,7 +158,7 @@
     </div>
   </div>
   <div class="layer-card">
-    <div class="layer-pct">30%</div>
+    <div class="layer-pct">40%</div>
     <div class="layer-name">Persistence</div>
     <div class="layer-desc">Is the growth consistent? Counts consecutive positive years — rewards reliable compounders over one-time lucky years.</div>
     <div class="layer-signals">
@@ -251,8 +251,8 @@
       {% set layer_labels = {
         'health':       'Health (25%) — Is the business strong today?',
         'improvement':  'Improvement (30%) — Is it getting better?',
-        'acceleration': 'Acceleration (15%) — Is improvement speeding up?',
-        'persistence':  'Persistence (30%) — Is it consistent?'
+        'acceleration': 'Acceleration (5%) — Is improvement speeding up?',
+        'persistence':  'Persistence (40%) — Is it consistent?'
       } %}
       {% for lk, ld in analysis.layers.items() %}
         {% if ld is mapping %}
@@ -384,8 +384,8 @@
       <br><br>
       <strong>Health (25%)</strong> — How strong is the business today? Looks at ROE, margins, debt load, and free cash flow quality.<br>
       <strong>Improvement (30%)</strong> — Is the business getting better? Measures revenue, earnings, and cash flow growth over 3 years.<br>
-      <strong>Acceleration (15%)</strong> — Is the improvement speeding up? Compares recent growth rate vs. older growth rate.<br>
-      <strong>Persistence (30%)</strong> — Is the growth reliable? Counts consecutive years of positive growth — rewards consistency over luck.
+      <strong>Acceleration (5%)</strong> — Is the improvement speeding up? Compares recent growth rate vs. older growth rate.<br>
+      <strong>Persistence (40%)</strong> — Is the growth reliable? Counts consecutive years of positive growth — rewards consistency over luck.
       <br><br>
       These are combined into a single score (0–100). The math is pure and deterministic —
       no machine learning, no sentiment, no analyst opinion.

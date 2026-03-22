@@ -111,8 +111,8 @@
         {% set layers = [
           ('health',       'Financial Health',    '25%', 'Is the company financially healthy today?'),
           ('improvement',  'Business Improvement','30%', 'Are fundamentals improving over 3+ years?'),
-          ('acceleration', 'Growth Acceleration', '15%', 'Is the improvement speeding up?'),
-          ('persistence',  'Consistency',         '30%', 'Are improvements sustained year over year?'),
+          ('acceleration', 'Growth Acceleration', '5%',  'Is the improvement speeding up?'),
+          ('persistence',  'Consistency',         '40%', 'Are improvements sustained year over year?'),
         ] %}
         {% for key, label, weight, desc in layers %}
           {% set layer = bd.layers[key] %}

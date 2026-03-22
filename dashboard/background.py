@@ -115,7 +115,7 @@ def _do_scoring(portfolio: str, dry_run: bool):
     today = datetime.now().strftime('%Y-%m-%d')
     print(f"\n[Manual Score] Starting scoring run for {today}...")
 
-    from scraper.pse_stock_builder import build_all_stocks_from_db
+    from scraper.pse_stock_builder import load_stocks_from_db as build_all_stocks_from_db
     from engine.sector_stats import compute_sector_stats
     from engine.scorer_v2 import rank_stocks_v2
 

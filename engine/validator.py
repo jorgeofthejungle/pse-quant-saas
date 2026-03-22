@@ -473,16 +473,16 @@ def validate_stock(stock: dict) -> dict:
 def calc_data_confidence(stock: dict) -> float:
     """
     Returns a confidence multiplier (0.0-1.0) based on years of complete data.
-    Complete = EPS, Revenue, and OCF all present for a given year.
+    Complete = EPS and Revenue both present for a given year.
+    OCF excluded — scraper does not populate it from PSE Edge reports.
     Uses minimum series length as an approximation of co-present years.
     """
     from config import CONFIDENCE_TIERS
 
     eps_vals = [v for v in (stock.get('eps_5y') or []) if v is not None]
     rev_vals = [v for v in (stock.get('revenue_5y') or []) if v is not None]
-    ocf_vals = [v for v in (stock.get('operating_cf_history') or []) if v is not None]
 
-    complete_years = min(len(eps_vals), len(rev_vals), len(ocf_vals))
+    complete_years = min(len(eps_vals), len(rev_vals))
 
     for threshold in sorted(CONFIDENCE_TIERS.keys(), reverse=True):
         if complete_years >= threshold:

@@ -247,10 +247,9 @@ def get_top10_embed(discord_id: str = None) -> dict:
     is_paid = check_access(discord_id, 'top10') if discord_id else False
     limit   = 10 if is_paid else 3
 
-    scores = db.get_last_scores_v2(portfolio_type='unified') or []
+    scores = db.get_last_scores_v2(portfolio_type='dividend') or []
     if not scores:
-        scores_raw = db.get_last_scores('unified') or []
-        scores = [{'ticker': s['ticker'], 'score': s.get('score', 0)} for s in scores_raw]
+        scores = db.get_last_scores_v2(portfolio_type='value') or []
 
     if not scores:
         return {'error': 'No rankings available yet. Run the scoring pipeline first.'}

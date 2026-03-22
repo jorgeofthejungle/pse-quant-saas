@@ -101,6 +101,43 @@ def job_status():
     return jsonify(get_status())
 
 
+@pipeline_bp.route('/debug')
+def debug_db():
+    """JSON: quick DB health check — scores, financials, stocks."""
+    try:
+        conn = db.get_connection()
+        scores_total   = conn.execute("SELECT COUNT(*) AS n FROM scores_v2").fetchone()['n']
+        scores_nonzero = conn.execute("SELECT COUNT(*) AS n FROM scores_v2 WHERE score > 0").fetchone()['n']
+        scores_sample  = conn.execute(
+            "SELECT ticker, score, portfolio_type, run_date FROM scores_v2 "
+            "ORDER BY score DESC LIMIT 10"
+        ).fetchall()
+        fins_total  = conn.execute("SELECT COUNT(*) AS n FROM financials").fetchone()['n']
+        fins_sample = conn.execute(
+            "SELECT ticker, year, revenue, eps, operating_cf FROM financials "
+            "WHERE ticker = 'DMC' ORDER BY year DESC LIMIT 5"
+        ).fetchall()
+        stocks_active = conn.execute(
+            "SELECT COUNT(*) AS n FROM stocks WHERE status = 'active'"
+        ).fetchone()['n']
+        portfolio_types = conn.execute(
+            "SELECT portfolio_type, COUNT(*) AS n, MAX(score) AS max_score "
+            "FROM scores_v2 GROUP BY portfolio_type"
+        ).fetchall()
+        conn.close()
+        return jsonify({
+            'stocks_active':    stocks_active,
+            'scores_total':     scores_total,
+            'scores_nonzero':   scores_nonzero,
+            'portfolio_types':  [dict(r) for r in portfolio_types],
+            'scores_sample':    [dict(r) for r in scores_sample],
+            'financials_total': fins_total,
+            'financials_DMC':   [dict(r) for r in fins_sample],
+        })
+    except Exception as exc:
+        return jsonify({'error': str(exc)})
+
+
 @pipeline_bp.route('/scrape/progress')
 def scrape_progress():
     """JSON: current scrape progress from settings table."""

@@ -148,6 +148,70 @@ def scrape_progress():
         return jsonify({'progress': 'Unknown'})
 
 
+@pipeline_bp.route('/import-db', methods=['POST'])
+def import_db():
+    """Bulk-insert financials or prices rows from a JSON POST (one-time DB sync)."""
+    try:
+        payload = request.get_json(force=True)
+        table   = payload.get('table')
+        rows    = payload.get('rows', [])
+        if table not in ('financials', 'prices'):
+            return jsonify({'error': f'Unknown table: {table}'}), 400
+        if not rows:
+            return jsonify({'inserted': 0})
+
+        conn     = db.get_connection()
+        inserted = 0
+
+        if table == 'financials':
+            for r in rows:
+                try:
+                    conn.execute("""
+                        INSERT INTO financials
+                            (ticker, year, revenue, net_income, equity, total_debt,
+                             cash, operating_cf, capex, ebitda, eps, dps)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(ticker, year) DO UPDATE SET
+                            revenue     = COALESCE(excluded.revenue,     revenue),
+                            net_income  = COALESCE(excluded.net_income,  net_income),
+                            equity      = COALESCE(excluded.equity,      equity),
+                            total_debt  = COALESCE(excluded.total_debt,  total_debt),
+                            cash        = COALESCE(excluded.cash,        cash),
+                            operating_cf= COALESCE(excluded.operating_cf,operating_cf),
+                            capex       = COALESCE(excluded.capex,       capex),
+                            ebitda      = COALESCE(excluded.ebitda,      ebitda),
+                            eps         = COALESCE(excluded.eps,         eps),
+                            dps         = COALESCE(excluded.dps,         dps)
+                    """, (r.get('ticker'), r.get('year'),
+                          r.get('revenue'), r.get('net_income'), r.get('equity'),
+                          r.get('total_debt'), r.get('cash'), r.get('operating_cf'),
+                          r.get('capex'), r.get('ebitda'), r.get('eps'), r.get('dps')))
+                    inserted += 1
+                except Exception:
+                    pass
+
+        elif table == 'prices':
+            for r in rows:
+                try:
+                    conn.execute("""
+                        INSERT INTO prices (ticker, date, close, market_cap)
+                        VALUES (?,?,?,?)
+                        ON CONFLICT(ticker, date) DO UPDATE SET
+                            close      = COALESCE(excluded.close,      close),
+                            market_cap = COALESCE(excluded.market_cap, market_cap)
+                    """, (r.get('ticker'), r.get('date'),
+                          r.get('close'), r.get('market_cap')))
+                    inserted += 1
+                except Exception:
+                    pass
+
+        conn.commit()
+        conn.close()
+        return jsonify({'inserted': inserted, 'total': len(rows)})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
 @pipeline_bp.route('/backfill/progress')
 def backfill_progress():
     """JSON: current backfill progress from settings table."""

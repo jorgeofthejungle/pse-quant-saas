@@ -79,6 +79,11 @@ CONGLOMERATE_DISCOUNT = 0.20   # 20% reduction to intrinsic value
 # Send a new PDF if any top-10 stock's score shifts by this many points
 SCORE_CHANGE_THRESHOLD = 5.0
 
+# ── Minimum Score Floor ──────────────────────────────────
+# Stocks scoring below this threshold are excluded from the PDF report.
+# 50 = only "Strong Growth" and above make the cut.
+MIN_SCORE_THRESHOLD = 50
+
 # ── Weekly Full Financial Scrape ───────────────────────────
 WEEKLY_SCRAPE_DAY  = 'sun'
 WEEKLY_SCRAPE_HOUR = 22    # 10:00 PM PHT — after-hours, before Monday market

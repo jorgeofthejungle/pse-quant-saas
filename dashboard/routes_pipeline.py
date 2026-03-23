@@ -101,41 +101,6 @@ def job_status():
     return jsonify(get_status())
 
 
-@pipeline_bp.route('/debug')
-def debug_db():
-    """JSON: quick DB health check — scores, financials, stocks."""
-    try:
-        conn = db.get_connection()
-        scores_total   = conn.execute("SELECT COUNT(*) AS n FROM scores_v2").fetchone()['n']
-        scores_nonzero = conn.execute("SELECT COUNT(*) AS n FROM scores_v2 WHERE score > 0").fetchone()['n']
-        scores_sample  = conn.execute(
-            "SELECT ticker, score, portfolio_type, run_date FROM scores_v2 "
-            "ORDER BY score DESC LIMIT 10"
-        ).fetchall()
-        fins_total  = conn.execute("SELECT COUNT(*) AS n FROM financials").fetchone()['n']
-        fins_sample = conn.execute(
-            "SELECT ticker, year, revenue, eps, operating_cf FROM financials "
-            "WHERE ticker = 'DMC' ORDER BY year DESC LIMIT 5"
-        ).fetchall()
-        stocks_active = conn.execute(
-            "SELECT COUNT(*) AS n FROM stocks WHERE status = 'active'"
-        ).fetchone()['n']
-        portfolio_types = conn.execute(
-            "SELECT portfolio_type, COUNT(*) AS n, MAX(score) AS max_score "
-            "FROM scores_v2 GROUP BY portfolio_type"
-        ).fetchall()
-        conn.close()
-        return jsonify({
-            'stocks_active':    stocks_active,
-            'scores_total':     scores_total,
-            'scores_nonzero':   scores_nonzero,
-            'portfolio_types':  [dict(r) for r in portfolio_types],
-            'scores_sample':    [dict(r) for r in scores_sample],
-            'financials_total': fins_total,
-            'financials_DMC':   [dict(r) for r in fins_sample],
-        })
-    except Exception as exc:
-        return jsonify({'error': str(exc)})
 
 
 @pipeline_bp.route('/scrape/progress')
@@ -148,6 +113,21 @@ def scrape_progress():
         return jsonify({'progress': 'Unknown'})
 
 
+@pipeline_bp.route('/clean-dps', methods=['POST'])
+def clean_dps():
+    """Run clean_bad_dps to NULL implausible DPS values. Returns summary."""
+    try:
+        from db.db_maintenance import clean_bad_dps
+        result = clean_bad_dps(dry_run=False)
+        return jsonify({
+            'ok': True,
+            'nulled': result['nulled'],
+            'tickers_affected': result['tickers_affected'],
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @pipeline_bp.route('/import-db', methods=['POST'])
 def import_db():
     """Bulk-insert financials or prices rows from a JSON POST (one-time DB sync)."""
@@ -158,58 +138,55 @@ def import_db():
         if table not in ('financials', 'prices'):
             return jsonify({'error': f'Unknown table: {table}'}), 400
         if not rows:
-            return jsonify({'inserted': 0})
+            return jsonify({'inserted': 0, 'message': 'No rows provided'})
 
-        conn     = db.get_connection()
+        conn = db.get_connection()
         inserted = 0
 
         if table == 'financials':
+            cols = ['ticker', 'year', 'revenue', 'net_income', 'equity',
+                    'total_debt', 'cash', 'operating_cf', 'capex', 'ebitda',
+                    'eps', 'dps']
             for r in rows:
-                try:
-                    conn.execute("""
-                        INSERT INTO financials
-                            (ticker, year, revenue, net_income, equity, total_debt,
-                             cash, operating_cf, capex, ebitda, eps, dps)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                        ON CONFLICT(ticker, year) DO UPDATE SET
-                            revenue     = COALESCE(excluded.revenue,     revenue),
-                            net_income  = COALESCE(excluded.net_income,  net_income),
-                            equity      = COALESCE(excluded.equity,      equity),
-                            total_debt  = COALESCE(excluded.total_debt,  total_debt),
-                            cash        = COALESCE(excluded.cash,        cash),
-                            operating_cf= COALESCE(excluded.operating_cf,operating_cf),
-                            capex       = COALESCE(excluded.capex,       capex),
-                            ebitda      = COALESCE(excluded.ebitda,      ebitda),
-                            eps         = COALESCE(excluded.eps,         eps),
-                            dps         = COALESCE(excluded.dps,         dps)
-                    """, (r.get('ticker'), r.get('year'),
-                          r.get('revenue'), r.get('net_income'), r.get('equity'),
-                          r.get('total_debt'), r.get('cash'), r.get('operating_cf'),
-                          r.get('capex'), r.get('ebitda'), r.get('eps'), r.get('dps')))
-                    inserted += 1
-                except Exception:
-                    pass
+                vals = [r.get(c) for c in cols]
+                conn.execute(
+                    """INSERT INTO financials
+                       (ticker, year, revenue, net_income, equity, total_debt,
+                        cash, operating_cf, capex, ebitda, eps, dps, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+                    ON CONFLICT(ticker, year) DO UPDATE SET
+                        revenue      = COALESCE(excluded.revenue,      revenue),
+                        net_income   = COALESCE(excluded.net_income,   net_income),
+                        equity       = COALESCE(excluded.equity,       equity),
+                        total_debt   = COALESCE(excluded.total_debt,   total_debt),
+                        cash         = COALESCE(excluded.cash,         cash),
+                        operating_cf = COALESCE(excluded.operating_cf, operating_cf),
+                        capex        = COALESCE(excluded.capex,        capex),
+                        ebitda       = COALESCE(excluded.ebitda,       ebitda),
+                        eps          = COALESCE(excluded.eps,          eps),
+                        dps          = COALESCE(excluded.dps,          dps),
+                        updated_at   = excluded.updated_at
+                    """, vals)
+                inserted += 1
 
         elif table == 'prices':
             for r in rows:
-                try:
-                    conn.execute("""
-                        INSERT INTO prices (ticker, date, close, market_cap)
-                        VALUES (?,?,?,?)
-                        ON CONFLICT(ticker, date) DO UPDATE SET
-                            close      = COALESCE(excluded.close,      close),
-                            market_cap = COALESCE(excluded.market_cap, market_cap)
+                conn.execute(
+                    """INSERT INTO prices (ticker, date, close, market_cap)
+                    VALUES (?,?,?,?)
+                    ON CONFLICT(ticker, date) DO UPDATE SET
+                        close      = COALESCE(excluded.close,      close),
+                        market_cap = COALESCE(excluded.market_cap, market_cap)
                     """, (r.get('ticker'), r.get('date'),
                           r.get('close'), r.get('market_cap')))
-                    inserted += 1
-                except Exception:
-                    pass
+                inserted += 1
 
         conn.commit()
         conn.close()
-        return jsonify({'inserted': inserted, 'total': len(rows)})
-    except Exception as exc:
-        return jsonify({'error': str(exc)}), 500
+        return jsonify({'inserted': inserted, 'table': table})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @pipeline_bp.route('/backfill/progress')

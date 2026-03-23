@@ -123,6 +123,16 @@
   <span class="text-muted" style="margin-left:1rem">Scheduled: Sundays 22:00 PHT</span>
 </div>
 
+<!-- Clean Bad DPS -->
+<div class="card full-width">
+  <h2>Clean Bad DPS</h2>
+  <p>NULLs out DPS values that imply implausibly high dividend yields (&gt;20% non-REIT, &gt;30% REIT). Run this after a scrape or DB sync.</p>
+  <div id="clean-dps-result" class="result-box" style="display:none"></div>
+  <button class="btn btn-secondary" id="btn-clean-dps" onclick="triggerCleanDps()">
+    Clean Bad DPS
+  </button>
+</div>
+
 <!-- Historical Backfill -->
 <div class="card full-width">
   <h2>Historical Backfill (2018–2023)</h2>
@@ -292,6 +302,31 @@ function pollJobStatus(type, btn, resultEl) {
       }
     });
   }, 3000);
+}
+
+function triggerCleanDps() {
+  const btn      = document.getElementById('btn-clean-dps');
+  const resultEl = document.getElementById('clean-dps-result');
+  btn.disabled = true;
+  btn.textContent = 'Cleaning...';
+  fetch('/pipeline/clean-dps', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.style.display = 'block';
+      if (d.ok) {
+        resultEl.className = 'result-box result-success';
+        if (d.nulled > 0) {
+          resultEl.textContent = 'Cleaned ' + d.nulled + ' bad DPS row(s): ' + d.tickers_affected.join(', ');
+        } else {
+          resultEl.textContent = 'No bad DPS values found. Data is clean.';
+        }
+      } else {
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = 'Error: ' + d.error;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Clean Bad DPS';
+    });
 }
 
 function showJobBanner(show, msg) {

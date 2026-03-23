@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} Error{% endblock %}
+{% block content %}
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;">
+  <div style="font-size:4rem;font-weight:800;color:var(--text-muted);line-height:1;">{{ code }}</div>
+  <div style="font-size:1.2rem;font-weight:600;margin:1rem 0 0.5rem;">{{ message }}</div>
+  <a href="/" style="margin-top:1.5rem;color:var(--accent);">← Back to Dashboard</a>
+</div>
+{% endblock %}

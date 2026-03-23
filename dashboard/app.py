@@ -19,7 +19,9 @@ sys.path.insert(0, str(ROOT / 'scraper'))
 sys.path.insert(0, str(ROOT / 'alerts'))
 sys.path.insert(0, str(ROOT))
 
-from flask import Flask
+from flask import Flask, render_template, jsonify, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
 
 load_dotenv(ROOT / '.env')
@@ -59,6 +61,39 @@ def create_app() -> Flask:
     )
     app.config['SECRET_KEY'] = _get_or_create_secret_key()
     app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+    # ── Rate limiting ─────────────────────────────────────────
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=['200 per minute', '2000 per hour'],
+        storage_uri='memory://',
+    )
+    # Stricter limits on pipeline trigger endpoints
+    limiter.limit('10 per minute')(app)
+    app.extensions['limiter'] = limiter
+
+    # ── Error handlers ────────────────────────────────────────
+    @app.errorhandler(404)
+    def not_found(e):
+        if request.path.startswith('/api') or request.path.startswith('/pipeline'):
+            return jsonify({'error': 'Not found'}), 404
+        return render_template('error.html', code=404,
+                               message='Page not found.'), 404
+
+    @app.errorhandler(500)
+    def server_error(e):
+        if request.path.startswith('/api') or request.path.startswith('/pipeline'):
+            return jsonify({'error': 'Server error'}), 500
+        return render_template('error.html', code=500,
+                               message='Something went wrong. Try again shortly.'), 500
+
+    @app.errorhandler(429)
+    def rate_limited(e):
+        if request.path.startswith('/api') or request.path.startswith('/pipeline'):
+            return jsonify({'error': 'Too many requests'}), 429
+        return render_template('error.html', code=429,
+                               message='Too many requests. Please slow down.'), 429
 
     # Ensure DB tables exist (including new members/subscriptions/activity_log)
     db.init_db()

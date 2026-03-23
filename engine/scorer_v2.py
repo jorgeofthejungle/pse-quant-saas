@@ -28,7 +28,7 @@ from engine.scorer_acceleration import score_acceleration
 from engine.scorer_persistence import score_persistence
 from engine.sector_stats       import get_sector_pe
 from engine.validator          import calc_data_confidence
-from config                    import SCORER_WEIGHTS
+from config                    import SCORER_WEIGHTS, MIN_SCORE_THRESHOLD
 
 # ── Result categories ─────────────────────────────────────────
 CATEGORIES = [
@@ -249,6 +249,8 @@ def rank_stocks_v2(stocks: list,
         scored.append(enriched)
 
     scored.sort(key=lambda s: s['score'], reverse=True)
+    # Exclude stocks below the minimum score floor
+    scored = [s for s in scored if s['score'] >= MIN_SCORE_THRESHOLD]
     for i, s in enumerate(scored):
         s['rank'] = i + 1
     return scored

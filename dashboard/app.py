@@ -69,8 +69,6 @@ def create_app() -> Flask:
         default_limits=['200 per minute', '2000 per hour'],
         storage_uri='memory://',
     )
-    # Stricter limits on pipeline trigger endpoints
-    limiter.limit('10 per minute')(app)
     app.extensions['limiter'] = limiter
 
     # ── Error handlers ────────────────────────────────────────

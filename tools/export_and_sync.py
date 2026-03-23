@@ -1,7 +1,7 @@
 """
 tools/export_and_sync.py
 ------------------------
-Exports financials + prices from the local DB and POSTs them
+Exports stocks, financials, and prices from the local DB and POSTs them
 to the Railway import endpoint in batches.
 
 Usage:
@@ -9,6 +9,7 @@ Usage:
 """
 import sys
 import json
+import time
 import sqlite3
 import argparse
 import urllib.request
@@ -16,7 +17,9 @@ import urllib.error
 from pathlib import Path
 
 LOCAL_DB = Path(r'C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db')
-BATCH    = 500   # rows per POST
+BATCH    = 200   # rows per POST (smaller to avoid timeouts)
+RETRIES  = 3
+RETRY_DELAY = 5  # seconds
 
 
 def fetch_table(conn, sql, params=()):
@@ -33,15 +36,26 @@ def post_batch(url, table, rows):
         headers = {'Content-Type': 'application/json'},
         method  = 'POST',
     )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        print(f'  HTTP {e.code}: {e.read().decode()[:200]}')
-        return None
-    except Exception as e:
-        print(f'  Error: {e}')
-        return None
+    for attempt in range(1, RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()[:200]
+            if 'locked' in body and attempt < RETRIES:
+                print(f'    DB locked — retrying in {RETRY_DELAY}s ({attempt}/{RETRIES})')
+                time.sleep(RETRY_DELAY)
+                continue
+            print(f'  HTTP {e.code}: {body}')
+            return None
+        except Exception as e:
+            if attempt < RETRIES:
+                print(f'    Error: {e} — retrying in {RETRY_DELAY}s ({attempt}/{RETRIES})')
+                time.sleep(RETRY_DELAY)
+                continue
+            print(f'  Error: {e}')
+            return None
+    return None
 
 
 def sync_table(conn, import_url, table, sql):
@@ -75,12 +89,17 @@ def main():
 
     conn = sqlite3.connect(LOCAL_DB)
 
-    # Sync financials (all years, all tickers)
+    # 1. Sync stocks first (required for foreign key constraints)
+    sync_table(conn, import_url, 'stocks',
+               'SELECT ticker, name, sector, is_reit, is_bank, status, '
+               'cmpy_id, fiscal_year_end_month FROM stocks')
+
+    # 2. Sync financials
     sync_table(conn, import_url, 'financials',
                'SELECT ticker, year, revenue, net_income, equity, total_debt, '
                'cash, operating_cf, capex, ebitda, eps, dps FROM financials')
 
-    # Sync prices (last 400 days to avoid huge payload)
+    # 3. Sync prices (last 400 days)
     sync_table(conn, import_url, 'prices',
                "SELECT ticker, date, close, market_cap FROM prices "
                "WHERE date >= date('now', '-400 days')")

@@ -130,20 +130,43 @@ def clean_dps():
 
 @pipeline_bp.route('/import-db', methods=['POST'])
 def import_db():
-    """Bulk-insert financials or prices rows from a JSON POST (one-time DB sync)."""
+    """Bulk-insert stocks, financials, or prices rows from a JSON POST (one-time DB sync)."""
     try:
         payload = request.get_json(force=True)
         table   = payload.get('table')
         rows    = payload.get('rows', [])
-        if table not in ('financials', 'prices'):
+        if table not in ('stocks', 'financials', 'prices'):
             return jsonify({'error': f'Unknown table: {table}'}), 400
         if not rows:
             return jsonify({'inserted': 0, 'message': 'No rows provided'})
 
         conn = db.get_connection()
+        conn.execute('PRAGMA journal_mode=WAL')
         inserted = 0
 
-        if table == 'financials':
+        if table == 'stocks':
+            for r in rows:
+                conn.execute(
+                    """INSERT INTO stocks
+                       (ticker, name, sector, is_reit, is_bank, status,
+                        cmpy_id, fiscal_year_end_month)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON CONFLICT(ticker) DO UPDATE SET
+                        name                  = COALESCE(excluded.name, name),
+                        sector                = COALESCE(excluded.sector, sector),
+                        is_reit               = COALESCE(excluded.is_reit, is_reit),
+                        is_bank               = COALESCE(excluded.is_bank, is_bank),
+                        status                = COALESCE(excluded.status, status),
+                        cmpy_id               = COALESCE(excluded.cmpy_id, cmpy_id),
+                        fiscal_year_end_month = COALESCE(excluded.fiscal_year_end_month,
+                                                         fiscal_year_end_month)
+                    """,
+                    (r.get('ticker'), r.get('name'), r.get('sector'),
+                     r.get('is_reit'), r.get('is_bank'), r.get('status'),
+                     r.get('cmpy_id'), r.get('fiscal_year_end_month')))
+                inserted += 1
+
+        elif table == 'financials':
             cols = ['ticker', 'year', 'revenue', 'net_income', 'equity',
                     'total_debt', 'cash', 'operating_cf', 'capex', 'ebitda',
                     'eps', 'dps']

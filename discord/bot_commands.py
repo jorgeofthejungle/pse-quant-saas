@@ -66,7 +66,7 @@ def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
     """
     Returns a Discord embed dict for a stock analysis.
     Free tier: grade + name + sector only.
-    Paid tier: full analysis (score, IV, MoS, 4-layer breakdown, metrics).
+    Paid tier: full analysis (score, IV, MoS, 3-layer breakdown, metrics).
     Returns {'error': str} on failure.
     """
     try:
@@ -113,7 +113,7 @@ def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
             'fields': [
                 {
                     'name':   'Grade',
-                    'value':  f'**{grade}** — Subscribe to see the full score, intrinsic value, MoS, and 4-layer breakdown.',
+                    'value':  f'**{grade}** — Subscribe to see the full score, intrinsic value, MoS, and 3-layer breakdown.',
                     'inline': False,
                 },
             ],
@@ -181,7 +181,7 @@ def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
         'inline': False,
     })
 
-    # 4-layer breakdown (condensed — one line each)
+    # 3-layer breakdown (condensed — one line each)
     layer_lines = []
     layers = breakdown.get('layers', {})
     for layer_key, layer_data in layers.items():
@@ -294,7 +294,7 @@ def get_top10_embed(discord_id: str = None) -> dict:
         {'name': 'Last Updated', 'value': last_run, 'inline': True},
         {
             'name':   'Scoring Model',
-            'value':  'Unified 4-Layer (Health · Improvement · Acceleration · Persistence)',
+            'value':  'Unified 3-Layer (Health · Improvement · Persistence)',
             'inline': False,
         },
     ]
@@ -321,7 +321,7 @@ def get_help_embed() -> dict:
         {
             'name':  '📊 /stock <ticker>',
             'value': 'Full analysis for one stock. Example: `/stock DMC`\n'
-                     'Shows score, grade, margin of safety, and 4-layer breakdown.\n'
+                     'Shows score, grade, margin of safety, and 3-layer breakdown.\n'
                      '*Premium members only — DM only.*',
             'inline': False,
         },

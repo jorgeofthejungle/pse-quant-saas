@@ -298,7 +298,7 @@ def run_daily_score():
     Phase 1 — called by the scheduler at 4:00 PM PHT.
 
     1. Scrape latest prices
-    2. Filter + score all stocks using unified 4-layer model
+    2. Filter + score all stocks using unified 3-layer model
     3. Compare with previous run — detect rank/score changes
     4. Send rescore notices to #pse-alerts (Discord)
     5. Enrich top-10 with sentiment, send signals (deduped)

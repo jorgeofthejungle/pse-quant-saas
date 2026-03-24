@@ -229,7 +229,7 @@ def init_db():
         "ALTER TABLE stocks     ADD COLUMN status       TEXT DEFAULT 'active'",
         "ALTER TABLE stocks     ADD COLUMN cmpy_id      TEXT",
         "ALTER TABLE financials ADD COLUMN updated_at   TEXT",
-        # v2 unified scorer columns (Phase 9B)
+        # Deprecated: v2 unified scorer columns (legacy migration, superseded by scores_v2 table)
         "ALTER TABLE scores ADD COLUMN unified_score REAL",
         "ALTER TABLE scores ADD COLUMN unified_rank  INTEGER",
         # Stage 4.3: subscription tier for access control ('free' or 'paid')

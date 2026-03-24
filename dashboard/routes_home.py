@@ -162,7 +162,7 @@ def export_rankings_csv():
         fieldnames = [
             'rank', 'ticker', 'name', 'sector', 'portfolio_type',
             'score', 'confidence', 'health_score', 'improvement_score',
-            'acceleration_score', 'persistence_score', 'run_date',
+            'persistence_score', 'run_date',
         ]
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
@@ -195,11 +195,11 @@ def export_rankings_xlsx():
         PORTFOLIO_TYPES = ['unified', 'dividend', 'value']
         HEADERS = [
             'Rank', 'Ticker', 'Name', 'Sector', 'Score', 'Confidence',
-            'Health', 'Improvement', 'Acceleration', 'Persistence', 'Run Date',
+            'Health', 'Improvement', 'Persistence', 'Run Date',
         ]
         FIELD_KEYS = [
             'rank', 'ticker', 'name', 'sector', 'score', 'confidence',
-            'health_score', 'improvement_score', 'acceleration_score',
+            'health_score', 'improvement_score',
             'persistence_score', 'run_date',
         ]
 
@@ -227,7 +227,7 @@ def export_rankings_xlsx():
                 ws.append([row.get(k, '') for k in FIELD_KEYS])
 
             # Auto-fit column widths (approximate)
-            col_widths = [6, 10, 35, 20, 8, 12, 10, 12, 14, 14, 12]
+            col_widths = [6, 10, 35, 20, 8, 12, 10, 12, 14, 12]
             for i, width in enumerate(col_widths, 1):
                 ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
@@ -305,7 +305,6 @@ def _build_export_rows() -> list:
             layers  = breakdown.get('layers', {})
             health  = layers.get('health', {}).get('score')
             improve = layers.get('improvement', {}).get('score')
-            accel   = layers.get('acceleration', {}).get('score')
             persist = layers.get('persistence', {}).get('score')
 
             confidence_raw = sr['confidence']
@@ -324,7 +323,6 @@ def _build_export_rows() -> list:
                 'confidence':         confidence_pct,
                 'health_score':       round(health, 2) if health is not None else '',
                 'improvement_score':  round(improve, 2) if improve is not None else '',
-                'acceleration_score': round(accel, 2) if accel is not None else '',
                 'persistence_score':  round(persist, 2) if persist is not None else '',
                 'run_date':           sr['run_date'] or '',
             })

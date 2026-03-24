@@ -91,7 +91,7 @@ def _build_educational_embed(ranked_stocks: list, run_date: str) -> dict:
     fields.append({
         'name':  'What do these numbers mean?',
         'value': (
-            '**Score** — 0-100 composite of health, improvement, acceleration & persistence.\n'
+            '**Score** — 0-100 composite of health, improvement & persistence.\n'
             '**Grade A** = strong fundamentals · **B** = good · **C** = fair · **D/F** = weak\n'
             '**MoS** = margin of safety — how far the price is below our estimated fair value.\n'
             'A larger MoS means more cushion. It is a mathematical estimate, not a price target.'

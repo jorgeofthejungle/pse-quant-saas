@@ -11,7 +11,7 @@
       <h1>Stop Guessing.<br>Let the <span>Numbers</span> Decide.</h1>
       <p>
         StockPilot Philippines ranks every PSE-listed company using a
-        4-layer fundamental model — so Filipino investors get clear,
+        3-layer sector-aware fundamental model — so Filipino investors get clear,
         data-driven insights without the hours of research.
         Spend less time on spreadsheets and more time on what matters.
       </p>
@@ -44,11 +44,6 @@
         <span class="hm-bar-val">92</span>
       </div>
       <div class="hm-bar-row">
-        <span class="hm-bar-label">Acceleration</span>
-        <div class="hm-bar-track"><div class="hm-bar-fill" style="width:81%"></div></div>
-        <span class="hm-bar-val">81</span>
-      </div>
-      <div class="hm-bar-row">
         <span class="hm-bar-label">Persistence</span>
         <div class="hm-bar-track"><div class="hm-bar-fill" style="width:89%"></div></div>
         <span class="hm-bar-val">89</span>
@@ -67,7 +62,7 @@
       <span class="trust-desc">PSE stocks tracked</span>
     </div>
     <div class="trust-item">
-      <span class="trust-num">4</span>
+      <span class="trust-num">3</span>
       <span class="trust-desc">Scoring layers</span>
     </div>
     <div class="trust-item">
@@ -103,7 +98,7 @@
   <div class="hiw-step">
     <div class="hiw-num">2</div>
     <strong>Score Each Stock</strong>
-    <p>Each company earns a 0–100 score across 4 layers of fundamentals — no opinions, just math.</p>
+    <p>Each company earns a 0–100 score across 3 layers of fundamentals — no opinions, just math.</p>
   </div>
   <div class="hiw-step">
     <div class="hiw-num">3</div>
@@ -120,12 +115,12 @@
 <!-- Scoring Layers -->
 <div class="section-head">
   <div class="section-label">The Scoring Model</div>
-  <h2>4 Layers. 1 Objective Score.</h2>
-  <p>Every stock is measured the same way — no favourites, no sector bias.</p>
+  <h2>3 Layers. 1 Objective Score.</h2>
+  <p>Every stock is measured the same way — sector-aware, no opinions.</p>
 </div>
 <div class="layers-grid">
   <div class="layer-card">
-    <div class="layer-pct">25%</div>
+    <div class="layer-pct">30%</div>
     <div class="layer-name">Health</div>
     <div class="layer-desc">Is the business strong right now? Measures profitability, debt levels, and cash flow quality today.</div>
     <div class="layer-signals">
@@ -137,7 +132,7 @@
     </div>
   </div>
   <div class="layer-card">
-    <div class="layer-pct">30%</div>
+    <div class="layer-pct">25%</div>
     <div class="layer-name">Improvement</div>
     <div class="layer-desc">Is the business getting better? Tracks whether revenue, earnings, and cash flow have grown over 3 years.</div>
     <div class="layer-signals">
@@ -148,17 +143,7 @@
     </div>
   </div>
   <div class="layer-card">
-    <div class="layer-pct">5%</div>
-    <div class="layer-name">Acceleration</div>
-    <div class="layer-desc">Is the improvement speeding up? A company growing faster this year than last year is an early momentum signal.</div>
-    <div class="layer-signals">
-      <span class="signal-pill">Revenue Acceleration</span>
-      <span class="signal-pill">EPS Acceleration</span>
-      <span class="signal-pill">OCF Acceleration</span>
-    </div>
-  </div>
-  <div class="layer-card">
-    <div class="layer-pct">40%</div>
+    <div class="layer-pct">45%</div>
     <div class="layer-name">Persistence</div>
     <div class="layer-desc">Is the growth consistent? Counts consecutive positive years — rewards reliable compounders over one-time lucky years.</div>
     <div class="layer-signals">
@@ -247,12 +232,11 @@
 
     {% if analysis.layers %}
     <div>
-      <div class="breakdown-label">4-Layer Score Breakdown</div>
+      <div class="breakdown-label">3-Layer Score Breakdown</div>
       {% set layer_labels = {
-        'health':       'Health (25%) — Is the business strong today?',
-        'improvement':  'Improvement (30%) — Is it getting better?',
-        'acceleration': 'Acceleration (5%) — Is improvement speeding up?',
-        'persistence':  'Persistence (40%) — Is it consistent?'
+        'health':       'Health (30%) — Is the business strong today?',
+        'improvement':  'Improvement (25%) — Is it getting better?',
+        'persistence':  'Persistence (45%) — Is it consistent and reliable?'
       } %}
       {% for lk, ld in analysis.layers.items() %}
         {% if ld is mapping %}
@@ -360,8 +344,8 @@
     <summary>What is StockPilot Philippines?</summary>
     <div class="faq-body">
       StockPilot Philippines is a fundamental stock ranking engine that scores all {{ stock_count }} PSE-listed
-      companies using financial data from PSE Edge. It uses a deterministic 4-layer model —
-      Health, Improvement, Acceleration, and Persistence — to give every stock a score from
+      companies using financial data from PSE Edge. It uses a deterministic 3-layer sector-aware model —
+      Health, Improvement, and Persistence — to give every stock a score from
       0 to 100 and a letter grade. There is no AI prediction, no tips, and no guesswork.
       The same inputs always produce the same outputs.
     </div>
@@ -380,12 +364,11 @@
   <details class="faq-item">
     <summary>How is the score calculated?</summary>
     <div class="faq-body">
-      Each stock is evaluated across four layers using data from PSE Edge annual reports:
+      Each stock is evaluated across three layers using data from PSE Edge annual reports:
       <br><br>
-      <strong>Health (25%)</strong> — How strong is the business today? Looks at ROE, margins, debt load, and free cash flow quality.<br>
-      <strong>Improvement (30%)</strong> — Is the business getting better? Measures revenue, earnings, and cash flow growth over 3 years.<br>
-      <strong>Acceleration (5%)</strong> — Is the improvement speeding up? Compares recent growth rate vs. older growth rate.<br>
-      <strong>Persistence (40%)</strong> — Is the growth reliable? Counts consecutive years of positive growth — rewards consistency over luck.
+      <strong>Health (30%)</strong> — How strong is the business today? Looks at ROE, margins, debt load, and earnings stability. Metrics are sector-specific — banks are scored differently from REITs, property, mining, and industrials.<br>
+      <strong>Improvement (25%)</strong> — Is the business getting better? Measures revenue and earnings growth over 3 years, with a momentum bonus for stocks showing acceleration.<br>
+      <strong>Persistence (45%)</strong> — Is the growth reliable? Counts consecutive years of positive growth — rewards consistency over luck.
       <br><br>
       These are combined into a single score (0–100). The math is pure and deterministic —
       no machine learning, no sentiment, no analyst opinion.

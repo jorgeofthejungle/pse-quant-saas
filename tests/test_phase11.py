@@ -245,22 +245,20 @@ def test_confidence_1_year():
     print('  confidence 1yr = 0.0: PASS')
 
 
-# ── Task 8: Acceleration weight adjustment ────────────────
+# ── Task 8: 3-layer weight validation ────────────────────
 
-def test_acceleration_weight_is_5_percent():
-    """Acceleration weight should be 5% (reduced from 15%) for all portfolio types."""
+def test_3layer_weights_sum_to_1():
+    """All 3-layer weights (health, improvement, persistence) must sum to 1.0."""
     from config import SCORER_WEIGHTS
-    unified = SCORER_WEIGHTS['unified']
-    assert unified['acceleration'] == 0.05, \
-        f"Unified acceleration should be 0.05, got {unified['acceleration']}"
-    assert unified['persistence'] == 0.40, \
-        f"Unified persistence should be 0.40, got {unified['persistence']}"
-    # All portfolio types must sum to 1.0
     for pt, w in SCORER_WEIGHTS.items():
         total = sum(w.values())
         assert abs(total - 1.0) < 0.001, \
             f"Weights for '{pt}' must sum to 1.0, got {total}"
-    print('  acceleration weight = 5%: PASS')
+        assert 'health' in w and 'improvement' in w and 'persistence' in w, \
+            f"Portfolio '{pt}' missing required layers"
+        assert 'acceleration' not in w, \
+            f"Portfolio '{pt}' still contains removed acceleration layer"
+    print('  3-layer weights sum to 1.0: PASS')
 
 
 from engine.sector_stats import compute_sector_stats
@@ -393,7 +391,7 @@ if __name__ == '__main__':
         test_confidence_3_years,
         test_confidence_2_years,
         test_confidence_1_year,
-        test_acceleration_weight_is_5_percent,
+        test_3layer_weights_sum_to_1,
         test_sector_stats_includes_roe,
         test_sector_stats_pe_filter_50,
         test_health_sector_relative_blend,

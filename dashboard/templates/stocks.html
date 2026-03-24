@@ -105,14 +105,13 @@
     </div>
 
     <div class="card-row" style="margin-bottom:1.25rem;">
-      <!-- ── 4-Layer score breakdown ── -->
+      <!-- ── 3-Layer score breakdown ── -->
       <div class="card" style="flex:2;">
-        <h2>4-Layer Score Breakdown</h2>
+        <h2>3-Layer Score Breakdown</h2>
         {% set layers = [
-          ('health',       'Financial Health',    '25%', 'Is the company financially healthy today?'),
-          ('improvement',  'Business Improvement','30%', 'Are fundamentals improving over 3+ years?'),
-          ('acceleration', 'Growth Acceleration', '5%',  'Is the improvement speeding up?'),
-          ('persistence',  'Consistency',         '40%', 'Are improvements sustained year over year?'),
+          ('health',       'Financial Health',    '30%', 'Is the company financially healthy today?'),
+          ('improvement',  'Business Improvement','25%', 'Are fundamentals improving over 3+ years?'),
+          ('persistence',  'Persistence',         '45%', 'Are improvements sustained year over year?'),
         ] %}
         {% for key, label, weight, desc in layers %}
           {% set layer = bd.layers[key] %}

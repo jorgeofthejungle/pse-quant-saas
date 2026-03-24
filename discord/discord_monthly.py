@@ -206,8 +206,8 @@ def send_model_performance(
         'name':   '📊 How to Read This',
         'value':  (
             f'Scores compared: **{latest_date}** {prior_label}.\n'
-            'Scoring uses a 4-layer framework: Health (25%) · Improvement (30%) · '
-            'Acceleration (15%) · Persistence (30%).\n\n'
+            'Scoring uses a 3-layer framework: Health (30%) · Improvement (25%) · '
+            'Persistence (45%).\n\n'
             '_Score shifts reflect changes in financial data, not market prices. '
             'A rising score means the company\'s fundamentals are improving._'
         ),

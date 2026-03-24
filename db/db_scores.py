@@ -109,7 +109,7 @@ def get_last_scores(portfolio_type: str) -> list:
 def save_scores_v2(run_date: str, ranked_stocks: list,
                    portfolio_type: str = 'unified'):
     """
-    Saves unified 4-layer scores to the scores_v2 table.
+    Saves unified 3-layer scores to the scores_v2 table.
     Stores rank, score, grade category, and full breakdown as JSON.
     Each (ticker, run_date, portfolio_type) triple is unique — upserts on conflict.
 

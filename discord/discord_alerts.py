@@ -439,7 +439,7 @@ def send_stock_of_week(
             'inline': True,
         })
 
-    # 4-layer breakdown
+    # 3-layer breakdown
     layer_lines = []
     for layer_key, layer_data in (layers or {}).items():
         if not isinstance(layer_data, dict):
@@ -561,7 +561,7 @@ def send_weekly_briefing(
             'value':  (
                 '• Full top 10+ with exact scores (e.g. 83.7/100)\n'
                 '• Intrinsic value and margin of safety %\n'
-                '• 4-layer breakdown: Health · Improvement · Acceleration · Persistence\n'
+                '• 3-layer breakdown: Health · Improvement · Persistence\n'
                 '• `/stock <ticker>` via DM for any PSE stock'
             ),
             'inline': False,
@@ -571,7 +571,7 @@ def send_weekly_briefing(
     embed = {
         'title':       f'📊 StockPilot PH — Weekly Briefing  |  {date_str}',
         'description': (
-            'Rankings updated daily at 4 PM PHT using our 4-layer fundamental model '
+            'Rankings updated daily at 4 PM PHT using our 3-layer fundamental model '
             'across 223 PSE stocks.'
             + teaser
         ),

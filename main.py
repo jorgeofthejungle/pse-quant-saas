@@ -1,13 +1,12 @@
 # ============================================================
 # main.py — PSE Quant SaaS Pipeline Orchestrator (v2)
-# PSE Quant SaaS — Phase 9B
+# PSE Quant SaaS — Phase 13
 # ============================================================
-# Runs the unified 3-layer fundamental pipeline:
-#   Load → Validate → Health Filter → Score (4 layers) → MoS → PDF → Discord
+# Runs the unified 3-layer sector-aware fundamental pipeline:
+#   Load → Validate → Health Filter → Score (3 layers, sector-aware) → MoS → PDF → Discord
 #
-# Replaces the old 3-portfolio system with a single unified ranking
-# using: Health (25%) + Improvement (30%) + Acceleration (15%) +
-#        Persistence (30%)
+# Sector-aware scoring: Health + Improvement + Persistence
+# Weights vary by portfolio type — see config.py SCORER_WEIGHTS
 #
 # Data source (auto-selected):
 #   1. Real data  — loads from SQLite DB

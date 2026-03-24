@@ -254,7 +254,7 @@ def run_simulation(portfolio_type: str, as_of_year: int) -> list:
 
 def run_simulation_v2(as_of_year: int) -> list:
     """
-    Unified 4-layer backtest simulation for a given year.
+    Unified 3-layer backtest simulation for a given year.
     Uses filter_unified + score_unified (v2 engine).
     Returns a ranked list: [{ticker, name, score, rank, category, breakdown}].
     """
@@ -280,7 +280,7 @@ def run_simulation_v2(as_of_year: int) -> list:
         ok, _ = filter_unified(metrics)
         if not ok:
             continue
-        # Build financial history as a list of dicts (for improvement/acceleration layers)
+        # Build financial history as a list of dicts (for improvement/persistence layers)
         fin_history = []
         raw_conn = db.get_connection()
         rows = raw_conn.execute(
@@ -529,7 +529,7 @@ def main():
     )
     parser.add_argument('--mode',
         choices=['unified', 'legacy'], default='unified',
-        help='unified = 4-layer v2 scorer (default); legacy = 3-portfolio scorer')
+        help='unified = 3-layer v2 scorer (default); legacy = 3-portfolio scorer')
     parser.add_argument('--portfolio',
         choices=['pure_dividend', 'dividend_growth', 'value'], default='pure_dividend',
         help='Only used when --mode legacy')

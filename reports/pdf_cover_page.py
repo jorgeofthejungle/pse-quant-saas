@@ -102,25 +102,41 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         portfolio_type,
         ('About This Report', 'Quantitative stock analysis report.')
     )
-    desc_tbl = Table(
-        [
-            [Paragraph(p_title, ParagraphStyle(
-                'DT', fontSize=10, textColor=NAVY,
-                fontName='Helvetica-Bold'
-            ))],
-            [Paragraph(p_desc, ParagraphStyle(
-                'DB', fontSize=9, textColor=BLACK,
-                fontName='Helvetica', leading=14
-            ))],
-        ],
-        colWidths=[CONTENT_WIDTH]
+
+    title_style = ParagraphStyle(
+        'DT', fontSize=13, textColor=NAVY,
+        fontName='Helvetica-Bold', spaceAfter=6
     )
+    body_style = ParagraphStyle(
+        'DB', fontSize=10, textColor=BLACK,
+        fontName='Helvetica', leading=16, spaceAfter=6
+    )
+    bold_style = ParagraphStyle(
+        'DBB', fontSize=10, textColor=NAVY,
+        fontName='Helvetica-Bold', leading=16, spaceAfter=2
+    )
+
+    # Split on <br/> and render each chunk as its own Paragraph
+    desc_rows = [[Paragraph(p_title, title_style)]]
+    for chunk in p_desc.split('<br/>'):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        # Detect pillar lines (bold tag present) vs normal body text
+        if chunk.startswith('<b>'):
+            desc_rows.append([Paragraph(chunk, bold_style)])
+        else:
+            desc_rows.append([Paragraph(chunk, body_style)])
+
+    desc_tbl = Table(desc_rows, colWidths=[CONTENT_WIDTH])
     desc_tbl.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), GOLD_LIGHT),
-        ('TOPPADDING',    (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 12),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 14),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
+        ('TOPPADDING',    (0, 0), (0, 0),   10),   # extra top for title row
+        ('BOTTOMPADDING', (0, -1), (0, -1), 10),   # extra bottom for last row
         ('LINEBEFORE',    (0, 0), (0, -1),  4, GOLD),
         ('BOX',           (0, 0), (-1, -1), 0.5, MID_GREY),
     ]))
@@ -142,16 +158,16 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
             ],
             [
                 Paragraph(str(total_stocks), ParagraphStyle(
-                    'SN1', fontSize=26, textColor=NAVY,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold'
+                    'SN1', fontSize=32, textColor=NAVY,
+                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=36
                 )),
                 Paragraph(str(eligible_stocks), ParagraphStyle(
-                    'SN2', fontSize=26, textColor=GREEN,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold'
+                    'SN2', fontSize=32, textColor=GREEN,
+                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=36
                 )),
                 Paragraph(run_date, ParagraphStyle(
-                    'SN3', fontSize=9, textColor=NAVY,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold'
+                    'SN3', fontSize=10, textColor=NAVY,
+                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=14
                 )),
             ],
             [
@@ -172,11 +188,11 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         ('BOX',           (0, 0), (-1, -1), 1,   NAVY),
         ('LINEABOVE',     (0, 0), (-1, 0),  2,   GOLD),
         ('LINEAFTER',     (0, 0), (1, -1),  0.5, MID_GREY),
-        ('TOPPADDING',    (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING',    (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
     ]))
     elements.append(stats)
-    elements.append(Spacer(1, 8 * mm))
+    elements.append(PageBreak())
 
     elements.append(Paragraph(
         'HOW TO READ THIS REPORT', styles['SectionHeader']
@@ -203,9 +219,19 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
          'fair value estimate. A bigger margin gives you more protection if our '
          'calculations turn out to be slightly off.'),
         ('MoS BUY PRICE',
-         'This is the price level where we consider the stock to offer good value. '
-         'When the current price is at or below this level, the stock is inside '
-         'the buy zone based on our model.'),
+         'This is the price level at which our model estimates the stock offers a '
+         'meaningful margin of safety — meaning the price is sufficiently below '
+         'our intrinsic value estimate. It is a mathematical reference point, '
+         'not a recommendation to buy.'),
+        ('DATA (Years)',
+         'This shows how many years of financial data are available for that stock — '
+         '5yr, 4yr, 3yr, or 2yr. More data means a more reliable score. '
+         'A 5yr score is computed from a full history and carries full weight. '
+         'A 2yr score is based on limited history and is automatically discounted '
+         'by our confidence multiplier — the raw score is reduced to reflect '
+         'the higher uncertainty. '
+         'Treat 2yr and 3yr stocks as early signals worth watching, '
+         'not yet confirmed candidates.'),
     ]
 
     for title, desc in how_to:

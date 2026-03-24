@@ -43,24 +43,36 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
 
     if portfolio_type == 'dividend':
         headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'Yield', 'CAGR', 'MoS%', 'Buy Price', 'Signal']
-        col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
-                   14*mm, 14*mm, 12*mm, 18*mm, 26*mm]
+                   'Yield', 'CAGR', 'MoS%', 'Buy Price', 'Signal', 'Data']
+        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
+                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
     elif portfolio_type == 'value':
         headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'P/E', 'ROE', 'MoS%', 'Buy Price', 'Signal']
-        col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
-                   14*mm, 14*mm, 12*mm, 18*mm, 26*mm]
+                   'P/E', 'ROE', 'MoS%', 'Buy Price', 'Signal', 'Data']
+        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
+                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
     elif portfolio_type == 'unified':
         headers = ['#', 'Ticker', 'Company', 'Score', 'Category',
-                   'Hlth', 'Impr', 'Accel', 'Prst', 'MoS%', 'Signal']
-        col_w   = [7*mm, 13*mm, 37*mm, 13*mm, 21*mm,
-                   12*mm, 12*mm, 11*mm, 12*mm, 11*mm, 25*mm]
+                   'Hlth', 'Impr', 'Prst', 'MoS%', 'Signal', 'Data']
+        col_w   = [9*mm, 12*mm, 30*mm, 12*mm, 20*mm,
+                   12*mm, 12*mm, 12*mm, 11*mm, 30*mm, 11*mm]
     else:
         headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'Yield', 'P/E', 'MoS%', 'Buy Price', 'Signal']
-        col_w   = [8*mm, 14*mm, 36*mm, 14*mm, 18*mm,
-                   14*mm, 14*mm, 12*mm, 18*mm, 26*mm]
+                   'Yield', 'P/E', 'MoS%', 'Buy Price', 'Signal', 'Data']
+        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
+                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
+
+    def _conf_label(confidence):
+        if confidence >= 0.95:  return '5yr'
+        if confidence >= 0.85:  return '4yr'
+        if confidence >= 0.75:  return '3yr'
+        return '2yr'
+
+    def _conf_color(confidence):
+        if confidence >= 0.95:  return GREEN
+        if confidence >= 0.85:  return BLUE
+        if confidence >= 0.75:  return ORANGE
+        return RED
 
     header_row = [Paragraph(h, th) for h in headers]
     data_rows  = [header_row]
@@ -69,6 +81,7 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         sc  = stock.get('score', 0)
         mp  = stock.get('mos_pct', None)
         sig = mos_signal(mp)
+        conf = stock.get('confidence', 1.0)
 
         if portfolio_type == 'dividend':
             cols = [
@@ -82,6 +95,7 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',
                 sig,
+                _conf_label(conf),
             ]
         elif portfolio_type == 'value':
             cols = [
@@ -95,13 +109,13 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',
                 sig,
+                _conf_label(conf),
             ]
         elif portfolio_type == 'unified':
             layers = stock.get('breakdown', {}).get('layers', {})
-            h_s = layers.get('health',       {}).get('score')
-            i_s = layers.get('improvement',  {}).get('score')
-            a_s = layers.get('acceleration', {}).get('score')
-            p_s = layers.get('persistence',  {}).get('score')
+            h_s = layers.get('health',      {}).get('score')
+            i_s = layers.get('improvement', {}).get('score')
+            p_s = layers.get('persistence', {}).get('score')
             cat = stock.get('category', '')
             cols = [
                 str(i+1), stock.get('ticker', ''),
@@ -110,10 +124,10 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 cat,
                 f"{h_s:.0f}" if h_s is not None else 'N/A',
                 f"{i_s:.0f}" if i_s is not None else 'N/A',
-                f"{a_s:.0f}" if a_s is not None else '-',
                 f"{p_s:.0f}" if p_s is not None else 'N/A',
                 f"{mp:.1f}%" if mp is not None else 'N/A',
                 sig,
+                _conf_label(conf),
             ]
         else:
             cols = [
@@ -127,6 +141,7 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
                 f"P{stock.get('mos_price', 0):.2f}"
                 if stock.get('mos_price') else 'N/A',
                 sig,
+                _conf_label(conf),
             ]
 
         data_rows.append([Paragraph(str(c), td) for c in cols])
@@ -147,8 +162,9 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         bg = LIGHT_GREY if i % 2 == 0 else WHITE
         tbl_style.append(('BACKGROUND', (0, i), (-1, i), bg))
 
-    mos_col_idx = 9  if portfolio_type == 'unified' else 7
-    sig_col_idx = 10 if portfolio_type == 'unified' else 9
+    mos_col_idx  = 8  if portfolio_type == 'unified' else 7
+    sig_col_idx  = 9  if portfolio_type == 'unified' else 9
+    data_col_idx = 10
 
     for i, stock in enumerate(ranked_stocks):
         sc  = stock.get('score', 0)
@@ -164,12 +180,15 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
         sig_col, _ = MOS_EXPLAIN.get(sig, (DARK_GREY, ''))
         tbl_style.append(('TEXTCOLOR', (sig_col_idx, i+1), (sig_col_idx, i+1), sig_col))
         tbl_style.append(('FONTNAME',  (sig_col_idx, i+1), (sig_col_idx, i+1), 'Helvetica-Bold'))
+        # Data confidence column — color coded green/blue/orange/red
+        conf = stock.get('confidence', 1.0)
+        tbl_style.append(('TEXTCOLOR', (data_col_idx, i+1), (data_col_idx, i+1), _conf_color(conf)))
+        tbl_style.append(('FONTNAME',  (data_col_idx, i+1), (data_col_idx, i+1), 'Helvetica-Bold'))
 
         # Unified: color each layer score column by its score
         if portfolio_type == 'unified':
             layers = stock.get('breakdown', {}).get('layers', {})
-            for col_idx, lname in [(5, 'health'), (6, 'improvement'),
-                                   (7, 'acceleration'), (8, 'persistence')]:
+            for col_idx, lname in [(5, 'health'), (6, 'improvement'), (7, 'persistence')]:
                 ls = layers.get(lname, {}).get('score')
                 if ls is not None:
                     tbl_style.append(('TEXTCOLOR', (col_idx, i+1), (col_idx, i+1), score_color(ls)))
@@ -409,15 +428,14 @@ def generate_overall_assessment(stock, score, portfolio_type):
             f"or growth targets can be sustained"
         )
 
-    # Unified: use 4-layer breakdown for the assessment text
+    # Unified: use 3-layer breakdown for the assessment text
     if portfolio_type == 'unified':
         breakdown = stock.get('breakdown', {})
         layers    = breakdown.get('layers', {})
         category  = breakdown.get('category', '')
-        h_s = layers.get('health',       {}).get('score', 0) or 0
-        i_s = layers.get('improvement',  {}).get('score', 0) or 0
-        a_s = layers.get('acceleration', {}).get('score')
-        p_s = layers.get('persistence',  {}).get('score', 0) or 0
+        h_s = layers.get('health',      {}).get('score', 0) or 0
+        i_s = layers.get('improvement', {}).get('score', 0) or 0
+        p_s = layers.get('persistence', {}).get('score', 0) or 0
 
         u_lines = [f"{ticker} earns a unified score of {score:.0f}/100 "
                    f"and is classified as: {category}."]
@@ -433,12 +451,6 @@ def generate_overall_assessment(stock, score, portfolio_type):
             u_str.append(f"clearly improving fundamentals ({i_s:.0f}/100)")
         elif i_s < 40:
             u_con.append(f"limited fundamental improvement ({i_s:.0f}/100)")
-
-        if a_s is not None:
-            if a_s >= 65:
-                u_str.append(f"accelerating momentum ({a_s:.0f}/100)")
-            elif a_s < 40:
-                u_con.append(f"slowing momentum ({a_s:.0f}/100)")
 
         if p_s >= 70:
             u_str.append(f"highly consistent multi-year improvement ({p_s:.0f}/100)")

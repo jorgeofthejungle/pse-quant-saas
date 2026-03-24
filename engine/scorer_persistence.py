@@ -1,272 +1,178 @@
 # ============================================================
-# scorer_persistence.py — Layer 4: Persistence Score
-# PSE Quant SaaS — Phase 9B (v2 Unified Scorer)
+# scorer_persistence.py — Persistence Layer Scorer (Sector-Specific)
+# PSE Quant SaaS
 # ============================================================
 # Answers: "Is the improvement consistent and sustainable?"
 #
-# Persistence is the most valuable signal for the Philippine market
-# because most PSE stocks are erratic. Consistent multi-year
-# improvement separates genuine quality from one-time spikes.
+# Sub-scores and weights driven by SECTOR_SCORING_CONFIG in config.py.
 #
-# Signals:
-#   - Revenue Persistence     (35%) — consecutive positive YoY changes
-#   - EPS Persistence         (30%) — consecutive positive YoY changes
-#   - OCF Persistence         (20%) — consecutive positive YoY changes
-#   - Direction Consistency   (15%) — all 3 metrics improve same year
+# Available sub-scores:
+#   revenue   — persistence of revenue growth
+#   eps       — persistence of EPS growth
+#   dps       — persistence of dividend payments (REITs)
+#   direction — % of years where all available metrics improved together
 #
-# Scoring logic:
-#   Score = (positive years / total years) → normalised 0-100
-#   Consecutive positive runs weighted more than scattered positives.
+# Each metric persistence = direction(60pts) + magnitude(20pts) + streak(20pts)
 #
-# Returns: (score: float 0-100, breakdown: dict)
+# Entry: score_persistence(stock, scoring_group)
+#        → (score: float | None, breakdown: dict)
 # ============================================================
 
 from __future__ import annotations
+from engine.scorer_utils import _blend_checked
+from engine.sector_groups import get_layer_config
+from config import MIN_SUBSCORES_PER_LAYER
 
 
-def _blend(scores_weights: list) -> float:
-    valid = [(s, w) for s, w in scores_weights if s is not None]
-    if not valid:
-        return 0.0
-    total_w = sum(w for _, w in valid)
-    return round(sum(s * (w / total_w) for s, w in valid), 1)
+def _yoy_changes(series: list) -> list:
+    """YoY % changes from a series (newest first). Returns newest-first."""
+    valid = [v for v in series if v is not None]
+    changes = []
+    for i in range(len(valid) - 1):
+        curr, prev = valid[i], valid[i + 1]
+        if prev and prev != 0:
+            changes.append((curr - prev) / abs(prev) * 100)
+    return changes  # newest first
 
 
-# ── Persistence helpers ───────────────────────────────────────
-
-def _yoy_directions(series: list) -> list[int]:
+def _single_persistence(series: list) -> float | None:
     """
-    Returns list of +1 (improvement) or -1 (decline) for each YoY change.
-    Newest-first series → newest direction first.
+    Score persistence of a single metric series.
+    Formula: direction(60pts) + magnitude(20pts) + streak_bonus(20pts)
+    Returns None if fewer than 2 data points.
     """
-    clean = [v for v in series if v is not None]
-    if len(clean) < 2:
-        return []
-    directions = []
-    for i in range(len(clean) - 1):
-        directions.append(1 if clean[i] > clean[i + 1] else -1)
-    return directions
-
-
-def _persistence_ratio(series: list, years: int = 5) -> tuple[float, int, int]:
-    """
-    Returns (ratio, positive_count, total_count).
-    ratio = positive_changes / total_changes over last N years.
-    Uses up to `years` most recent YoY comparisons.
-    """
-    directions = _yoy_directions(series)[:years]
-    if not directions:
-        return 0.0, 0, 0
-    total    = len(directions)
-    positive = sum(1 for d in directions if d > 0)
-    return positive / total, positive, total
-
-
-def _consecutive_streak(series: list) -> int:
-    """
-    Returns the length of the most recent consecutive positive streak.
-    A streak of 4+ is rare and exceptional for PSE stocks.
-    """
-    directions = _yoy_directions(series)
-    streak = 0
-    for d in directions:
-        if d > 0:
-            streak += 1
-        else:
-            break
-    return streak
-
-
-def _score_single_persistence(series: list | None,
-                               min_years: int = 2) -> float | None:
-    """
-    Scores persistence for a single metric series (0-100).
-    Blended formula: direction (60pts) + magnitude (20pts) + streak (20pts).
-
-    Magnitude scoring (avg positive YoY change):
-        >= 15%  ->  20 pts
-        10-15%  ->  15 pts
-         5-10%  ->  10 pts
-          1-5%  ->   5 pts
-          < 1%  ->   2 pts
-    """
-    if not series:
-        return None
-    clean = [v for v in series if v is not None]
-    if len(clean) < min_years + 1:
+    changes = _yoy_changes(series)
+    if not changes:
         return None
 
-    ratio, pos, total = _persistence_ratio(series, years=5)
-    streak = _consecutive_streak(series)
+    pos = [c for c in changes if c > 0]
+    ratio = len(pos) / len(changes)
 
-    # -- Direction score: 0-60 points --
+    # Direction score (0-60)
     direction = ratio * 60
 
-    # -- Magnitude score: 0-20 points --
-    changes = []
-    for i in range(len(clean) - 1):
-        prior = clean[i + 1]
-        curr  = clean[i]
-        if prior != 0:
-            pct = (curr - prior) / abs(prior) * 100
-            if pct > 0:
-                changes.append(pct)
-    if changes:
-        avg_positive = sum(changes) / len(changes)
-        if avg_positive >= 15:
-            magnitude = 20
-        elif avg_positive >= 10:
-            magnitude = 15
-        elif avg_positive >= 5:
-            magnitude = 10
-        elif avg_positive >= 1:
-            magnitude = 5
-        else:
-            magnitude = 2
+    # Magnitude score (0-20) — avg positive YoY change
+    if pos:
+        avg_pos = sum(pos) / len(pos)
+        if avg_pos >= 15:   magnitude = 20
+        elif avg_pos >= 10: magnitude = 15
+        elif avg_pos >= 5:  magnitude = 10
+        elif avg_pos >= 1:  magnitude = 5
+        else:               magnitude = 2
     else:
         magnitude = 0
 
-    # -- Streak bonus: 0-20 points --
+    # Streak bonus (0-20) — consecutive positive years (newest first)
+    streak = 0
+    for c in changes:
+        if c > 0:
+            streak += 1
+        else:
+            break
     bonus = min(streak * 5, 20)
 
-    raw_score = direction + magnitude + bonus
+    raw = direction + magnitude + bonus
+    # Penalty: if most recent year declined and score is inflated
+    if streak == 0 and raw > 65:
+        raw = 65
 
-    # Penalty: if streak is 0 (most recent year declined), cap at 65
-    if streak == 0 and raw_score > 65:
-        raw_score = 65
-
-    return round(min(raw_score, 100), 1)
+    return min(float(raw), 100.0)
 
 
-def _direction_consistency(rev_series: list | None,
-                            eps_series: list | None,
-                            ocf_series: list | None,
-                            years: int = 4) -> float | None:
-    """
-    Measures how often ALL three metrics improve in the same year.
-    Returns score 0-100, or None if any series is missing.
-    """
-    if not rev_series or not eps_series or not ocf_series:
+def _score_revenue(stock: dict, _group: str) -> float | None:
+    series = stock.get('revenue_5y') or []
+    return _single_persistence(series)
+
+
+def _score_eps(stock: dict, _group: str) -> float | None:
+    series = stock.get('eps_5y') or stock.get('eps_3y') or []
+    return _single_persistence(series)
+
+
+def _score_dps(stock: dict, _group: str) -> float | None:
+    """Dividend persistence — primarily for REITs."""
+    series = stock.get('dividends_5y') or []
+    paying = [d for d in series if d and d > 0]
+    if len(paying) < 2:
         return None
-
-    rev_dirs = _yoy_directions(rev_series)[:years]
-    eps_dirs = _yoy_directions(eps_series)[:years]
-    ocf_dirs = _yoy_directions(ocf_series)[:years]
-
-    n = min(len(rev_dirs), len(eps_dirs), len(ocf_dirs))
-    if n < 2:
-        return None
-
-    all_positive = sum(
-        1 for i in range(n)
-        if rev_dirs[i] > 0 and eps_dirs[i] > 0 and ocf_dirs[i] > 0
-    )
-    ratio = all_positive / n
-    return round(ratio * 100, 1)
+    return _single_persistence(paying)
 
 
-# ── Main scorer ───────────────────────────────────────────────
-
-def score_persistence(stock: dict) -> tuple[float, dict]:
+def _score_direction(stock: dict, _group: str) -> float | None:
     """
-    Layer 4 — Persistence Score.
-    Evaluates whether improvement is consistent and reliable.
-    Returns (score 0-100, breakdown).
-
-    Required stock dict keys:
-        revenue_5y, eps_5y, operating_cf_history
+    % of years where all available metrics improved together.
+    Uses Revenue and EPS as the two core universal signals.
+    Returns None if insufficient data.
     """
     rev_series = stock.get('revenue_5y') or []
-    eps_series = stock.get('eps_5y') or []
-    ocf_series = stock.get('operating_cf_history') or []
+    eps_series = stock.get('eps_5y') or stock.get('eps_3y') or []
 
-    rev_s = _score_single_persistence(rev_series)
-    eps_s = _score_single_persistence(eps_series)
-    ocf_s = _score_single_persistence(ocf_series)
-    dir_s = _direction_consistency(rev_series, eps_series, ocf_series)
+    rev_valid = [v for v in rev_series if v is not None]
+    eps_valid = [v for v in eps_series if v is not None]
 
-    score = _blend([
-        (rev_s, 0.35),
-        (eps_s, 0.30),
-        (ocf_s, 0.20),
-        (dir_s, 0.15),
-    ])
+    years = min(len(rev_valid), len(eps_valid))
+    if years < 3:
+        return None
 
-    # Compute summary metrics for display
-    rev_ratio, rev_pos, rev_total = _persistence_ratio(rev_series)
-    eps_ratio, eps_pos, eps_total = _persistence_ratio(eps_series)
-    ocf_ratio, ocf_pos, ocf_total = _persistence_ratio(ocf_series)
-    rev_streak = _consecutive_streak(rev_series)
-    eps_streak = _consecutive_streak(eps_series)
+    # How many years did both rev AND eps improve?
+    both_pos = 0
+    total    = 0
+    for i in range(min(years - 1, 4)):
+        rev_up = (rev_valid[i] - rev_valid[i + 1]) / abs(rev_valid[i + 1]) > 0 if rev_valid[i + 1] else False
+        eps_up = (eps_valid[i] - eps_valid[i + 1]) / abs(eps_valid[i + 1]) > 0 if eps_valid[i + 1] else False
+        total += 1
+        if rev_up and eps_up:
+            both_pos += 1
+
+    if total == 0:
+        return None
+    return (both_pos / total) * 100
+
+
+# ── Sub-score dispatcher ──────────────────────────────────
+
+_SUBSCORERS = {
+    'revenue':   _score_revenue,
+    'eps':       _score_eps,
+    'dps':       _score_dps,
+    'direction': _score_direction,
+}
+
+
+# ── Main entry ────────────────────────────────────────────
+
+def score_persistence(stock: dict,
+                      scoring_group: str) -> tuple[float | None, dict]:
+    """
+    Score the Persistence layer for this stock using sector-specific config.
+
+    Args:
+        stock:         canonical stock dict
+        scoring_group: from engine.sector_groups.get_scoring_group()
+
+    Returns:
+        (score: float | None, breakdown: dict)
+    """
+    layer_cfg = get_layer_config(scoring_group, 'persistence')
+    if not layer_cfg:
+        return None, {'error': f'No persistence config for group={scoring_group}'}
+
+    scores_weights = []
+    factors: dict  = {}
+
+    for sub_name, weight in layer_cfg.items():
+        fn = _SUBSCORERS.get(sub_name)
+        if fn is None:
+            continue
+        s = fn(stock, scoring_group)
+        scores_weights.append((s, weight))
+        factors[sub_name] = round(s, 1) if s is not None else None
+
+    score = _blend_checked(scores_weights, min_subscores=MIN_SUBSCORES_PER_LAYER)
 
     breakdown = {
-        'revenue_persistence': {
-            'score':       rev_s,
-            'weight':      0.35,
-            'value':       f"{rev_pos}/{rev_total}" if rev_total > 0 else None,
-            'explanation': _explain_persistence(
-                'Revenue', rev_pos, rev_total, rev_streak),
-        },
-        'eps_persistence': {
-            'score':       eps_s,
-            'weight':      0.30,
-            'value':       f"{eps_pos}/{eps_total}" if eps_total > 0 else None,
-            'explanation': _explain_persistence(
-                'EPS', eps_pos, eps_total, eps_streak),
-        },
-        'ocf_persistence': {
-            'score':       ocf_s,
-            'weight':      0.20,
-            'value':       f"{ocf_pos}/{ocf_total}" if ocf_total > 0 else None,
-            'explanation': _explain_persistence(
-                'Operating Cash Flow', ocf_pos, ocf_total,
-                _consecutive_streak(ocf_series)),
-        },
-        'direction_consistency': {
-            'score':       dir_s,
-            'weight':      0.15,
-            'value':       round(dir_s, 1) if dir_s is not None else None,
-            'explanation': _explain_direction_consistency(dir_s),
-        },
+        'score':   round(score, 1) if score is not None else None,
+        'group':   scoring_group,
+        'factors': factors,
     }
-
     return score, breakdown
-
-
-# ── Plain-English explanations ────────────────────────────────
-
-def _explain_persistence(metric: str, positive: int, total: int,
-                          streak: int) -> str:
-    if total == 0:
-        return f"{metric} persistence data not available."
-    pct = positive / total * 100
-    streak_note = (f" Current streak: {streak} consecutive positive year(s)."
-                   if streak > 0 else " Most recent year showed a decline.")
-    if pct >= 80:
-        return (f"{metric} improved in {positive}/{total} of the last {total} years "
-                f"({pct:.0f}% consistency) — highly reliable growth.{streak_note}")
-    if pct >= 60:
-        return (f"{metric} improved in {positive}/{total} years "
-                f"({pct:.0f}%) — generally improving with occasional dips.{streak_note}")
-    if pct >= 40:
-        return (f"{metric} improved in {positive}/{total} years "
-                f"({pct:.0f}%) — mixed results, limited consistency.{streak_note}")
-    return (f"{metric} improved in only {positive}/{total} years "
-            f"({pct:.0f}%) — erratic or declining trend.{streak_note}")
-
-
-def _explain_direction_consistency(score: float | None) -> str:
-    if score is None:
-        return ("Direction consistency requires revenue, EPS, and OCF data. "
-                "One or more series unavailable.")
-    if score >= 75:
-        return (f"All three key metrics (revenue, EPS, cash flow) improved "
-                f"together in {score:.0f}% of measured years — highly coordinated growth.")
-    if score >= 50:
-        return (f"All three key metrics improved together in {score:.0f}% of years. "
-                f"Growth is broad-based but not always synchronized.")
-    if score >= 25:
-        return (f"All three key metrics improved together in only {score:.0f}% of years. "
-                f"Growth is inconsistent or driven by only one or two metrics.")
-    return (f"All three metrics rarely improve in the same year ({score:.0f}%). "
-            f"Suggests uneven or volatile business fundamentals.")

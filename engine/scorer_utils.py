@@ -26,15 +26,30 @@ def normalise(value, thresholds: list):
     return thresholds[-1][1] if thresholds else 0
 
 
-def _blend(scores_weights: list) -> float:
+def _blend(scores_weights: list) -> float | None:
     """
     Blends multiple (score, weight) pairs, ignoring pairs where score is None.
-    Redistributes weight to available scores.
-    Returns 0 if no scores are available.
+    Redistributes weight to available scores proportionally.
+
+    Returns None (not 0) when no scores are available so the caller can
+    distinguish "missing data" from a genuine score of zero and redistribute
+    the layer's weight to other layers instead of penalising the stock.
     """
     valid = [(s, w) for s, w in scores_weights if s is not None]
     if not valid:
-        return 0
+        return None
+    total_w = sum(w for _, w in valid)
+    return sum(s * (w / total_w) for s, w in valid)
+
+
+def _blend_checked(scores_weights: list, min_subscores: int = 2) -> float | None:
+    """
+    Like _blend() but also returns None if fewer than min_subscores are available.
+    Prevents single-metric distortion within a layer.
+    """
+    valid = [(s, w) for s, w in scores_weights if s is not None]
+    if len(valid) < min_subscores:
+        return None
     total_w = sum(w for _, w in valid)
     return sum(s * (w / total_w) for s, w in valid)
 

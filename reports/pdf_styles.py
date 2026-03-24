@@ -41,29 +41,30 @@ BOTTOM_MARGIN = 18 * mm
 CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
 
 MOS_EXPLAIN = {
-    'STRONG BUY ZONE': (
+    'DEEP DISCOUNT': (
         GREEN,
-        'This stock is trading WELL BELOW our calculated fair value. '
-        'You are paying significantly less than what the business appears to be worth. '
-        'A wide margin of safety gives you more cushion if our estimates are off.'
+        'The current price is WELL BELOW our intrinsic value estimate. '
+        'The gap between price and estimated value is wide, providing a larger '
+        'cushion if our calculations turn out to be slightly off. '
+        'This is a mathematical observation — not a recommendation to buy.'
     ),
-    'BUY ZONE': (
+    'DISCOUNTED': (
         BLUE,
-        'This stock is trading BELOW our calculated fair value. '
-        'The price looks attractive relative to the underlying business fundamentals. '
-        'A reasonable margin of safety is present.'
+        'The current price is BELOW our intrinsic value estimate. '
+        'A moderate margin of safety is present based on our model. '
+        'This is a mathematical observation — not a recommendation to buy.'
     ),
     'FAIRLY VALUED': (
         ORANGE,
-        'This stock is trading NEAR our calculated fair value. '
-        'It is not expensive, but the margin of safety is thin. '
-        'Patient investors may want to wait for a lower entry price.'
+        'The current price is NEAR our intrinsic value estimate. '
+        'The margin of safety is thin at current levels. '
+        'This is a mathematical observation — not a recommendation to hold or sell.'
     ),
-    'ABOVE IV': (
+    'ABOVE ESTIMATE': (
         RED,
-        'This stock is trading ABOVE our calculated fair value. '
-        'Based on current fundamentals, the market may be overpricing this stock. '
-        'Proceed with extra caution and verify the fundamentals carefully.'
+        'The current price is ABOVE our intrinsic value estimate. '
+        'The market is pricing this stock at a premium to our calculated fair value. '
+        'This is a mathematical observation — not a recommendation to sell.'
     ),
 }
 
@@ -96,11 +97,16 @@ PORTFOLIO_EXPLAIN = {
     ),
     'unified': (
         'About StockPilot PH Rankings',
-        'Rule-based rankings of PSE-listed stocks using a 4-factor fundamental score: '
-        '<b>Financial Health</b> · <b>Business Improvement</b> · '
-        '<b>Growth Acceleration</b> · <b>Consistency</b>. '
-        'Stocks are ranked highest to lowest. Higher score = stronger, more durable fundamentals. '
-        'Scores are deterministic — same data always produces the same result.'
+        'StockPilot helps you cut through the noise by ranking every PSE-listed stock using a smart, '
+        'sector-aware framework built for real-world investing.<br/>'
+        'Instead of treating all companies the same, StockPilot evaluates each stock based on what actually '
+        'matters for its industry — whether it\'s a bank, REIT, property developer, or consumer company.<br/>'
+        'Every stock is scored across three key pillars:<br/>'
+        '<b>Financial Health</b> — strength and stability<br/>'
+        '<b>Improvement</b> — real growth, not just hype<br/>'
+        '<b>Consistency</b> — proven performance over time<br/>'
+        'Higher scores point to companies with stronger, more dependable fundamentals.<br/>'
+        'The system is fully rules-based and data-driven, so you get consistent, unbiased rankings you can rely on.'
     ),
 }
 
@@ -180,10 +186,10 @@ def grade_label(score):
 
 def mos_signal(mos_pct):
     if mos_pct is None:  return 'N/A'
-    if mos_pct >= 30:    return 'STRONG BUY ZONE'
-    elif mos_pct >= 15:  return 'BUY ZONE'
+    if mos_pct >= 30:    return 'DEEP DISCOUNT'
+    elif mos_pct >= 15:  return 'DISCOUNTED'
     elif mos_pct >= 0:   return 'FAIRLY VALUED'
-    else:                return 'ABOVE IV'
+    else:                return 'ABOVE ESTIMATE'
 
 
 # ── Investment Profile Tags ──────────────────────────────────

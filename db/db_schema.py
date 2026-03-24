@@ -299,6 +299,21 @@ def init_db():
             pass
     conn.commit()
 
+    # Migration: fix sector and bank flags for stocks scraped as "Unknown"
+    try:
+        from config import SECTOR_MANUAL_MAP, BANK_TICKERS
+        cur = conn.cursor()
+        for ticker, sector in SECTOR_MANUAL_MAP.items():
+            cur.execute(
+                "UPDATE stocks SET sector = ? WHERE ticker = ? AND (sector IS NULL OR sector = '' OR sector = 'Unknown')",
+                (sector, ticker)
+            )
+        for ticker in BANK_TICKERS:
+            cur.execute("UPDATE stocks SET is_bank = 1 WHERE ticker = ?", (ticker,))
+        conn.commit()
+    except Exception:
+        pass
+
     # Add the status index only after the column migration has run
     try:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stocks_status ON stocks(status)")

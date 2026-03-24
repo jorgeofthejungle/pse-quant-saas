@@ -1,19 +1,23 @@
 # ============================================================
-# scorer_v2.py — Unified 4-Layer Scorer (Facade)
-# PSE Quant SaaS — Phase 9B (v2 Unified Scorer)
+# scorer_v2.py — Unified 3-Layer Scorer (Facade)
+# PSE Quant SaaS
 # ============================================================
-# Combines all 4 layers into a single unified score 0-100.
+# Combines Health, Improvement, and Persistence into a single
+# unified score 0-100. Sector-specific metric selection driven
+# by SECTOR_SCORING_CONFIG in config.py.
 #
-# Layer weights (Unified — loaded from config.SCORER_WEIGHTS):
-#   Health (Layer 1):       25%
-#   Improvement (Layer 2):  30%
-#   Acceleration (Layer 3):  5%  (reduced from 15%; rarely has 5yr data)
-#   Persistence (Layer 4):  40%
+# Layer weights (loaded from config.SCORER_WEIGHTS):
+#   Health      (Layer 1): 25-35%  — financial health today
+#   Improvement (Layer 2): 25-30%  — fundamentals improving
+#   Persistence (Layer 3): 35-45%  — improvement consistent
+#
+# Acceleration removed — signal folded into Improvement as a
+# ±5pt momentum bonus for stocks with 5yr+ data.
 #
 # Result categories:
-#   >= 75: Highest Quality  (Healthy + Improving + Accelerating + Persistent)
+#   >= 75: Highest Quality  (Healthy + Improving + Persistent)
 #   >= 55: Strong Growth    (Healthy + Improving)
-#   >= 35: Neutral/Watchlist (Healthy but slowing or inconsistent)
+#   >= 35: Watchlist        (Healthy but inconsistent trend)
 #    < 35: Weak             (Multiple red flags)
 #
 # Usage:
@@ -21,18 +25,18 @@
 # ============================================================
 
 from __future__ import annotations
+import statistics as _stats
 
 from engine.scorer_health      import score_health
 from engine.scorer_improvement import score_improvement
-from engine.scorer_acceleration import score_acceleration
 from engine.scorer_persistence import score_persistence
-from engine.sector_stats       import get_sector_pe
+from engine.sector_groups      import get_scoring_group
 from engine.validator          import calc_data_confidence
 from config                    import SCORER_WEIGHTS, MIN_SCORE_THRESHOLD
 
 # ── Result categories ─────────────────────────────────────────
 CATEGORIES = [
-    (75, 'Highest Quality',   'Healthy, improving, accelerating, and consistent.'),
+    (75, 'Highest Quality',   'Healthy, improving, and consistently growing.'),
     (55, 'Strong Growth',     'Fundamentally healthy with improving trends.'),
     (35, 'Watchlist',         'Healthy today but growth momentum limited.'),
     (0,  'Weak',              'Multiple red flags in health or trend metrics.'),
@@ -42,28 +46,22 @@ CATEGORIES = [
 def _layer_summary(name: str, score: float | None) -> str:
     """One-line plain-English summary for each layer, keyed by score band."""
     if score is None:
-        return 'Insufficient data (requires 5+ years of financials).'
+        return 'Insufficient data to score this layer.'
     thresholds = {
         'health': [
-            (75, 'Financially strong — ROE, margins, cash flow, and leverage all healthy.'),
+            (75, 'Financially strong — ROE, margins, and leverage all healthy.'),
             (55, 'Fundamentally sound with minor weaknesses in one or two areas.'),
             (35, 'Below-average financial health — some metrics require attention.'),
             (0,  'Weak financial health — multiple red flags in key metrics.'),
         ],
         'improvement': [
-            (75, 'Strong upward trend — revenue, EPS, and cash flow all improving rapidly.'),
+            (75, 'Strong upward trend — revenue and EPS improving rapidly.'),
             (55, 'Fundamentals improving across most key metrics over recent years.'),
             (35, 'Mixed improvement — some metrics improving, others flat or declining.'),
             (0,  'Fundamentals deteriorating — most metrics trending downward.'),
         ],
-        'acceleration': [
-            (65, 'Momentum sharply accelerating — the rate of improvement is picking up.'),
-            (52, 'Growth momentum stable — recent pace similar to prior period.'),
-            (35, 'Momentum decelerating — the rate of improvement is slowing.'),
-            (0,  'Momentum sharply decelerating — growth losing steam rapidly.'),
-        ],
         'persistence': [
-            (75, 'Highly consistent — revenue, EPS, and cash flow improved reliably for years.'),
+            (75, 'Highly consistent — revenue and EPS improved reliably for years.'),
             (55, 'Generally consistent improvement with only occasional setbacks.'),
             (35, 'Mixed consistency — improvements are not reliably sustained year after year.'),
             (0,  'Erratic — fundamentals show no consistent pattern of improvement.'),
@@ -98,13 +96,14 @@ def score_unified(stock: dict,
                   portfolio_type: str = 'unified',
                   ) -> tuple[float, dict]:
     """
-    Compute the unified 4-layer score for a single stock.
+    Compute the unified 3-layer score for a single stock.
     Returns (final_score: float 0-100, full_breakdown: dict).
 
     Args:
         stock:              Standard stock dict (see CLAUDE.md §5)
-        sector_stats:       Output of compute_sector_stats() — used for
-                            sector-adjusted PE scoring in Layer 1
+        sector_stats:       Unused — retained for backward-compat call signature.
+                            Sector-specific scoring is now handled internally via
+                            get_scoring_group() and SECTOR_SCORING_CONFIG.
         financials_history: Annual DB rows (newest first) for ROE delta
                             in Layer 2. If None, ROE delta is skipped.
         portfolio_type:     One of 'unified', 'dividend', 'value'.
@@ -113,39 +112,23 @@ def score_unified(stock: dict,
     """
     weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
 
-    # Resolve sector medians for this stock's sector
-    stock_sector = stock.get('sector', '')
-    sector_medians = sector_stats.get(stock_sector, {}) if sector_stats else {}
-    sector_pe = sector_medians.get('pe') if sector_medians else get_sector_pe(stock_sector, sector_stats or {})
+    # Resolve sector-specific scoring group for this stock
+    scoring_group = get_scoring_group(stock)
 
     # ── Layer 1: Health ───────────────────────────────────────
-    h_score, h_breakdown = score_health(
-        stock,
-        sector_median_pe=sector_pe,
-        sector_medians=sector_medians,
-    )
+    h_score, h_breakdown = score_health(stock, scoring_group)
 
     # ── Layer 2: Improvement ──────────────────────────────────
-    i_score, i_breakdown = score_improvement(stock, financials_history)
+    i_score, i_breakdown = score_improvement(stock, financials_history or [], scoring_group)
 
-    # ── Layer 3: Acceleration ─────────────────────────────────
-    a_score, a_breakdown = score_acceleration(stock)
-    # If all acceleration sub-scores are None (< 5 years data),
-    # treat acceleration layer score as None → weight redistributed
-    all_accel_none = all(
-        v.get('score') is None for v in a_breakdown.values()
-    )
-    a_score_maybe = None if all_accel_none else a_score
+    # ── Layer 3: Persistence ──────────────────────────────────
+    p_score, p_breakdown = score_persistence(stock, scoring_group)
 
-    # ── Layer 4: Persistence ──────────────────────────────────
-    p_score, p_breakdown = score_persistence(stock)
-
-    # ── Final weighted blend ──────────────────────────────────
+    # ── Final weighted blend (3 layers) ──────────────────────
     final_score = _blend_layers([
-        (h_score,       weights['health']),
-        (i_score,       weights['improvement']),
-        (a_score_maybe, weights['acceleration']),
-        (p_score,       weights['persistence']),
+        (h_score, weights['health']),
+        (i_score, weights['improvement']),
+        (p_score, weights['persistence']),
     ])
 
     category, category_desc = get_category(final_score)
@@ -155,33 +138,27 @@ def score_unified(stock: dict,
         'category':    category,
         'category_description': category_desc,
         'portfolio_type': portfolio_type,
+        'scoring_group':  scoring_group,
         'layers': {
             'health': {
-                'score':   h_score,
+                'score':   h_breakdown.get('score'),
                 'weight':  weights['health'],
-                'factors': h_breakdown,
+                'factors': h_breakdown.get('factors', {}),
             },
             'improvement': {
-                'score':   i_score,
+                'score':   i_breakdown.get('score'),
                 'weight':  weights['improvement'],
-                'factors': i_breakdown,
-            },
-            'acceleration': {
-                'score':   a_score_maybe,
-                'weight':  weights['acceleration'],
-                'factors': a_breakdown,
+                'factors': i_breakdown.get('factors', {}),
             },
             'persistence': {
-                'score':   p_score,
+                'score':   p_breakdown.get('score'),
                 'weight':  weights['persistence'],
-                'factors': p_breakdown,
+                'factors': p_breakdown.get('factors', {}),
             },
         },
     }
 
     # ── Optional: conglomerate segment blending ───────────────
-    # If the caller has attached segment_data to the stock dict
-    # (fetched from DB by routes_stocks / scheduler), blend it in.
     segment_data = stock.get('segment_data')
     if segment_data:
         try:
@@ -193,12 +170,11 @@ def score_unified(stock: dict,
             pass   # Never break standard scoring
 
     # ── Data confidence multiplier ────────────────────────────
-    # Penalises stocks with fewer years of complete data.
     # 5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65, 1yr=0.0
     confidence = calc_data_confidence(stock)
     final_score = round(final_score * confidence, 1)
-    full_breakdown['confidence'] = confidence
-    full_breakdown['final_score'] = final_score
+    full_breakdown['confidence']   = confidence
+    full_breakdown['final_score']  = final_score
 
     return final_score, full_breakdown
 
@@ -213,15 +189,16 @@ def rank_stocks_v2(stocks: list,
 
     Args:
         stocks:          List of stock dicts (all must have passed filter_unified)
-        sector_stats:    Output of compute_sector_stats(all_stocks)
+        sector_stats:    Unused — retained for backward-compat call signature.
         financials_map:  Dict of {ticker: [annual_rows]} from DB — used for
                          ROE delta. If None, ROE delta is skipped.
         portfolio_type:  One of 'unified', 'dividend', 'value'.
                          Passed to score_unified for weight selection.
 
     Returns:
-        List of stock dicts sorted by score descending.
-        Each stock has 'score', 'rank', 'category', and 'breakdown' added.
+        List of stock dicts sorted by score descending, filtered by
+        MIN_SCORE_THRESHOLD. Each stock has 'score', 'rank', 'category',
+        'breakdown', and 'score_breakdown' added.
     """
     scored = []
     for stock in stocks:
@@ -232,10 +209,11 @@ def rank_stocks_v2(stocks: list,
         score, breakdown = score_unified(stock, sector_stats, fins_history,
                                         portfolio_type=portfolio_type)
         enriched = dict(stock)
-        enriched['score']      = score
-        enriched['category']   = breakdown['category']
-        enriched['breakdown']  = breakdown
-        enriched['confidence'] = breakdown.get('confidence', 1.0)
+        enriched['score']         = score
+        enriched['category']      = breakdown['category']
+        enriched['breakdown']     = breakdown
+        enriched['confidence']    = breakdown.get('confidence', 1.0)
+        enriched['scoring_group'] = breakdown.get('scoring_group', 'general')
         # Flat score_breakdown for the PDF detail page bar-chart renderer
         enriched['score_breakdown'] = {
             layer_name: {
@@ -249,8 +227,23 @@ def rank_stocks_v2(stocks: list,
         scored.append(enriched)
 
     scored.sort(key=lambda s: s['score'], reverse=True)
-    # Exclude stocks below the minimum score floor
-    scored = [s for s in scored if s['score'] >= MIN_SCORE_THRESHOLD]
+
+    # ── Dynamic threshold: mean + 0.5 SD of this run's scores ────
+    # Step 1: apply hard absolute floor to remove junk scores before
+    #         computing the distribution (avoids dragging the mean down).
+    # Step 2: compute mean + 0.5 SD on the remaining pool.
+    # Step 3: use whichever is higher — dynamic or hard floor.
+    above_floor = [s['score'] for s in scored if s['score'] >= MIN_SCORE_THRESHOLD]
+    if len(above_floor) >= 2:
+        mean  = _stats.mean(above_floor)
+        stdev = _stats.stdev(above_floor)
+        dynamic_threshold = round(mean + 0.5 * stdev, 1)
+        threshold = max(dynamic_threshold, MIN_SCORE_THRESHOLD)
+    else:
+        threshold = MIN_SCORE_THRESHOLD
+
+    scored = [s for s in scored if s['score'] >= threshold]
     for i, s in enumerate(scored):
         s['rank'] = i + 1
+        s['score_threshold'] = threshold  # expose for PDF/logging
     return scored

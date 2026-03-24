@@ -82,7 +82,7 @@ SCORE_CHANGE_THRESHOLD = 5.0
 # ── Minimum Score Floor ──────────────────────────────────
 # Stocks scoring below this threshold are excluded from the PDF report.
 # 50 = only "Strong Growth" and above make the cut.
-MIN_SCORE_THRESHOLD = 50
+MIN_SCORE_THRESHOLD = 45  # Hard floor — dynamic threshold (mean+0.5SD) is applied on top of this
 
 # ── Weekly Full Financial Scrape ───────────────────────────
 WEEKLY_SCRAPE_DAY  = 'sun'
@@ -190,10 +190,192 @@ MOS_SECTOR_PREMIUM = {
 MOS_SECTOR_PREMIUM_DEFAULT = 1.0  # fallback for unrecognised sectors
 
 # ── Scorer Layer Weights ─────────────────────────────────
-# Portfolio-specific weights for the 4-layer scorer.
-# Acceleration kept at 5% until 80%+ of stocks have 5yr history.
+# 3-layer weights (Acceleration folded into Improvement momentum bonus).
 SCORER_WEIGHTS = {
-    'unified':  {'health': 0.25, 'improvement': 0.30, 'acceleration': 0.05, 'persistence': 0.40},
-    'dividend': {'health': 0.27, 'improvement': 0.27, 'acceleration': 0.05, 'persistence': 0.41},
-    'value':    {'health': 0.35, 'improvement': 0.25, 'acceleration': 0.05, 'persistence': 0.35},
+    'unified':  {'health': 0.30, 'improvement': 0.28, 'persistence': 0.42},
+    'dividend': {'health': 0.30, 'improvement': 0.25, 'persistence': 0.45},
+    'value':    {'health': 0.35, 'improvement': 0.30, 'persistence': 0.35},
 }
+
+# ── Dynamic Reweighting ───────────────────────────────────
+# Minimum number of non-None sub-scores required for a layer to produce
+# a valid score. If fewer are available, the layer returns None and its
+# weight is redistributed to the other layers.
+MIN_SUBSCORES_PER_LAYER = 2
+
+# ── Sector Classification ─────────────────────────────────
+# Tickers that are banks but PSE Edge did not label them correctly.
+BANK_TICKERS = {'BDO', 'MBT', 'SECB'}
+
+# Manual sector fixes for the 70 stocks scraped as "Unknown".
+# Maps ticker → PSE sector string (must match values used in the stocks table).
+SECTOR_MANUAL_MAP = {
+    # Banks (Financials)
+    'BDO':   'Financials', 'MBT':  'Financials', 'SECB': 'Financials',
+    'MFIN':  'Financials',
+    # Holding Firms
+    'AC':    'Holding Firms', 'DMC':   'Holding Firms', 'FDC':   'Holding Firms',
+    'GTCAP': 'Holding Firms', 'LTG':   'Holding Firms', 'SM':    'Holding Firms',
+    'VLC':   'Holding Firms',
+    # Property / Real Estate
+    'ALI':   'Property', 'CREIT': 'Property', 'FLI':   'Property',
+    'HOME':  'Property', 'HTI':   'Property', 'IDC':   'Property',
+    'KPPI':  'Property', 'LPC':   'Property', 'MREIT': 'Property',
+    'PREIT': 'Property', 'RCR':   'Property', 'SMPH':  'Property',
+    'VREIT': 'Property', 'AREIT': 'Property',
+    # Industrial / Consumer / Food
+    'ALLDY': 'Industrial', 'BALAI': 'Industrial', 'CIC':   'Industrial',
+    'CNPF':  'Industrial', 'DELM':  'Industrial', 'DNL':   'Industrial',
+    'EMI':   'Industrial', 'FCG':   'Industrial', 'FRUIT': 'Industrial',
+    'GSMI':  'Industrial', 'JFC':   'Industrial', 'MEDIC': 'Industrial',
+    'MM':    'Industrial', 'MVC':   'Industrial', 'PGOLD': 'Industrial',
+    'PMPC':  'Industrial', 'RFM':   'Industrial', 'RRHI':  'Industrial',
+    'UPSON': 'Industrial',
+    # Services / Telecom / Tech / Transport
+    'BCOR':  'Services', 'BLOOM': 'Services', 'CEU':   'Services',
+    'ECP':   'Services', 'EEI':   'Services', 'FMETF': 'Services',
+    'GLO':   'Services', 'ICT':   'Services', 'IPO':   'Services',
+    'IS':    'Services', 'PAL':   'Services', 'PHC':   'Services',
+    'PLUS':  'Services', 'TEL':   'Services', 'TOP':   'Services',
+    'X':     'Services', 'XG':    'Services',
+    # Utilities / Energy
+    'ALTER': 'Services', 'ASLAG': 'Services', 'CREC':  'Services',
+    'MER':   'Services', 'MWC':   'Services', 'MYNLD': 'Services',
+    'REDC':  'Services', 'SPNEC': 'Services', 'VVT':   'Services',
+    # Misc
+    'VLC':   'Holding Firms',
+}
+
+# ── Sector-Specific Scoring Config ───────────────────────
+# Defines sub-score weights within each layer per scoring group.
+# Keys must match sub-score function names in each scorer module.
+# Weights within a layer must sum to 1.0.
+# _blend() handles None sub-scores by redistributing weight dynamically.
+SECTOR_SCORING_CONFIG = {
+    'bank': {
+        'health': {
+            'eps_stability': 0.35,  # Best proxy for credit quality / risk
+            'roe':           0.30,  # Core efficiency for banks
+            'pb':            0.20,  # Banks trade on book value
+            'ni_margin':     0.15,  # Proxy for NIM (capped — noisy)
+            # D/E excluded: leverage IS the business model for banks
+        },
+        'improvement': {
+            'eps_delta':     0.50,  # Primary earnings signal
+            'revenue_delta': 0.50,  # Loan book growth
+        },
+        'persistence': {
+            'eps':       0.40,  # Consistent earnings is king
+            'revenue':   0.30,
+            'direction': 0.30,
+        },
+    },
+    'reit': {
+        'health': {
+            'dividend_yield': 0.30,  # Distribution is the point
+            'eps_stability':  0.30,  # Stable income stream
+            'de_ratio':       0.25,  # Regulated leverage limit
+            'roe':            0.15,
+        },
+        'improvement': {
+            'revenue_delta': 0.45,  # Occupancy/rental rate proxy
+            'dps_delta':     0.30,  # Distribution growth
+            'eps_delta':     0.25,
+        },
+        'persistence': {
+            'dps':     0.35,  # Dividend persistence is THE signal
+            'revenue': 0.35,
+            'eps':     0.30,
+        },
+    },
+    'holding': {
+        'health': {
+            'eps_stability': 0.35,  # Diversification should reduce volatility
+            'roe':           0.25,  # Capital allocation efficiency
+            'pb':            0.25,  # NAV discount = key metric
+            'de_ratio':      0.15,
+        },
+        'improvement': {
+            'eps_delta':     0.45,  # Primary signal for conglomerates
+            'revenue_delta': 0.35,
+            'roe_delta':     0.20,
+        },
+        'persistence': {
+            'direction': 0.35,  # Consistency across segments
+            'eps':       0.35,
+            'revenue':   0.30,
+        },
+    },
+    'property': {
+        'health': {
+            'de_ratio':      0.30,  # Capital-intensive; leverage is critical
+            'eps_stability': 0.30,  # Cyclical — stability is valuable
+            'ni_margin':     0.20,  # Margin quality (capped)
+            'roe':           0.20,
+        },
+        'improvement': {
+            'revenue_delta': 0.50,  # Project launches/completions
+            'eps_delta':     0.50,
+        },
+        'persistence': {
+            'revenue':   0.40,  # Revenue persistence critical (cyclical)
+            'eps':       0.30,
+            'direction': 0.30,
+        },
+    },
+    'industrial': {
+        'health': {
+            'eps_stability': 0.35,  # Predictable earners valued higher
+            'roe':           0.30,
+            'de_ratio':      0.20,
+            'ni_margin':     0.15,  # Supporting signal (capped)
+        },
+        'improvement': {
+            'eps_delta':     0.45,
+            'revenue_delta': 0.35,
+            'roe_delta':     0.20,
+        },
+        'persistence': {
+            'direction': 0.35,
+            'revenue':   0.35,
+            'eps':       0.30,
+        },
+    },
+    'mining': {
+        'health': {
+            'de_ratio':      0.40,  # Survival metric in commodity downturns
+            'roe':           0.25,
+            'eps_stability': 0.20,  # Lower weight: volatility is structural
+            'ni_margin':     0.15,  # Supporting signal (capped)
+        },
+        'improvement': {
+            'revenue_delta': 0.55,  # Commodity price proxy — primary signal
+            'eps_delta':     0.45,
+        },
+        'persistence': {
+            'direction': 0.40,  # Direction matters more than streak
+            'revenue':   0.30,
+            'eps':       0.30,
+        },
+    },
+    'services': {
+        'health': {
+            'eps_stability': 0.35,
+            'roe':           0.30,
+            'de_ratio':      0.20,
+            'ni_margin':     0.15,
+        },
+        'improvement': {
+            'eps_delta':     0.45,
+            'revenue_delta': 0.35,
+            'roe_delta':     0.20,
+        },
+        'persistence': {
+            'direction': 0.35,
+            'revenue':   0.35,
+            'eps':       0.30,
+        },
+    },
+}
+# 'services' is also the fallback for any unrecognised group
+SECTOR_SCORING_CONFIG['general'] = SECTOR_SCORING_CONFIG['services']

@@ -32,23 +32,28 @@ After every scrape, an automated **data quality pipeline** runs:
 Data is stored in a local SQLite database on your machine. Nothing is sent to external servers.
 
 ### 2. Scores Every PSE Stock
-Every stock is scored using the **StockPilot PH Rankings** system — a unified 4-layer
-fundamental framework. The scoring is **deterministic** — the same data always produces
+Every stock is scored using the **StockPilot PH Rankings** system — a unified 3-layer
+sector-aware fundamental framework. The scoring is **deterministic** — the same data always produces
 the same score, with no randomness or AI guessing.
 
-Default unified weights (portfolio-specific weights available for Pure Dividend, Dividend Growth, and Value):
-| Layer | Weight | What It Measures |
-|-------|--------|-----------------|
-| **Health** | 25% | Financial health today (ROE, margins, D/E, FCF, EPS stability) — sector-relative |
-| **Improvement** | 30% | Fundamentals improving (Revenue, EPS, OCF, ROE deltas) — recency-weighted |
-| **Acceleration** | 5% | Improvement getting stronger (2-year delta-of-delta) |
-| **Persistence** | 40% | Improvement consistent and reliable (direction + magnitude + streak) |
+**Portfolio-specific weights** (weights vary by investment objective):
+| Layer | Dividend | Value | What It Measures |
+|-------|----------|-------|-----------------|
+| **Health** | 30% | 35% | Financial health today (ROE, NI margin, D/E, FCF, EPS stability) — sector-specific metrics |
+| **Improvement** | 25% | 30% | Fundamentals improving (Revenue, EPS, ROE deltas) — recency-weighted (50/30/20) |
+| **Persistence** | 45% | 35% | Improvement consistent and reliable (direction + magnitude + streak) |
 
-All PSE stocks compete in one unified ranking. The PDF contains three sections
-(Pure Dividend, Dividend Growth, Value) each scored with portfolio-specific weights.
-A minimum health filter removes companies with persistent losses, high debt, or
-insufficient data before scoring. Each stock carries a **data confidence badge**
-(High/Medium/Limited) based on how many years of complete data are available.
+Scoring is **sector-aware**: banks, REITs, holding firms, property, industrial, mining, and services
+each use tailored sub-score metrics and weights. This prevents penalizing stocks for how their
+industry naturally operates (e.g., banks don't need FCF yield; REITs use FFO not earnings).
+
+The PDF shows two portfolio sections: **Dividend** and **Value**. A stock can qualify for both.
+Each stock carries a **data confidence multiplier** (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65)
+that reduces the final score for limited data.
+
+**Dynamic score threshold**: Rankings show only stocks scoring above **mean + 0.5 SD** of the
+scored universe, with a hard floor at 45. This threshold recalculates every run, ensuring
+top-tier quality regardless of market conditions.
 
 ### 3. Calculates Margin of Safety
 For each stock, the system calculates an **intrinsic value** — a mathematical estimate
@@ -108,7 +113,7 @@ A slash-command Discord bot gives premium members on-demand access to rankings d
 | `/watchlist show/add/remove` | Premium, DM only | Personal stock watchlist (max 20) |
 | `/admin list/pending/confirm/extend/status` | Josh only, DM | Member management |
 
-Free users see grade only (A/B/C). Premium members see scores, MoS, IV, and 4-layer breakdown.
+Free users see grade only (A/B/C). Premium members see scores, MoS, IV, and 3-layer breakdown.
 
 ### 8. Sends Real-Time Alerts
 The alert engine monitors PSE Edge for:
@@ -177,23 +182,30 @@ Alert engine (dividend, earnings, price triggers)
 
 ## Scoring Methodology
 
-### StockPilot PH Rankings — Unified 4-Layer Score
+### StockPilot PH Rankings — Sector-Aware 3-Layer Score
 
-| Layer | Unified | Pure Div | Div Growth | Value | What It Measures |
-|-------|---------|----------|------------|-------|-----------------|
-| **Health** | 25% | 30% | 25% | 35% | ROE, OCF margin, D/E, FCF yield, EPS stability — 70/30 absolute/sector-relative blend |
-| **Improvement** | 30% | 20% | 35% | 25% | Revenue, EPS, OCF, ROE deltas — recency-weighted (50/30/20) |
-| **Acceleration** | 5% | 5% | 5% | 5% | 2-year delta-of-delta for Revenue, EPS, OCF |
-| **Persistence** | 40% | 45% | 35% | 35% | Direction consistency + growth magnitude + streak bonus |
+Each of the 3 layers (Health, Improvement, Persistence) uses **different sub-score metrics
+depending on sector group** (bank, REIT, holding firm, property, industrial, mining, services/general):
+
+| Layer | Dividend | Value | What It Measures |
+|-------|----------|-------|-----------------|
+| **Health** | 30% | 35% | ROE, NI margin, D/E, EPS stability, FCF yield, dividend yield — sub-scores chosen per sector |
+| **Improvement** | 25% | 30% | Revenue, EPS, ROE deltas — recency-weighted (50/30/20 newest-first) |
+| **Persistence** | 45% | 35% | Direction consistency + growth magnitude + streak bonus — no sector modification |
+
+**Key principles:**
+- **Sector-aware**: Banks exclude D/E (use 10× limit instead); REITs use FFO-equivalent metrics; holding firms skip FCF requirements
+- **Missing factors handled dynamically**: If a factor is unavailable, weight redistributes to available factors (never forces zeros as penalties)
+- **Data confidence multiplier**: 5yr data=1.0×, 4yr=0.9×, 3yr=0.8×, 2yr=0.65× — multiplied into final score
+- **Dynamic threshold**: mean + 0.5 SD of scored universe; hard floor at 45
 
 Health thresholds are calibrated from PSE market percentiles (top-10% = excellent, median = average).
-Each stock's final score is multiplied by a **data confidence factor** (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65).
 
 **Health filter** (pass/fail before scoring):
-- Minimum 2 years of EPS, Revenue, and OCF data
+- Minimum 2 years of EPS and Revenue data
 - Normalized EPS must be positive
-- No persistent negative OCF (2+ consecutive years)
-- D/E ≤ 3.0× (non-bank), ≤ 4.0× (REIT), or ≤ 10× (bank)
+- No persistent negative earnings (3-year average)
+- D/E ≤ 3.0× (non-financial), ≤ 10× (bank), or ≤ 4.0× (REIT)
 
 ---
 
@@ -292,12 +304,17 @@ pse-quant-saas/
 │
 ├── engine/                 Scoring and calculation logic
 │   ├── metrics.py          Financial ratio calculations
-│   ├── filters_v2.py       Unified health filter (pass/fail, 2yr min)
-│   ├── scorer_v2.py        Unified 4-layer scorer (portfolio-specific weights)
+│   ├── filters_v2.py       Health filter (pass/fail, 2yr min)
+│   ├── scorer_v2.py        Unified 3-layer scorer (portfolio-specific weights)
+│   ├── scorer_health.py    Health layer (sector-aware sub-scores)
+│   ├── scorer_improvement.py  Improvement layer (recency-weighted deltas)
+│   ├── scorer_persistence.py  Persistence layer (direction + magnitude + streak)
+│   ├── scorer_utils.py     Blending and normalization utilities
+│   ├── sector_groups.py    Sector classification + layer config lookup
 │   ├── mos.py              Margin of Safety (risk-adjusted discount rate)
 │   ├── validator.py        Pre-scoring data validation + confidence calc
 │   ├── calibrate_thresholds.py  Percentile-based threshold derivation
-│   └── sentiment_engine.py AI news sentiment (Claude Haiku)
+│   └── sentiment_engine.py AI news sentiment (Claude Haiku, optional)
 │
 ├── scraper/                Data collection from PSE Edge
 │   ├── pse_edge_scraper.py Main scraper facade
@@ -402,4 +419,4 @@ Sentiment analysis powered by Claude (Anthropic), for informational purposes onl
 ---
 
 *StockPilot PH — Built for the Philippine retail investor.*
-*Version: Phase 12 complete (audit fixes, house cleaning, backfill in progress) | Last updated: 2026-03-21*
+*Version: Phase 13 complete (sector-aware 3-layer scoring) | Last updated: 2026-03-24*

@@ -44,13 +44,11 @@ def index():
     expiring_soon = get_expiring_soon(days=7)
     activity      = get_recent_activity(limit=20)
 
-    # Latest unified rankings (top 10)
-    top10      = db.get_last_top5('unified') or []
-    scores_raw = db.get_last_scores('unified') or []
-    scores_map = {s['ticker']: s['score'] for s in scores_raw}
+    # Latest rankings from scores_v2 (dividend portfolio, top 10)
+    scores_raw = db.get_last_scores_v2('dividend') or []
     unified_rankings = [
-        {'ticker': t, 'score': round(scores_map.get(t, 0), 1)}
-        for t in top10
+        {'ticker': s['ticker'], 'score': round(s['score'], 1)}
+        for s in scores_raw[:10]
     ]
 
     # Pricing for quick payment link card
@@ -94,7 +92,7 @@ def api_status():
     try:
         conn = db.get_connection()
         row  = conn.execute(
-            "SELECT MAX(run_date) AS run_date FROM scores"
+            "SELECT MAX(run_date) AS run_date FROM scores_v2"
         ).fetchone()
         conn.close()
         last_run = row['run_date'] if row and row['run_date'] else 'Never'
@@ -123,7 +121,7 @@ def api_activity():
 @rate_limit(limit=10)
 def api_rankings_export():
     """CSV download of current unified rankings."""
-    scores_raw = db.get_last_scores('unified') or []
+    scores_raw = db.get_last_scores_v2('dividend') or []
     if not scores_raw:
         return jsonify({'error': 'No rankings available yet.'}), 404
 
@@ -346,7 +344,7 @@ def api_health():
 
     try:
         conn = db.get_connection()
-        row = conn.execute("SELECT MAX(run_date) AS run_date FROM scores").fetchone()
+        row = conn.execute("SELECT MAX(run_date) AS run_date FROM scores_v2").fetchone()
         conn.close()
         db_ok = True
         last_run = row['run_date'] if row and row['run_date'] else 'Never'

@@ -1,8 +1,8 @@
 # PSE Quant SaaS — StockPilot PH
 ### A Deterministic Multi-Factor Philippine Equity Ranking Engine
 
-PSE Quant is a cloud-deployed investment research tool for the Philippine Stock Exchange (PSE).
-It automatically ranks every publicly listed PSE company using a sector-aware 3-layer fundamental
+PSE Quant is a locally-run investment research tool for the Philippine Stock Exchange (PSE).
+It automatically ranks every publicly listed PSE company using a unified 4-layer fundamental
 scoring system, generates professional PDF research reports, delivers them to Discord,
 and powers a premium Discord bot (StockPilot PH) — all on a hands-free schedule.
 

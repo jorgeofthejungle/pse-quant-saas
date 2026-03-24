@@ -1,10 +1,13 @@
 # PSE Quant SaaS — StockPilot PH
 ### A Deterministic Multi-Factor Philippine Equity Ranking Engine
 
-PSE Quant is a locally-run investment research tool for the Philippine Stock Exchange (PSE).
-It automatically ranks every publicly listed PSE company using a unified 4-layer fundamental
+PSE Quant is a cloud-deployed investment research tool for the Philippine Stock Exchange (PSE).
+It automatically ranks every publicly listed PSE company using a sector-aware 3-layer fundamental
 scoring system, generates professional PDF research reports, delivers them to Discord,
 and powers a premium Discord bot (StockPilot PH) — all on a hands-free schedule.
+
+The system runs continuously on **Railway** (cloud hosting), with a local admin dashboard
+accessible via the dashboard module.
 
 This is a **research and educational tool**. It does not provide investment advice.
 All reports are for informational purposes only.
@@ -29,7 +32,7 @@ After every scrape, an automated **data quality pipeline** runs:
 - **Audit log** — issues recorded to the dashboard activity log for review
 - **Scheduler heartbeat** — monitors scheduler health; alerts admin if process stops responding
 
-Data is stored in a local SQLite database on your machine. Nothing is sent to external servers.
+Data is stored in a SQLite database hosted on Railway. Financial data sourced exclusively from PSE Edge — no third-party data providers.
 
 ### 2. Scores Every PSE Stock
 Every stock is scored using the **StockPilot PH Rankings** system — a unified 3-layer
@@ -136,14 +139,17 @@ The system prevents duplicate alerts using atomic database writes.
 | Expiry reminders | Daily 09:00 PHT | 7d, 1d, 0d before subscription expiry |
 | Monthly reports | 1st of month 09:00 PHT | Dividend calendar + model performance |
 
-### 10. Local Admin Dashboard
-A browser-based dashboard at `http://localhost:8080`:
-- **Overview** — Unified StockPilot PH Rankings, member counts, recent activity
+### 10. Admin Dashboard
+A browser-based dashboard (Flask) for local admin use:
+- **Overview** — StockPilot PH Rankings, member counts, recent activity
 - **Pipeline** — Trigger scoring runs or alert checks manually; start/stop scheduler
 - **Stock Lookup** — Search any PSE stock by ticker or company name
 - **Members** — Add, edit, extend, and manage Discord member subscriptions
 - **Analytics** — Revenue charts, member growth, plan distribution
 - **Settings** — Webhook status, DB table sizes, configuration
+
+Run locally with `py dashboard/app.py` → `http://localhost:8080`. The scheduler and
+bot run automatically on Railway — the dashboard is for admin management only.
 
 ---
 
@@ -154,11 +160,11 @@ PSE Edge (web scraper)
     ↓
 Data Quality Pipeline (DPS auto-clean + full audit)
     ↓
-SQLite Database (local)
+SQLite Database (Railway cloud)
     ↓
 Filter engine (minimum health thresholds)
     ↓
-Scoring engine (0-100 weighted 4-layer score)
+Scoring engine (0-100 weighted 3-layer score, sector-aware)
     ↓
 Margin of Safety calculator (DDM / DCF / EPS×PE)
     ↓
@@ -173,7 +179,7 @@ Alert engine (dividend, earnings, price triggers)
 
 ### Key Design Principles
 - **Deterministic** — same data always produces the same output. No AI in the scoring.
-- **Local-first** — all data stays on your machine. No cloud dependencies.
+- **Cloud-hosted** — runs continuously on Railway; DB synced via export/import tooling.
 - **Fail-safe** — missing data is `None`, not estimated. Bad data is flagged, not hidden.
 - **Data quality first** — every scrape is automatically audited and cleaned.
 - **Educational** — every report is written to teach, not to sell.
@@ -212,8 +218,8 @@ Health thresholds are calibrated from PSE market percentiles (top-10% = excellen
 ## Setup
 
 ### Requirements
-- Windows 10 or 11
-- Python 3.11+ (`py` command)
+- **Cloud**: Railway account (hosting + persistent SQLite volume)
+- **Local**: Windows 10 or 11, Python 3.14.x (`py` command)
 - A PSE Edge account (free at edge.pse.com.ph)
 - A Discord server with webhook URLs and a bot token
 
@@ -252,6 +258,10 @@ ANTHROPIC_API_KEY=sk-ant-...
 PAYMONGO_SECRET_KEY=sk_test_...
 MONTHLY_PRICE_CENTAVOS=9900
 ANNUAL_PRICE_CENTAVOS=99900
+
+# Railway (set automatically by Railway, override if needed)
+PSE_DB_PATH=/app/data/pse_quant.db
+PORT=8080
 ```
 
 ### Running the System
@@ -318,11 +328,12 @@ pse-quant-saas/
 │
 ├── scraper/                Data collection from PSE Edge
 │   ├── pse_edge_scraper.py Main scraper facade
-│   │   ├── pse_session.py
-│   │   ├── pse_lookup.py
-│   │   ├── pse_stock_data.py   Dividend scraper (COMMON-only, deduped)
-│   │   └── pse_financial_reports.py
-│   └── news_fetcher.py     News headline fetcher
+│   ├── pse_session.py      PSE Edge login + session management
+│   ├── pse_lookup.py       Company search + ticker lookup
+│   ├── pse_stock_data.py   Dividend scraper (COMMON-only, deduped)
+│   ├── pse_financial_reports.py  Annual financial statement scraper
+│   ├── scraper_canary.py   Canary checks + admin DM alerts
+│   └── news_fetcher.py     News headline fetcher (Yahoo Finance + PH news)
 │
 ├── db/                     SQLite database layer
 │   ├── database.py         Facade (all DB functions exported here)

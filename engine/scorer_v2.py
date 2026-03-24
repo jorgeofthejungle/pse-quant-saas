@@ -73,11 +73,11 @@ def _layer_summary(name: str, score: float | None) -> str:
     return f'Layer score: {score:.0f}/100.'
 
 
-def _blend_layers(scores_weights: list) -> float:
-    """Weighted average, redistributing weight from None layers."""
+def _blend_layers(scores_weights: list) -> float | None:
+    """Weighted average, redistributing weight from None layers. Returns None if all layers are None."""
     valid = [(s, w) for s, w in scores_weights if s is not None]
     if not valid:
-        return 0.0
+        return None
     total_w = sum(w for _, w in valid)
     return round(sum(s * (w / total_w) for s, w in valid), 1)
 

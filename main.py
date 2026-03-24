@@ -2,7 +2,7 @@
 # main.py — PSE Quant SaaS Pipeline Orchestrator (v2)
 # PSE Quant SaaS — Phase 9B
 # ============================================================
-# Runs the unified 4-layer fundamental pipeline:
+# Runs the unified 3-layer fundamental pipeline:
 #   Load → Validate → Health Filter → Score (4 layers) → MoS → PDF → Discord
 #
 # Replaces the old 3-portfolio system with a single unified ranking
@@ -220,7 +220,7 @@ def run_pipeline(dry_run: bool = False) -> bool:
     _out_dir = os.environ.get('PDF_OUTPUT_DIR',
                               _desktop if os.path.isdir(_desktop) else REPORTS_DIR)
     os.makedirs(_out_dir, exist_ok=True)
-    filename = f"PSE_UNIFIED_RANKINGS_{run_date}.pdf"
+    filename = f"StockPilot_PH_Rankings_{run_date}.pdf"
     pdf_path = os.path.join(_out_dir, filename)
 
     generate_report(
@@ -261,7 +261,7 @@ def run_pipeline(dry_run: bool = False) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='PSE Quant SaaS — Unified 4-Layer Rankings',
+        description='PSE Quant SaaS — Unified 3-Layer Rankings',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             'Examples:\n'

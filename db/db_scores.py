@@ -14,7 +14,7 @@ def save_scores(run_date: str, ranked_stocks: list, portfolio_type: str):
     Parameters:
         run_date       — 'YYYY-MM-DD' string
         ranked_stocks  — list of stock dicts sorted by score (index 0 = rank 1)
-        portfolio_type — 'pure_dividend', 'dividend_growth', or 'value'
+        portfolio_type — 'dividend' or 'value'
 
     Uses UPSERT so calling save_scores for multiple portfolios on the
     same day correctly populates all columns on each row.
@@ -116,7 +116,7 @@ def save_scores_v2(run_date: str, ranked_stocks: list,
     Parameters:
         run_date       — 'YYYY-MM-DD' string
         ranked_stocks  — list of stock dicts sorted by score (index 0 = rank 1)
-        portfolio_type — 'unified', 'pure_dividend', 'dividend_growth', or 'value'
+        portfolio_type — 'dividend' or 'value'
     """
     conn = get_connection()
     for rank, stock in enumerate(ranked_stocks, 1):

@@ -264,10 +264,10 @@ def _clear_pending_pdf():
 
 # ── Shared scoring pipeline ───────────────────────────────────
 
-def _run_score_pipeline() -> tuple[list, list, list, list]:
+def _run_score_pipeline() -> tuple[list, list, list, list, list, dict]:
     """
     Loads stocks, applies unified filter, scores, enriches sentiment.
-    Returns (ranked, all_stocks, old_top5, old_scores).
+    Returns (ranked, all_stocks, old_top5, old_scores, eligible, fins_map).
     Raises on critical failure.
     """
     from engine.filters_v2   import filter_unified_batch
@@ -290,7 +290,7 @@ def _run_score_pipeline() -> tuple[list, list, list, list]:
 
     old_top5   = db.get_last_top5('unified')
     old_scores = db.get_last_scores('unified')
-    return ranked, all_stocks, old_top5, old_scores
+    return ranked, all_stocks, old_top5, old_scores, eligible, fins_map
 
 
 def run_daily_score():
@@ -352,7 +352,7 @@ def run_daily_score():
             return
 
         try:
-            ranked, all_stocks, old_top5, old_scores = _run_score_pipeline()
+            ranked, all_stocks, old_top5, old_scores, eligible, fins_map = _run_score_pipeline()
         except Exception as e:
             print(f"  Scoring failed: {e}")
             return
@@ -549,35 +549,39 @@ def run_daily_report():
     reason = pending.get('reason', 'rankings changed')
     print(f"  Pending PDF found ({reason}) — generating report...")
 
-    # Re-load ranked data from DB (fresh from the 4 PM save)
-    old_scores = db.get_last_scores('unified')
-    if not old_scores:
-        print("  No scored stocks in DB. Aborting report.")
-        return
-
-    # Rebuild ranked list from DB scores for PDF generation
-    # (We need the full enriched stock dicts, so re-run a light score)
+    # Rebuild ranked data for both portfolios (same as main.py)
     try:
-        ranked, all_stocks, _, _ = _run_score_pipeline()
+        _, all_stocks, _old_top5, _old_scores, eligible, fins_map = _run_score_pipeline()
     except Exception as e:
         print(f"  Could not rebuild rankings for PDF: {e}")
         return
 
-    # Enrich with MoS before generating PDF
-    ranked = _enrich_mos(ranked)
-    enriched = sum(1 for s in ranked if s.get('mos_pct') is not None)
-    print(f"  MoS enriched: {enriched}/{len(ranked)} stocks")
+    _sector_stats = compute_sector_stats(all_stocks)
+    ranked_sections = {}
+    for pt in ['dividend', 'value']:
+        try:
+            ranked_pt = rank_stocks_v2(
+                eligible, sector_stats=_sector_stats,
+                financials_map=fins_map, portfolio_type=pt,
+            )
+            ranked_sections[pt] = _enrich_mos(ranked_pt)
+        except Exception as e:
+            print(f"  Score error for {pt}: {e}")
+            ranked_sections[pt] = []
+
+    total_ranked = sum(len(v) for v in ranked_sections.values())
+    print(f"  MoS enriched: dividend={len(ranked_sections['dividend'])}, value={len(ranked_sections['value'])} stocks")
 
     from config import REPORTS_DIR
     _desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
     _out_dir = os.environ.get('PDF_OUTPUT_DIR',
                               _desktop if os.path.isdir(_desktop) else REPORTS_DIR)
     os.makedirs(_out_dir, exist_ok=True)
-    filename = f"PSE_UNIFIED_RANKINGS_{today}.pdf"
+    filename = f"StockPilot_PH_Rankings_{today}.pdf"
     pdf_path = os.path.join(_out_dir, filename)
 
     generate_report(
-        ranked_sections        = {'unified': ranked},
+        ranked_sections        = ranked_sections,
         output_path            = pdf_path,
         total_stocks_screened  = len(all_stocks),
     )
@@ -589,7 +593,7 @@ def run_daily_report():
             webhook_url    = webhook_url,
             pdf_path       = pdf_path,
             portfolio_type = 'unified',
-            ranked_stocks  = ranked,
+            ranked_stocks  = ranked_sections.get('dividend', []),
         )
     else:
         print(f"  No webhook set — PDF saved at: {pdf_path}")

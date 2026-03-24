@@ -34,9 +34,8 @@ DEFAULT_REQUIRED_RETURN = PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM  # 11.5%
 
 # Margin of Safety targets per portfolio
 MOS_TARGET = {
-    'pure_dividend':   0.25,   # 25% — income investors are conservative
-    'dividend_growth': 0.20,   # 20% — growth companies command a premium
-    'value':           0.30,   # 30% — value investors demand the most cushion
+    'dividend': 0.25,   # 25% — income investors are conservative
+    'value':    0.30,   # 30% — value investors demand the most cushion
 }
 
 
@@ -330,9 +329,8 @@ def calc_hybrid_intrinsic(
 
     Default weights: DDM 40%, EPS-PE 40%, DCF 20%.
     Pass custom weights tuple (ddm_w, eps_w, dcf_w) per portfolio:
-      pure_dividend:   (0.50, 0.25, 0.25) — income focus
-      dividend_growth: (0.40, 0.30, 0.30) — balanced
-      value:           (0.20, 0.40, 0.40) — fundamentals focus
+      dividend: (0.50, 0.25, 0.25) — income focus
+      value:    (0.20, 0.40, 0.40) — fundamentals focus
 
     If a method returns None (not applicable),
     the weight is redistributed to available methods.

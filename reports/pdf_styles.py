@@ -104,7 +104,7 @@ PORTFOLIO_EXPLAIN = {
         'Every stock is scored across three key pillars:<br/>'
         '<b>Financial Health</b> — strength and stability<br/>'
         '<b>Improvement</b> — real growth, not just hype<br/>'
-        '<b>Consistency</b> — proven performance over time<br/>'
+        '<b>Persistence</b> — proven performance over time<br/>'
         'Higher scores point to companies with stronger, more dependable fundamentals.<br/>'
         'The system is fully rules-based and data-driven, so you get consistent, unbiased rankings you can rely on.'
     ),

@@ -54,12 +54,12 @@ def _mos_label(mos_pct) -> str:
     if mos_pct is None:
         return 'N/A'
     if mos_pct >= 30:
-        return f'+{mos_pct:.1f}% — STRONG BUY ZONE'
+        return f'+{mos_pct:.1f}% — DEEP DISCOUNT'
     if mos_pct >= 15:
-        return f'+{mos_pct:.1f}% — BUY ZONE'
+        return f'+{mos_pct:.1f}% — DISCOUNTED'
     if mos_pct >= -5:
         return f'{mos_pct:+.1f}% — FAIRLY VALUED'
-    return f'{mos_pct:+.1f}% — ABOVE IV'
+    return f'{mos_pct:+.1f}% — ABOVE ESTIMATE'
 
 
 def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
@@ -194,7 +194,7 @@ def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
 
     if layer_lines:
         fields.append({
-            'name':   '4-Layer Breakdown',
+            'name':   '3-Layer Breakdown',
             'value':  '\n'.join(layer_lines),
             'inline': False,
         })

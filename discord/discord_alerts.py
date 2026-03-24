@@ -407,13 +407,13 @@ def send_stock_of_week(
     if mos_pct is None:
         mos_str = 'N/A'
     elif mos_pct >= 30:
-        mos_str = f'+{mos_pct:.1f}% — STRONG BUY ZONE'
+        mos_str = f'+{mos_pct:.1f}% — DEEP DISCOUNT'
     elif mos_pct >= 15:
-        mos_str = f'+{mos_pct:.1f}% — BUY ZONE'
+        mos_str = f'+{mos_pct:.1f}% — DISCOUNTED'
     elif mos_pct >= -5:
         mos_str = f'{mos_pct:+.1f}% — FAIRLY VALUED'
     else:
-        mos_str = f'{mos_pct:+.1f}% — ABOVE IV'
+        mos_str = f'{mos_pct:+.1f}% — ABOVE ESTIMATE'
 
     # ── Colour by grade ───────────────────────────────────────
     grade_colour = {
@@ -451,7 +451,7 @@ def send_stock_of_week(
         layer_lines.append(f'**{label}** ({lw}%): {ls}/100' + (f'\n_{expl}_' if expl else ''))
     if layer_lines:
         fields.append({
-            'name':   '4-Layer Breakdown',
+            'name':   '3-Layer Breakdown',
             'value':  '\n'.join(layer_lines),
             'inline': False,
         })

@@ -76,13 +76,13 @@ def _get_sample_analysis() -> dict:
     if mos_pct is None:
         mos_signal, mos_color = 'N/A', 'muted'
     elif mos_pct >= 30:
-        mos_signal, mos_color = 'STRONG BUY ZONE', 'green'
+        mos_signal, mos_color = 'DEEP DISCOUNT', 'green'
     elif mos_pct >= 15:
-        mos_signal, mos_color = 'BUY ZONE', 'blue'
+        mos_signal, mos_color = 'DISCOUNTED', 'blue'
     elif mos_pct >= -5:
         mos_signal, mos_color = 'FAIRLY VALUED', 'orange'
     else:
-        mos_signal, mos_color = 'ABOVE IV', 'red'
+        mos_signal, mos_color = 'ABOVE ESTIMATE', 'red'
 
     score = round(final_score, 1)
     if score >= 80:

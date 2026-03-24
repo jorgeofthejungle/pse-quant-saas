@@ -103,16 +103,16 @@ def _get_stock_analysis(ticker: str) -> dict:
         mos_signal = 'N/A'
         mos_color  = 'muted'
     elif mos_pct >= 30:
-        mos_signal = 'STRONG BUY ZONE'
+        mos_signal = 'DEEP DISCOUNT'
         mos_color  = 'green'
     elif mos_pct >= 15:
-        mos_signal = 'BUY ZONE'
+        mos_signal = 'DISCOUNTED'
         mos_color  = 'blue'
     elif mos_pct >= -5:
         mos_signal = 'FAIRLY VALUED'
         mos_color  = 'orange'
     else:
-        mos_signal = 'ABOVE IV'
+        mos_signal = 'ABOVE ESTIMATE'
         mos_color  = 'red'
 
     return {

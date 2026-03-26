@@ -207,6 +207,24 @@ MIN_SUBSCORES_PER_LAYER = 2
 # Tickers that are banks but PSE Edge did not label them correctly.
 BANK_TICKERS = {'BDO', 'MBT', 'SECB'}
 
+# ── Feedback Loop Thresholds ───────────────────────────────
+# Configurable thresholds for the 3-tier feedback system.
+# Validated empirically during first 3 months of operation.
+# Do NOT hardcode these in logic files — always import from config.
+
+SCORE_CHANGE_MINOR_THRESHOLD   = 15    # abs score shift to trigger 'minor' flag
+SCORE_CHANGE_MAJOR_THRESHOLD   = 30    # abs score shift to trigger 'major' flag
+BLIND_SPOT_SCORE_THRESHOLD     = 70    # min score for blind spot detection
+BLIND_SPOT_RETURN_THRESHOLD    = 0.10  # negative return threshold (decimal)
+SECTOR_BIAS_Z_THRESHOLD        = 1.0   # z-score for flagging sector bias
+THIN_MONTH_THRESHOLD           = 15    # min matched stocks for valid month
+MOS_HIT_THRESHOLD              = 0.15  # MoS cutoff for predicted upside (decimal)
+SCORE_INSTABILITY_ALERT_MONTHS = 3     # consecutive flagged months before DM
+SECTOR_MIN_BANKS               = 3     # min stocks for bank sector evaluation
+SECTOR_MIN_REITS               = 4     # min stocks for REIT sector evaluation
+SECTOR_MIN_DEFAULT             = 5     # min stocks for all other sectors
+
+
 # Manual sector fixes for the 70 stocks scraped as "Unknown".
 # Maps ticker → PSE sector string (must match values used in the stocks table).
 SECTOR_MANUAL_MAP = {
@@ -242,8 +260,6 @@ SECTOR_MANUAL_MAP = {
     'ALTER': 'Services', 'ASLAG': 'Services', 'CREC':  'Services',
     'MER':   'Services', 'MWC':   'Services', 'MYNLD': 'Services',
     'REDC':  'Services', 'SPNEC': 'Services', 'VVT':   'Services',
-    # Misc
-    'VLC':   'Holding Firms',
 }
 
 # ── Sector-Specific Scoring Config ───────────────────────

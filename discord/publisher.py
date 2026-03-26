@@ -24,6 +24,13 @@ from discord.discord_alerts   import (
     send_weekly_briefing, send_stock_of_week,
 )
 from discord.discord_monthly  import send_dividend_calendar, send_model_performance
+from discord.discord_feedback import (
+    send_monthly_scorecard_dm,
+    send_quarterly_review_dm,
+    send_score_instability_alert,
+    send_correction_batch_dm,
+    send_correction_expiry_dm,
+)
 
 __all__ = [
     'send_report',
@@ -32,6 +39,9 @@ __all__ = [
     'send_shortlist_change', 'send_expiry_notification',
     'send_weekly_briefing', 'send_stock_of_week',
     'send_dividend_calendar', 'send_model_performance',
+    'send_monthly_scorecard_dm', 'send_quarterly_review_dm',
+    'send_score_instability_alert', 'send_correction_batch_dm',
+    'send_correction_expiry_dm',
     'test_webhook',
     'WEBHOOKS', 'DISCLAIMER', 'SIGNAL_DISCLAIMER',
 ]

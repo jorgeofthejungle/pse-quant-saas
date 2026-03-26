@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -c \"import scipy; print\\(scipy.__version__\\)\")",
+      "Bash(py -c \"import statistics; print\\(''statistics OK''\\)\")",
+      "Bash(py -c \":*)",
+      "Bash(py -c \"from feedback.track_record import compute_track_record, get_track_record; print\\(''OK''\\)\")",
+      "Bash(py -c \"from feedback.quarterly_review import run_quarterly_review, get_quarterly_review; print\\(''OK''\\)\")",
+      "Bash(py -c \"lines = open\\(r''C:\\\\Users\\\\Josh\\\\Documents\\\\pse-quant-saas\\\\feedback\\\\quarterly_review.py''\\).readlines\\(\\); print\\(f''Lines: {len\\(lines\\)}''\\)\")",
+      "Bash(py -c \"lines = open\\(''engine/scorer_v2.py''\\).readlines\\(\\); print\\(f''Total lines: {len\\(lines\\)}''\\)\")",
+      "Bash(py -c \"from feedback.scheduler_feedback import run_snapshot_job, run_monthly_scorecard_job; print\\(''OK''\\)\")",
+      "Bash(py scheduler.py --help)",
+      "Bash(py -c \"from feedback.scheduler_feedback import run_snapshot_job, run_monthly_scorecard_job; print\\(''''OK''''\\)\")",
+      "Bash(py -c \"from dashboard.routes_feedback import feedback_bp; print\\(''OK - blueprint name:'', feedback_bp.name\\)\")",
+      "Bash(py -c \"from dashboard.routes_feedback import feedback_bp; print\\(''OK''\\)\")",
+      "Bash(py -c \"from dashboard.app import create_app; app = create_app\\(\\); rules = [str\\(r\\) for r in app.url_map.iter_rules\\(\\) if ''feedback'' in str\\(r\\)]; print\\(''Feedback routes:'', rules\\)\")",
+      "Bash(py tests/test_feedback.py)",
+      "Bash(py tests/test_quarterly_review.py)",
+      "Bash(find /c/Users/Josh/AppData/Local/Temp/claude/c--Users-Josh-Documents-pse-quant-saas/879ea775-1242-43b2-b2fb-680474a3d1a8/ -name *.output)",
+      "Bash(py -m pytest tests/test_feedback.py tests/test_quarterly_review.py -v)",
+      "Bash(py -m py_compile feedback/snapshot.py feedback/monthly_scorecard.py feedback/track_record.py feedback/quarterly_review.py feedback/correction_engine.py engine/feedback_corrections.py discord/discord_feedback.py feedback/scheduler_feedback.py dashboard/routes_feedback.py scraper/pse_index.py)",
+      "Bash(py -m py_compile feedback/snapshot.py)",
+      "Bash(py -m py_compile feedback/monthly_scorecard.py)",
+      "Bash(py -m py_compile feedback/track_record.py)",
+      "Bash(py -m py_compile feedback/quarterly_review.py)",
+      "Bash(py -m py_compile feedback/correction_engine.py)",
+      "Bash(for f:*)",
+      "Bash(do wc:*)",
+      "Bash(done)",
+      "Bash(py -m pytest tests/test_feedback.py tests/test_quarterly_review.py -v --tb=short)",
+      "Bash(py -c \"from dashboard.routes_feedback import feedback_bp; from feedback.snapshot import take_monthly_snapshot; from feedback.monthly_scorecard import run_monthly_scorecard; from feedback.track_record import compute_track_record; from feedback.quarterly_review import run_quarterly_review; from feedback.correction_engine import get_all_corrections; from engine.feedback_corrections import get_layer_weight_override; from engine.scorer_v2 import score_unified; from discord.publisher import send_monthly_scorecard_dm; print\\(''''All OK''''\\)\")"
+    ]
+  }
+}

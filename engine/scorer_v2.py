@@ -110,10 +110,20 @@ def score_unified(stock: dict,
                             Selects the correct layer weights from
                             config.SCORER_WEIGHTS.
     """
-    weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
-
     # Resolve sector-specific scoring group for this stock
     scoring_group = get_scoring_group(stock)
+
+    weights = SCORER_WEIGHTS.get(portfolio_type, SCORER_WEIGHTS['unified'])
+    # Apply feedback correction overrides (fail-safe: returns base weights if anything fails)
+    effective_used = False
+    try:
+        from engine.feedback_corrections import get_effective_weights
+        effective = get_effective_weights(scoring_group, portfolio_type)
+        if effective and effective != weights:
+            weights = effective
+            effective_used = True
+    except Exception:
+        pass  # Use base weights on any failure
 
     # ── Layer 1: Health ───────────────────────────────────────
     h_score, h_breakdown = score_health(stock, scoring_group)
@@ -131,7 +141,7 @@ def score_unified(stock: dict,
         (p_score, weights['persistence']),
     ])
 
-    category, category_desc = get_category(final_score)
+    category, category_desc = get_category(final_score or 0.0)
 
     full_breakdown = {
         'final_score': final_score,
@@ -156,6 +166,7 @@ def score_unified(stock: dict,
                 'factors': p_breakdown.get('factors', {}),
             },
         },
+        'weight_source': 'feedback_override' if effective_used else 'base_config',
     }
 
     # ── Optional: conglomerate segment blending ───────────────
@@ -172,7 +183,7 @@ def score_unified(stock: dict,
     # ── Data confidence multiplier ────────────────────────────
     # 5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65, 1yr=0.0
     confidence = calc_data_confidence(stock)
-    final_score = round(final_score * confidence, 1)
+    final_score = round((final_score or 0.0) * confidence, 1)
     full_breakdown['confidence']   = confidence
     full_breakdown['final_score']  = final_score
 
@@ -225,6 +236,19 @@ def rank_stocks_v2(stocks: list,
             for layer_name, layer_data in breakdown['layers'].items()
         }
         scored.append(enriched)
+
+    # Log effective weights for audit trail (once per run, sample the first stock)
+    if scored:
+        try:
+            from engine.feedback_corrections import log_scoring_run_weights
+            first = scored[0]
+            log_scoring_run_weights(
+                first.get('ticker', ''),
+                first.get('scoring_group', 'general'),
+                portfolio_type
+            )
+        except Exception:
+            pass  # Never break scoring
 
     scored.sort(key=lambda s: s['score'], reverse=True)
 

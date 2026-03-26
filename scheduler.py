@@ -172,6 +172,47 @@ def start_scheduler():
         misfire_grace_time=3600,
     )
 
+    # Feedback loop jobs
+    try:
+        from feedback.scheduler_feedback import (
+            run_snapshot_job, run_monthly_scorecard_job,
+            run_track_record_job, run_psei_daily_scrape
+        )
+        # Monthly snapshot: 1st of month, 5 PM PHT
+        scheduler.add_job(
+            run_snapshot_job,
+            CronTrigger(day=1, hour=17, minute=0),
+            id='monthly_snapshot',
+            name='Monthly Score Snapshot (1st 5 PM)',
+            misfire_grace_time=3600,
+        )
+        # Monthly scorecard: 1st of month, 6 PM PHT
+        scheduler.add_job(
+            run_monthly_scorecard_job,
+            CronTrigger(day=1, hour=18, minute=0),
+            id='monthly_scorecard',
+            name='Monthly Scorecard (1st 6 PM)',
+            misfire_grace_time=3600,
+        )
+        # Track record: 1st of month, 6:30 PM PHT
+        scheduler.add_job(
+            run_track_record_job,
+            CronTrigger(day=1, hour=18, minute=30),
+            id='monthly_track_record',
+            name='Monthly Track Record (1st 6:30 PM)',
+            misfire_grace_time=3600,
+        )
+        # PSEi daily price scrape: weekdays 5:15 PM PHT (after market close)
+        scheduler.add_job(
+            run_psei_daily_scrape,
+            CronTrigger(day_of_week='mon-fri', hour=17, minute=15),
+            id='psei_daily_scrape',
+            name='PSEi Daily Close Scrape (5:15 PM)',
+            misfire_grace_time=600,
+        )
+    except ImportError:
+        print("  [feedback] Feedback scheduler not available — skipping feedback jobs")
+
     print("=" * 55)
     print("  PSE QUANT SAAS — Scheduler Started")
     print(f"  Disclosure monitor: every 15 minutes (all day)")
@@ -183,6 +224,7 @@ def start_scheduler():
     print(f"  Weekly Digest DM:   FRI 17:00 PHT → all active members")
     print(f"  Expiry reminders:   09:00 PHT daily")
     print(f"  Monthly reports:    1st of month 09:00 PHT → #deep-analysis")
+    print(f"  Feedback jobs:      1st of month (snapshot 5PM, scorecard 6PM, track 6:30PM)")
     print("  Press Ctrl+C to stop")
     print("=" * 55)
 
@@ -281,6 +323,14 @@ def main():
         action='store_true',
         help='One-time historical backfill (2018-2023)',
     )
+    parser.add_argument('--run-snapshot', action='store_true',
+                        help='Take monthly score snapshot now')
+    parser.add_argument('--run-scorecard', action='store_true',
+                        help='Run monthly scorecard now')
+    parser.add_argument('--run-track-record', action='store_true',
+                        help='Compute track record now')
+    parser.add_argument('--run-quarterly', action='store_true',
+                        help='Run quarterly review now')
     args = parser.parse_args()
 
     db.init_db()
@@ -328,6 +378,18 @@ def main():
     elif args.run_backfill:
         print("Running historical backfill (2018-2023) now...")
         run_backfill()
+    elif args.run_snapshot:
+        from feedback.scheduler_feedback import run_snapshot_job
+        run_snapshot_job()
+    elif args.run_scorecard:
+        from feedback.scheduler_feedback import run_monthly_scorecard_job
+        run_monthly_scorecard_job()
+    elif args.run_track_record:
+        from feedback.scheduler_feedback import run_track_record_job
+        run_track_record_job()
+    elif args.run_quarterly:
+        from feedback.scheduler_feedback import run_quarterly_review_job
+        run_quarterly_review_job()
     else:
         start_scheduler()
 

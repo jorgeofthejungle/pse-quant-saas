@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Feedback{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Feedback Loop</h1>
+  <p class="subtitle">Model performance monitoring and auto-correction system</p>
+</div>
+
+<!-- Tab navigation -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('monthly', event)">Monthly Scorecards</button>
+  <button class="tab-btn" onclick="showTab('quarterly', event)">Quarterly Reviews</button>
+  <button class="tab-btn" onclick="showTab('corrections', event)">Active Corrections</button>
+</div>
+
+<!-- Tab 1: Monthly -->
+<div id="tab-monthly" class="tab-content active">
+  <table id="monthly-table" class="data-table">
+    <thead>
+      <tr>
+        <th>Month</th><th>Portfolio</th><th>Top-10 Ret</th><th>vs PSEi</th>
+        <th>Hit Rate</th><th>MoS Acc.</th><th>Spearman</th>
+        <th>Matched</th><th>Confidence</th><th>Score Flags</th>
+      </tr>
+    </thead>
+    <tbody id="monthly-body"></tbody>
+  </table>
+</div>
+
+<!-- Tab 2: Quarterly -->
+<div id="tab-quarterly" class="tab-content">
+  <table id="quarterly-table" class="data-table">
+    <thead>
+      <tr>
+        <th>Quarter</th><th>Portfolio</th><th>Avg Ret</th><th>Hit Rate</th>
+        <th>Blind Spots</th><th>Sectors Flagged</th><th>Band Inv.</th>
+        <th>Stocks</th><th>Confidence</th><th>Corrections</th>
+      </tr>
+    </thead>
+    <tbody id="quarterly-body"></tbody>
+  </table>
+</div>
+
+<!-- Tab 3: Corrections -->
+<div id="tab-corrections" class="tab-content">
+  <table id="corrections-table" class="data-table">
+    <thead>
+      <tr>
+        <th>Sector</th><th>Layer</th><th>Adjustment</th><th>Cumulative</th>
+        <th>Status</th><th>Quarter</th><th>Applied</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="corrections-body"></tbody>
+  </table>
+</div>
+
+<script>
+function showTab(name, evt) {
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  if (evt && evt.target) evt.target.classList.add('active');
+}
+
+function fmtPct(v) {
+  if (v === null || v === undefined) return 'N/A';
+  return (v * 100).toFixed(1) + '%';
+}
+function fmtSign(v) {
+  if (v === null || v === undefined) return 'N/A';
+  return (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+}
+
+// Load monthly data
+fetch('/feedback/api/monthly').then(function(r) { return r.json(); }).then(function(data) {
+  var tbody = document.getElementById('monthly-body');
+  tbody.innerHTML = data.map(function(r) {
+    return '<tr>' +
+      '<td>' + r.month + '</td>' +
+      '<td>' + r.portfolio_type + '</td>' +
+      '<td>' + fmtSign(r.top10_avg_return) + '</td>' +
+      '<td>' + fmtSign(r.top10_vs_index) + '</td>' +
+      '<td>' + fmtPct(r.hit_rate_positive) + '</td>' +
+      '<td>' + fmtPct(r.mos_direction_accuracy) + '</td>' +
+      '<td>' + (r.spearman_correlation !== null && r.spearman_correlation !== undefined ? r.spearman_correlation.toFixed(2) : 'N/A') + '</td>' +
+      '<td>' + (r.total_matched || 'N/A') + '</td>' +
+      '<td>' + (r.confidence_level || 'N/A') + '</td>' +
+      '<td>' + (r.score_change_flag_count || 0) + ' (' + (r.score_change_major_count || 0) + ' major)</td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="10">No data yet</td></tr>';
+});
+
+// Load quarterly data
+fetch('/feedback/api/quarterly').then(function(r) { return r.json(); }).then(function(data) {
+  var tbody = document.getElementById('quarterly-body');
+  tbody.innerHTML = data.map(function(r) {
+    var flagged = 'none';
+    if (r.sectors_flagged) {
+      try { flagged = JSON.parse(r.sectors_flagged).join(', '); } catch(e) { flagged = r.sectors_flagged; }
+    }
+    var applied = 0;
+    if (r.corrections_applied_json) {
+      try { applied = JSON.parse(r.corrections_applied_json).length; } catch(e) { applied = 0; }
+    }
+    return '<tr>' +
+      '<td>' + r.quarter + '</td>' +
+      '<td>' + r.portfolio_type + '</td>' +
+      '<td>' + fmtSign(r.avg_monthly_top10_return) + '</td>' +
+      '<td>' + fmtPct(r.avg_monthly_hit_rate) + '</td>' +
+      '<td>' + (r.blind_spot_count || 0) + '</td>' +
+      '<td>' + flagged + '</td>' +
+      '<td>' + (r.band_inversion_flag ? 'Yes' : 'No') + '</td>' +
+      '<td>' + (r.total_stocks_evaluated || 0) + '</td>' +
+      '<td>' + (r.confidence_level || 'N/A') + '</td>' +
+      '<td>' + applied + ' applied</td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="10">No data yet</td></tr>';
+});
+
+// Load corrections data
+function loadCorrections() {
+  fetch('/feedback/api/corrections').then(function(r) { return r.json(); }).then(function(data) {
+    var tbody = document.getElementById('corrections-body');
+    tbody.innerHTML = data.map(function(r) {
+      return '<tr>' +
+        '<td>' + r.sector + '</td>' +
+        '<td>' + r.layer + '</td>' +
+        '<td>' + fmtSign(r.adjustment) + '</td>' +
+        '<td>' + fmtSign(r.cumulative) + '</td>' +
+        '<td>' + r.status + '</td>' +
+        '<td>' + (r.quarter || 'N/A') + '</td>' +
+        '<td>' + (r.applied_at ? r.applied_at.substring(0, 10) : 'N/A') + '</td>' +
+        '<td><button onclick="resetCorrection(\'' + r.sector + '\',\'' + r.layer + '\')">Reset</button></td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="8">No active corrections</td></tr>';
+  });
+}
+loadCorrections();
+
+function resetCorrection(sector, layer) {
+  if (!confirm('Reset correction for ' + sector + '/' + layer + '?')) return;
+  fetch('/feedback/api/corrections/reset', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({sector: sector, layer: layer})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) loadCorrections();
+  });
+}
+</script>
+{% endblock %}

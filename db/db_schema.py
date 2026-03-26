@@ -218,6 +218,161 @@ def init_db():
             ON conglomerate_segments(parent_ticker, year);
         CREATE INDEX IF NOT EXISTS idx_watchlists_discord_id
             ON watchlists(discord_id);
+
+        -- ── PSEi / benchmark index daily prices ──────────────
+        CREATE TABLE IF NOT EXISTS index_prices (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            index_name TEXT NOT NULL,
+            date       DATE NOT NULL,
+            close      REAL,
+            created_at TEXT,
+            UNIQUE(index_name, date)
+        );
+
+        -- ── Feedback Loop: point-in-time stock snapshots ─────
+        CREATE TABLE IF NOT EXISTS feedback_snapshots (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker            TEXT NOT NULL,
+            snapshot_date     DATE NOT NULL,
+            portfolio_type    TEXT NOT NULL,
+            score             REAL,
+            rank              INTEGER,
+            iv_estimate       REAL,
+            price_at_snapshot REAL,
+            mos_pct           REAL,
+            sector            TEXT,
+            is_top10          INTEGER DEFAULT 0,
+            price_source      TEXT,
+            UNIQUE(ticker, snapshot_date, portfolio_type)
+        );
+
+        -- ── Feedback Loop: monthly per-stock return outcomes ─
+        CREATE TABLE IF NOT EXISTS feedback_stock_returns (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker                  TEXT NOT NULL,
+            month                   TEXT NOT NULL,
+            portfolio_type          TEXT NOT NULL,
+            score_at_start          REAL,
+            price_start             REAL,
+            price_end               REAL,
+            return_pct              REAL,
+            rank_at_start           INTEGER,
+            was_top10               INTEGER DEFAULT 0,
+            score_change_flag       INTEGER DEFAULT 0,
+            score_change_severity   TEXT,
+            score_change_magnitude  REAL,
+            consecutive_flag_months INTEGER DEFAULT 0,
+            created_at              TEXT,
+            UNIQUE(ticker, month, portfolio_type)
+        );
+
+        -- ── Feedback Loop: monthly aggregate metrics ─────────
+        CREATE TABLE IF NOT EXISTS feedback_monthly (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            month                    TEXT NOT NULL,
+            portfolio_type           TEXT NOT NULL,
+            top10_avg_return         REAL,
+            top10_vs_index           REAL,
+            hit_rate_positive        REAL,
+            match_rate_pct           REAL,
+            mos_direction_accuracy   REAL,
+            iv_coverage_pct          REAL,
+            spearman_correlation     REAL,
+            avg_score_of_gainers     REAL,
+            avg_score_of_losers      REAL,
+            score_separation_power   REAL,
+            total_previous           INTEGER,
+            total_current            INTEGER,
+            total_matched            INTEGER,
+            market_positive_rate     REAL,
+            score_change_flag_count  INTEGER DEFAULT 0,
+            score_change_minor_count INTEGER DEFAULT 0,
+            score_change_major_count INTEGER DEFAULT 0,
+            confidence_level         TEXT,
+            created_at               TEXT,
+            UNIQUE(month, portfolio_type)
+        );
+
+        -- ── Feedback Loop: quarterly rolled-up analysis ───────
+        CREATE TABLE IF NOT EXISTS feedback_quarterly (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            quarter                   TEXT NOT NULL,
+            portfolio_type            TEXT NOT NULL,
+            evaluation_window_start   DATE,
+            evaluation_window_end     DATE,
+            avg_monthly_top10_return  REAL,
+            avg_monthly_hit_rate      REAL,
+            avg_monthly_mos_accuracy  REAL,
+            avg_spearman              REAL,
+            blind_spot_count          INTEGER DEFAULT 0,
+            blind_spot_tickers        TEXT,
+            sector_bias_json          TEXT,
+            sectors_flagged           TEXT,
+            sectors_skipped           TEXT,
+            score_band_json           TEXT,
+            band_inversion_flag       INTEGER DEFAULT 0,
+            consecutive_bias_quarters TEXT,
+            total_stocks_evaluated    INTEGER DEFAULT 0,
+            confidence_level          TEXT,
+            corrections_applied_json  TEXT,
+            corrections_blocked_json  TEXT,
+            created_at                TEXT,
+            UNIQUE(quarter, portfolio_type)
+        );
+
+        -- ── Feedback Loop: per-metric diagnostic detail ───────
+        CREATE TABLE IF NOT EXISTS feedback_diagnostic_log (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            quarter        TEXT NOT NULL,
+            portfolio_type TEXT NOT NULL,
+            sector         TEXT,
+            metric_name    TEXT,
+            metric_value   REAL,
+            z_score        REAL,
+            met_threshold  INTEGER DEFAULT 0,
+            bias_direction TEXT,
+            bias_magnitude REAL,
+            stock_count    INTEGER,
+            notes          TEXT,
+            created_at     TEXT
+        );
+
+        -- ── Feedback Loop: publishable track-record summary ──
+        CREATE TABLE IF NOT EXISTS feedback_track_record (
+            id                                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            period_type                            TEXT NOT NULL,
+            portfolio_type                         TEXT NOT NULL,
+            evaluation_date                        DATE NOT NULL,
+            top10_avg_return                       REAL,
+            top10_cumulative_return                REAL,
+            index_cumulative_return                REAL,
+            top10_vs_index                         REAL,
+            hit_rate                               REAL,
+            mos_accuracy                           REAL,
+            total_months_tracked                   INTEGER DEFAULT 0,
+            consecutive_months_outperforming_index INTEGER DEFAULT 0,
+            best_month_return                      REAL,
+            worst_month_return                     REAL,
+            avg_spearman                           REAL,
+            positive_spearman_ratio                REAL,
+            data_completeness_pct                  REAL,
+            publishable                            INTEGER DEFAULT 0,
+            publish_reason                         TEXT,
+            created_at                             TEXT,
+            UNIQUE(period_type, portfolio_type, evaluation_date)
+        );
+
+        -- ── Feedback Loop indexes ─────────────────────────────
+        CREATE INDEX IF NOT EXISTS idx_index_prices_date
+            ON index_prices(index_name, date);
+        CREATE INDEX IF NOT EXISTS idx_feedback_snapshots_date
+            ON feedback_snapshots(snapshot_date, portfolio_type);
+        CREATE INDEX IF NOT EXISTS idx_feedback_monthly_month
+            ON feedback_monthly(month, portfolio_type);
+        CREATE INDEX IF NOT EXISTS idx_feedback_quarterly_quarter
+            ON feedback_quarterly(quarter, portfolio_type);
+        CREATE INDEX IF NOT EXISTS idx_feedback_stock_returns_ticker
+            ON feedback_stock_returns(ticker, month, portfolio_type);
     """)
     conn.commit()
 

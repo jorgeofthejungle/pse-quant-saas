@@ -40,11 +40,7 @@ from pdf_generator        import generate_report
 from publisher            import WEBHOOKS, send_report
 from mos import (calc_ddm, calc_eps_pe, calc_dcf,
                   calc_hybrid_intrinsic, calc_mos_pct)
-
-
-# ── MoS weights for unified ranking ───────────────────────────
-# Balanced blend: 30% DDM, 35% EPS-PE, 35% DCF
-_IV_WEIGHTS = (0.30, 0.35, 0.35)
+from config import CONGLOMERATE_DISCOUNT, IV_WEIGHTS as _IV_WEIGHTS
 
 
 # ── Data loader ───────────────────────────────────────────────
@@ -81,7 +77,7 @@ def _enrich_mos(stocks: list) -> list:
             iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
                                                weights=_IV_WEIGHTS)
             if is_holding and iv:
-                iv = round(iv * 0.80, 2)  # 20% conglomerate discount
+                iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
         except Exception:
             iv = None
         price = stock.get('current_price')

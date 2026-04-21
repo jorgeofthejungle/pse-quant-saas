@@ -27,9 +27,11 @@ from publisher    import (WEBHOOKS, send_report, send_rescore_notice,
 import database as db
 
 try:
-    from config import SCORE_CHANGE_THRESHOLD
+    from config import SCORE_CHANGE_THRESHOLD, CONGLOMERATE_DISCOUNT, IV_WEIGHTS
 except ImportError:
     SCORE_CHANGE_THRESHOLD = 5.0
+    CONGLOMERATE_DISCOUNT  = 0.20
+    IV_WEIGHTS             = (0.30, 0.35, 0.35)
 
 # ── State file paths ─────────────────────────────────────────
 # Stored in AppData (same dir as the DB) — Python can write there freely.
@@ -500,7 +502,6 @@ def _enrich_mos(stocks: list) -> list:
     """
     from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
                              calc_hybrid_intrinsic, calc_mos_pct)
-    _IV_WEIGHTS = (0.30, 0.35, 0.35)
 
     for stock in stocks:
         try:
@@ -513,9 +514,9 @@ def _enrich_mos(stocks: list) -> list:
                                   stock.get('revenue_cagr'))
             is_holding = (stock.get('sector', '') == 'Holding Firms')
             iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
-                                               weights=_IV_WEIGHTS)
+                                               weights=IV_WEIGHTS)
             if is_holding and iv:
-                iv = round(iv * 0.80, 2)
+                iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
         except Exception:
             iv = None
         price = stock.get('current_price')
@@ -903,46 +904,46 @@ def run_weekly_digest():
     score_map  = {s['ticker']: s.get('score', 0) or 0 for s in current}
 
     conn = db.get_connection()
+    try:
+        # Name map
+        name_rows = conn.execute("SELECT ticker, name FROM stocks").fetchall()
+        name_map  = {r['ticker']: r['name'] for r in name_rows}
 
-    # Name map
-    name_rows = conn.execute("SELECT ticker, name FROM stocks").fetchall()
-    name_map  = {r['ticker']: r['name'] for r in name_rows}
+        # Last week's scores for movers
+        prev_row = conn.execute("""
+            SELECT MAX(run_date) AS pd FROM scores_v2
+            WHERE run_date < date('now', '-6 days')
+        """).fetchone()
+        prev_date = prev_row['pd'] if prev_row else None
 
-    # Last week's scores for movers
-    prev_row = conn.execute("""
-        SELECT MAX(run_date) AS pd FROM scores_v2
-        WHERE run_date < date('now', '-6 days')
-    """).fetchone()
-    prev_date = prev_row['pd'] if prev_row else None
+        prev_scores = {}
+        if prev_date:
+            rows = conn.execute(
+                "SELECT ticker, score FROM scores_v2 WHERE run_date = ?", (prev_date,)
+            ).fetchall()
+            prev_scores = {r['ticker']: r['score'] for r in rows}
 
-    prev_scores = {}
-    if prev_date:
-        rows = conn.execute(
-            "SELECT ticker, score FROM scores_v2 WHERE run_date = ?", (prev_date,)
-        ).fetchall()
-        prev_scores = {r['ticker']: r['score'] for r in rows}
+        # Dividends declared this week
+        div_rows = conn.execute("""
+            SELECT DISTINCT ticker, title, date FROM disclosures
+            WHERE (LOWER(type) LIKE '%dividend%' OR LOWER(title) LIKE '%dividend%')
+              AND date >= ?
+            ORDER BY date DESC
+            LIMIT 5
+        """, (week_ago,)).fetchall()
+        dividends = [dict(r) for r in div_rows]
 
-    # Dividends declared this week
-    div_rows = conn.execute("""
-        SELECT DISTINCT ticker, title, date FROM disclosures
-        WHERE (LOWER(type) LIKE '%dividend%' OR LOWER(title) LIKE '%dividend%')
-          AND date >= ?
-        ORDER BY date DESC
-        LIMIT 5
-    """, (week_ago,)).fetchall()
-    dividends = [dict(r) for r in div_rows]
-
-    # Price alerts from activity_log this week
-    alert_rows = conn.execute("""
-        SELECT detail, timestamp FROM activity_log
-        WHERE action = 'price_alert'
-          AND timestamp >= ?
-        ORDER BY timestamp DESC
-        LIMIT 5
-    """, (week_ago + ' 00:00:00',)).fetchall()
-    price_alerts = [dict(r) for r in alert_rows]
-
-    conn.close()
+        # Price alerts from activity_log this week
+        alert_rows = conn.execute("""
+            SELECT detail, timestamp FROM activity_log
+            WHERE action = 'price_alert'
+              AND timestamp >= ?
+            ORDER BY timestamp DESC
+            LIMIT 5
+        """, (week_ago + ' 00:00:00',)).fetchall()
+        price_alerts = [dict(r) for r in alert_rows]
+    finally:
+        conn.close()
 
     # ── Build grade helper ────────────────────────────────────
     def _grade(s):
@@ -1117,20 +1118,22 @@ def run_stock_of_week():
 
     # ── Get last week's scores for delta calculation ──────────
     conn = db.get_connection()
-    row = conn.execute("""
-        SELECT MAX(run_date) AS prev_date FROM scores_v2
-        WHERE run_date < date('now', '-6 days')
-    """).fetchone()
-    prev_date = row['prev_date'] if row else None
+    try:
+        row = conn.execute("""
+            SELECT MAX(run_date) AS prev_date FROM scores_v2
+            WHERE run_date < date('now', '-6 days')
+        """).fetchone()
+        prev_date = row['prev_date'] if row else None
 
-    prev_by_ticker = {}
-    if prev_date:
-        prev_rows = conn.execute(
-            "SELECT ticker, score FROM scores_v2 WHERE run_date = ?",
-            (prev_date,)
-        ).fetchall()
-        prev_by_ticker = {r['ticker']: r['score'] for r in prev_rows}
-    conn.close()
+        prev_by_ticker = {}
+        if prev_date:
+            prev_rows = conn.execute(
+                "SELECT ticker, score FROM scores_v2 WHERE run_date = ?",
+                (prev_date,)
+            ).fetchall()
+            prev_by_ticker = {r['ticker']: r['score'] for r in prev_rows}
+    finally:
+        conn.close()
 
     # ── Pick the stock: biggest positive delta, fallback #1 ──
     best_ticker = current_sorted[0]['ticker']
@@ -1188,9 +1191,9 @@ def run_stock_of_week():
     ddm_iv, _ = calc_ddm(stock.get('dps_last'), stock.get('dividend_cagr_5y'))
     eps_iv, _ = calc_eps_pe(eps_3y)
     dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'), stock.get('revenue_cagr'))
-    iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv, weights=(0.30, 0.35, 0.35))
+    iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv, weights=IV_WEIGHTS)
     if stock.get('sector') == 'Holding Firms' and iv:
-        iv = round(iv * 0.80, 2)
+        iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
     price   = stock.get('current_price')
     mos_pct = calc_mos_pct(iv, price) if iv and price else None
 
@@ -1257,80 +1260,70 @@ def run_monthly_dividend_calendar():
 
     conn = get_connection()
 
-    # Top 15 dividend payers from latest COMPLETED year financials × current prices.
-    # Rules:
-    #   1. year < current_year — exclude FY2026+ (partial data, PDF parser errors,
-    #      ex-div dates from early 2026 mis-bucketed as FY2026)
-    #   2. yield 0.3–20% — removes inflated DPS from PDF parser misreads
     import datetime as _dt
     current_year = _dt.date.today().year
 
-    payer_rows = conn.execute("""
-        SELECT f.ticker,
-               s.name,
-               f.dps,
-               f.year,
-               p.close AS price,
-               round(f.dps / p.close * 100.0, 2) AS yield_pct
-        FROM financials f
-        JOIN (
-            SELECT ticker, MAX(year) AS max_year
-            FROM financials
-            WHERE dps > 0 AND year < ?
-            GROUP BY ticker
-        ) latest ON f.ticker = latest.ticker AND f.year = latest.max_year
-        JOIN stocks s ON f.ticker = s.ticker
-        JOIN (
-            SELECT t.ticker, p2.close
-            FROM (SELECT ticker, MAX(date) AS max_date FROM prices GROUP BY ticker) t
-            JOIN prices p2 ON p2.ticker = t.ticker AND p2.date = t.max_date
-        ) p ON f.ticker = p.ticker
-        WHERE f.dps > 0
-          AND s.status = 'active'
-          AND p.close > 0
-          AND f.year < ?
-          AND (f.dps / p.close * 100.0) BETWEEN 0.5 AND 20.0
-          AND (
-              -- REITs: always allowed (legitimate high payouts by law)
-              s.is_reit = 1
-              -- Has positive EPS: validate payout ratio (must be <= 200%)
-              OR (f.eps > 0 AND (f.dps / f.eps) <= 2.0)
-              -- Negative EPS: allow (paying dividends from retained earnings)
-              OR (f.eps IS NOT NULL AND f.eps <= 0)
-              -- EPS unknown: allow ONLY if yield <= 10% (low risk without validation)
-              OR (f.eps IS NULL AND (f.dps / p.close * 100.0) <= 10.0)
-              -- EPS unknown, yield > 10%: require at least 1 prior year of DPS
-              -- history to confirm this is not a scraper error (e.g. LFM FY2025)
-              OR (
-                  f.eps IS NULL
-                  AND (f.dps / p.close * 100.0) > 10.0
-                  AND EXISTS (
-                      SELECT 1 FROM financials f2
-                      WHERE f2.ticker = f.ticker
-                        AND f2.dps > 0
-                        AND f2.year < f.year
-                        AND f2.year >= f.year - 4
+    try:
+        payer_rows = conn.execute("""
+            SELECT f.ticker,
+                   s.name,
+                   f.dps,
+                   f.year,
+                   p.close AS price,
+                   round(f.dps / p.close * 100.0, 2) AS yield_pct
+            FROM financials f
+            JOIN (
+                SELECT ticker, MAX(year) AS max_year
+                FROM financials
+                WHERE dps > 0 AND year < ?
+                GROUP BY ticker
+            ) latest ON f.ticker = latest.ticker AND f.year = latest.max_year
+            JOIN stocks s ON f.ticker = s.ticker
+            JOIN (
+                SELECT t.ticker, p2.close
+                FROM (SELECT ticker, MAX(date) AS max_date FROM prices GROUP BY ticker) t
+                JOIN prices p2 ON p2.ticker = t.ticker AND p2.date = t.max_date
+            ) p ON f.ticker = p.ticker
+            WHERE f.dps > 0
+              AND s.status = 'active'
+              AND p.close > 0
+              AND f.year < ?
+              AND (f.dps / p.close * 100.0) BETWEEN 0.5 AND 20.0
+              AND (
+                  s.is_reit = 1
+                  OR (f.eps > 0 AND (f.dps / f.eps) <= 2.0)
+                  OR (f.eps IS NOT NULL AND f.eps <= 0)
+                  OR (f.eps IS NULL AND (f.dps / p.close * 100.0) <= 10.0)
+                  OR (
+                      f.eps IS NULL
+                      AND (f.dps / p.close * 100.0) > 10.0
+                      AND EXISTS (
+                          SELECT 1 FROM financials f2
+                          WHERE f2.ticker = f.ticker
+                            AND f2.dps > 0
+                            AND f2.year < f.year
+                            AND f2.year >= f.year - 4
+                      )
                   )
               )
-          )
-        ORDER BY yield_pct DESC
-        LIMIT 15
-    """, (current_year, current_year)).fetchall()
+            ORDER BY yield_pct DESC
+            LIMIT 15
+        """, (current_year, current_year)).fetchall()
 
-    payers = [dict(r) for r in payer_rows]
+        payers = [dict(r) for r in payer_rows]
 
-    # Dividend disclosures from the last 45 days
-    cutoff = (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d')
-    disc_rows = conn.execute("""
-        SELECT ticker, date, title FROM disclosures
-        WHERE (type LIKE '%dividend%' OR title LIKE '%dividend%')
-        AND date >= ?
-        ORDER BY date DESC
-        LIMIT 10
-    """, (cutoff,)).fetchall()
+        cutoff = (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d')
+        disc_rows = conn.execute("""
+            SELECT ticker, date, title FROM disclosures
+            WHERE (type LIKE '%dividend%' OR title LIKE '%dividend%')
+            AND date >= ?
+            ORDER BY date DESC
+            LIMIT 10
+        """, (cutoff,)).fetchall()
 
-    recent_disc = [dict(r) for r in disc_rows]
-    conn.close()
+        recent_disc = [dict(r) for r in disc_rows]
+    finally:
+        conn.close()
 
     url = WEBHOOKS.get('deep_analysis', '')
     ok  = send_dividend_calendar(url, month_str, payers, recent_disc)
@@ -1349,51 +1342,50 @@ def run_monthly_model_performance():
     print(f"\n[monthly_perf] Building model performance for {month_str}...")
 
     conn = get_connection()
-
-    # All distinct run dates, newest first
-    date_rows = conn.execute(
-        "SELECT DISTINCT run_date FROM scores_v2 ORDER BY run_date DESC LIMIT 60"
-    ).fetchall()
-
-    if not date_rows:
-        print("  [monthly_perf] No scores_v2 data — run scoring first.")
-        conn.close()
-        return
-
-    latest_date = date_rows[0]['run_date']
-    latest_dt   = datetime.strptime(latest_date, '%Y-%m-%d')
-    target_prior = latest_dt - timedelta(days=28)
-
-    # Find closest run_date at or before 28 days ago
-    prior_date = None
-    for row in date_rows[1:]:
-        dt = datetime.strptime(row['run_date'], '%Y-%m-%d')
-        if dt <= target_prior:
-            prior_date = row['run_date']
-            break
-
-    # Current top 20 with stock names
-    curr_rows = conn.execute("""
-        SELECT sv.ticker, sv.score, sv.rank, sv.category, s.name
-        FROM scores_v2 sv
-        LEFT JOIN stocks s ON sv.ticker = s.ticker
-        WHERE sv.run_date = ? AND sv.rank IS NOT NULL
-        ORDER BY sv.rank
-        LIMIT 20
-    """, (latest_date,)).fetchall()
-
-    current = [dict(r) for r in curr_rows]
-
-    # Prior month scores for comparison
-    prior = {}
-    if prior_date:
-        prior_rows = conn.execute(
-            "SELECT ticker, score, rank FROM scores_v2 WHERE run_date = ? AND rank IS NOT NULL",
-            (prior_date,)
+    try:
+        # All distinct run dates, newest first
+        date_rows = conn.execute(
+            "SELECT DISTINCT run_date FROM scores_v2 ORDER BY run_date DESC LIMIT 60"
         ).fetchall()
-        prior = {r['ticker']: {'score': r['score'], 'rank': r['rank']} for r in prior_rows}
 
-    conn.close()
+        if not date_rows:
+            print("  [monthly_perf] No scores_v2 data — run scoring first.")
+            return
+
+        latest_date = date_rows[0]['run_date']
+        latest_dt   = datetime.strptime(latest_date, '%Y-%m-%d')
+        target_prior = latest_dt - timedelta(days=28)
+
+        # Find closest run_date at or before 28 days ago
+        prior_date = None
+        for row in date_rows[1:]:
+            dt = datetime.strptime(row['run_date'], '%Y-%m-%d')
+            if dt <= target_prior:
+                prior_date = row['run_date']
+                break
+
+        # Current top 20 with stock names
+        curr_rows = conn.execute("""
+            SELECT sv.ticker, sv.score, sv.rank, sv.category, s.name
+            FROM scores_v2 sv
+            LEFT JOIN stocks s ON sv.ticker = s.ticker
+            WHERE sv.run_date = ? AND sv.rank IS NOT NULL
+            ORDER BY sv.rank
+            LIMIT 20
+        """, (latest_date,)).fetchall()
+
+        current = [dict(r) for r in curr_rows]
+
+        # Prior month scores for comparison
+        prior = {}
+        if prior_date:
+            prior_rows = conn.execute(
+                "SELECT ticker, score, rank FROM scores_v2 WHERE run_date = ? AND rank IS NOT NULL",
+                (prior_date,)
+            ).fetchall()
+            prior = {r['ticker']: {'score': r['score'], 'rank': r['rank']} for r in prior_rows}
+    finally:
+        conn.close()
 
     url = WEBHOOKS.get('deep_analysis', '')
     ok  = send_model_performance(url, month_str, current, prior, latest_date, prior_date)
@@ -1499,12 +1491,14 @@ def _record_heartbeat(job_name: str):
         ts = datetime.now().isoformat()
         key = f'scheduler_heartbeat_{job_name}'
         conn = get_connection()
-        conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
-            (key, ts, ts),
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, ts, ts),
+            )
+            conn.commit()
+        finally:
+            conn.close()
         print(f"  [heartbeat] {job_name} recorded at {ts[:19]}")
     except Exception as e:
         print(f"  [heartbeat] write failed for {job_name}: {e}")
@@ -1525,11 +1519,13 @@ def _check_price_freshness() -> bool:
     try:
         from db.db_connection import get_connection
         conn = get_connection()
-        row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM prices WHERE date >= date('now', ?)",
-            (f'-{PRICE_STALENESS_ERROR_DAYS} days',),
-        ).fetchone()
-        conn.close()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM prices WHERE date >= date('now', ?)",
+                (f'-{PRICE_STALENESS_ERROR_DAYS} days',),
+            ).fetchone()
+        finally:
+            conn.close()
         count = row['cnt'] if row else 0
     except Exception as e:
         print(f"  [freshness] DB query failed — skipping gate: {e}")
@@ -1583,31 +1579,33 @@ def check_scheduler_health() -> dict:
     try:
         from db.db_connection import get_connection
         conn = get_connection()
-        for job_name, warn_hours in JOB_WARN_HOURS.items():
-            key = f'scheduler_heartbeat_{job_name}'
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = ?", (key,)
-            ).fetchone()
-            if row and row['value']:
-                last_run = row['value']
-                try:
-                    dt = datetime.fromisoformat(last_run)
-                    hours_ago = (datetime.now() - dt).total_seconds() / 3600
-                    ok = hours_ago <= warn_hours
-                except Exception:
+        try:
+            for job_name, warn_hours in JOB_WARN_HOURS.items():
+                key = f'scheduler_heartbeat_{job_name}'
+                row = conn.execute(
+                    "SELECT value FROM settings WHERE key = ?", (key,)
+                ).fetchone()
+                if row and row['value']:
+                    last_run = row['value']
+                    try:
+                        dt = datetime.fromisoformat(last_run)
+                        hours_ago = (datetime.now() - dt).total_seconds() / 3600
+                        ok = hours_ago <= warn_hours
+                    except Exception:
+                        hours_ago = None
+                        ok = False
+                else:
+                    last_run = None
                     hours_ago = None
-                    ok = False
-            else:
-                last_run = None
-                hours_ago = None
-                ok = (job_name == 'weekly_scrape')  # never run yet is OK for weekly
+                    ok = (job_name == 'weekly_scrape')  # never run yet is OK for weekly
 
-            result[job_name] = {
-                'last_run':  last_run,
-                'hours_ago': round(hours_ago, 1) if hours_ago is not None else None,
-                'ok':        ok,
-            }
-        conn.close()
+                result[job_name] = {
+                    'last_run':  last_run,
+                    'hours_ago': round(hours_ago, 1) if hours_ago is not None else None,
+                    'ok':        ok,
+                }
+        finally:
+            conn.close()
     except Exception as e:
         print(f"  [check_scheduler_health] DB query failed: {e}")
         for job_name in JOB_WARN_HOURS:

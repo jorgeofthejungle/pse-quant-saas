@@ -7,17 +7,9 @@
 # ============================================================
 
 # ── Discord Webhook URLs ───────────────────────────────────
-# How to get a webhook URL:
-# 1. Open your Discord server
-# 2. Click the gear icon next to a channel → Integrations → Webhooks
-# 3. Click "New Webhook" → Copy Webhook URL
-# 4. Paste the URL below for the matching channel
-
-DISCORD_WEBHOOKS = {
-    'dividend': '',   # paste #pse-dividend webhook URL here
-    'value':    '',   # paste #pse-value webhook URL here
-    'alerts':   '',   # paste #pse-alerts webhook URL here (price/earnings alerts)
-}
+# Webhook URLs are loaded from .env — see discord/discord_core.py.
+# Set these env vars: DISCORD_WEBHOOK_RANKINGS, DISCORD_WEBHOOK_ALERTS,
+# DISCORD_WEBHOOK_DEEP_ANALYSIS, DISCORD_WEBHOOK_DAILY_BRIEFING
 
 # ── Report Output Directory ────────────────────────────────
 # Where generated PDF reports are saved locally.
@@ -68,6 +60,10 @@ DDM_MAX_GROWTH_RATE = 0.07    # Cap on DDM dividend growth rate
 # ── Data Lookback ──────────────────────────────────────────
 YEARS_PREFERRED = 5   # Use 5 years of data when available
 YEARS_MINIMUM   = 3   # Require at least 3 years; flag stocks with less
+
+# ── Intrinsic Value Blend Weights ────────────────────────
+# Weights for calc_hybrid_intrinsic(): DDM, EPS-PE, DCF
+IV_WEIGHTS = (0.30, 0.35, 0.35)
 
 # ── Conglomerate IV Discount ───────────────────────────────
 # Applied to intrinsic value for stocks in the 'Holding Firms' sector.

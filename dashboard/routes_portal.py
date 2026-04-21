@@ -49,6 +49,7 @@ def _get_sample_analysis() -> dict:
         from engine.scorer_v2 import score_unified
         from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
                                  calc_hybrid_intrinsic, calc_mos_pct, calc_mos_price)
+        from config import CONGLOMERATE_DISCOUNT, IV_WEIGHTS
     except ImportError as e:
         return {'error': f'Import error: {e}'}
 
@@ -65,9 +66,9 @@ def _get_sample_analysis() -> dict:
     ddm_iv, _ = calc_ddm(stock.get('dps_last'), stock.get('dividend_cagr_5y'))
     eps_iv, _ = calc_eps_pe(eps_3y)
     dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'), stock.get('revenue_cagr'))
-    iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv, weights=(0.30, 0.35, 0.35))
+    iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv, weights=IV_WEIGHTS)
     if stock.get('sector') == 'Holding Firms' and iv:
-        iv = round(iv * 0.80, 2)
+        iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
 
     price     = stock.get('current_price')
     mos_pct   = calc_mos_pct(iv, price)       if iv and price else None

@@ -152,13 +152,13 @@ def _do_scoring(portfolio: str, dry_run: bool):
 
 
 def _do_scrape(dry_run: bool):
-    from scheduler_jobs import run_weekly_scrape
+    from scheduler import run_weekly_scrape
     run_weekly_scrape()
     return 'Weekly scrape complete'
 
 
 def _do_backfill(dry_run: bool = False):
-    from scheduler_jobs import run_backfill
+    from scheduler import run_backfill
     run_backfill()
     return 'Backfill complete'
 

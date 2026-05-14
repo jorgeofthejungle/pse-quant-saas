@@ -1,0 +1,147 @@
+# scheduler_jobs/state.py — Shared scheduler state: pending PDF, signal cache, heartbeat, freshness gate
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+# Stored in AppData (same dir as the DB) — Python can write there freely.
+# Documents\ is write-restricted on this machine (see CLAUDE.md §16).
+_STATE_DIR         = Path.home() / 'AppData' / 'Local' / 'pse_quant'
+_PENDING_PDF_PATH  = _STATE_DIR / 'pending_pdf.json'
+_SIGNAL_CACHE_PATH = _STATE_DIR / 'last_signals.json'
+
+
+def _load_signal_cache() -> dict:
+    """Loads last-sent sentiment signals from disk. Returns {} on any error."""
+    try:
+        with open(_SIGNAL_CACHE_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_signal_cache(cache: dict):
+    """Persists the sentiment signal cache to disk."""
+    try:
+        _SIGNAL_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_SIGNAL_CACHE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f"  [signal cache] save failed: {e}")
+
+
+def _signal_is_new(cache: dict, ticker: str, signal: str, score: float) -> bool:
+    """
+    Returns True if this signal should be sent.
+    Skips if the same signal was already sent AND the sentiment score
+    hasn't shifted more than 0.15 (on a -1.0 to 1.0 scale).
+    """
+    prev = cache.get(ticker, {})
+    if prev.get('signal') != signal:
+        return True
+    return abs((prev.get('score') or 0.0) - score) >= 0.15
+
+
+def _write_pending_pdf(ranked: list, reason: str, today: str):
+    """Records that a PDF should be sent at the 6 PM report run."""
+    try:
+        _PENDING_PDF_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            'date':    today,
+            'reason':  reason,
+            'tickers': [s['ticker'] for s in ranked],
+        }
+        with open(_PENDING_PDF_PATH, 'w', encoding='utf-8') as f:
+            json.dump(payload, f)
+    except Exception as e:
+        print(f"  [pending pdf] write failed: {e}")
+
+
+def _read_pending_pdf() -> dict | None:
+    """Returns pending PDF info if it exists and was written today."""
+    try:
+        with open(_PENDING_PDF_PATH, encoding='utf-8') as f:
+            data = json.load(f)
+        today = datetime.now().strftime('%Y-%m-%d')
+        if data.get('date') == today:
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _clear_pending_pdf():
+    try:
+        _PENDING_PDF_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _record_heartbeat(job_name: str):
+    """
+    Write job completion timestamp to the settings table.
+    Non-fatal — any DB or import error is silently logged to console.
+    key: 'scheduler_heartbeat_{job_name}'
+    """
+    try:
+        from db.db_connection import get_connection
+        ts  = datetime.now().isoformat()
+        key = f'scheduler_heartbeat_{job_name}'
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, ts, ts),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        print(f"  [heartbeat] {job_name} recorded at {ts[:19]}")
+    except Exception as e:
+        print(f"  [heartbeat] write failed for {job_name}: {e}")
+
+
+def _check_price_freshness() -> bool:
+    """
+    Returns True if price data is fresh enough to score.
+    Queries: SELECT COUNT(*) FROM prices WHERE date >= date('now', '-N days')
+    If count == 0, prices are stale — sends admin DM and returns False.
+    N is PRICE_STALENESS_ERROR_DAYS from config.py.
+    """
+    try:
+        from config import PRICE_STALENESS_ERROR_DAYS as _days
+    except ImportError:
+        _days = 30
+
+    try:
+        from db.db_connection import get_connection
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM prices WHERE date >= date('now', ?)",
+                (f'-{_days} days',),
+            ).fetchone()
+        finally:
+            conn.close()
+        count = row['cnt'] if row else 0
+    except Exception as e:
+        print(f"  [freshness] DB query failed — skipping gate: {e}")
+        return True  # fail-open: don't block scoring on a DB error
+
+    if count == 0:
+        msg = (
+            f"[PSE Quant] STALE PRICE DATA — no prices updated in the last "
+            f"{_days} days. Scoring skipped. "
+            f"Check PSE Edge scraper or price pipeline."
+        )
+        print(f"  [freshness] {msg}")
+        try:
+            admin_id = os.environ.get('ADMIN_DISCORD_ID', '')
+            if admin_id:
+                from discord.discord_dm import send_dm_text
+                send_dm_text(admin_id, msg)
+        except Exception as dm_err:
+            print(f"  [freshness] admin DM failed: {dm_err}")
+        return False
+
+    return True

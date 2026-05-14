@@ -113,8 +113,9 @@ def _trigger_rescore_for_ticker(ticker: str, category: str, dry_run: bool = Fals
     def _background_rescore():
         try:
             # Import here to avoid circular import at module load time
+            # (scheduler.py imports disclosure_monitor, so scheduler can't be used here)
             sys.path.insert(0, str(ROOT))
-            from scheduler_jobs import run_daily_score
+            from scheduler_jobs.daily_jobs import run_daily_score
             run_daily_score()
         except Exception as exc:
             print(f"  [disclosure_monitor] Triggered rescore failed: {exc}")

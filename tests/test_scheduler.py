@@ -3,7 +3,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from scheduler_jobs import (
+from scheduler_jobs.daily_jobs import (
     _top5_changed,
     _significant_score_change,
     _build_changes,
@@ -48,8 +48,13 @@ def _ranked(items):
 
 def test_top5_unchanged():
     old = ['DMC', 'ALI', 'MWC', 'BDO', 'SM']
-    new = ['ALI', 'DMC', 'BDO', 'SM', 'MWC']  # same set, different order
-    assert not _top5_changed(old, new), "Same set in different order should NOT trigger"
+    new = ['DMC', 'ALI', 'MWC', 'BDO', 'SM']  # identical order
+    assert not _top5_changed(old, new), "Identical list should not trigger"
+
+def test_top5_rank_swap_triggers():
+    old = ['DMC', 'ALI', 'MWC', 'BDO', 'SM']
+    new = ['ALI', 'DMC', 'BDO', 'SM', 'MWC']  # same composition, different order
+    assert _top5_changed(old, new), "Rank swap within top-5 should trigger a new report"
 
 def test_top5_one_replacement():
     old = ['DMC', 'ALI', 'MWC', 'BDO', 'SM']
@@ -171,8 +176,8 @@ def test_shortlist_entry_detected():
 
 if __name__ == '__main__':
     tests = [
-        test_top5_unchanged, test_top5_one_replacement,
-        test_top5_complete_change, test_top5_empty_both,
+        test_top5_unchanged, test_top5_rank_swap_triggers,
+        test_top5_one_replacement, test_top5_complete_change, test_top5_empty_both,
         test_significant_score_no_change, test_significant_score_triggered,
         test_significant_score_exactly_at_threshold, test_significant_score_new_stock_ignored,
         test_build_changes_rank_moved, test_build_changes_new_entrant,

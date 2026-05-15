@@ -177,6 +177,10 @@ def run_pipeline(dry_run: bool = False) -> bool:
 
     if not eligible:
         print("  No stocks passed health filters.")
+        send_ops_alert(
+            'Filter: zero eligible stocks',
+            f'filter_unified_batch() passed 0 stocks — {len(rejected)} rejected',
+        )
         return False
 
     # Build financials history map for ROE delta (Layer 2)
@@ -225,12 +229,16 @@ def run_pipeline(dry_run: bool = False) -> bool:
     filename = f"StockPilot_PH_Rankings_{run_date}.pdf"
     pdf_path = os.path.join(_out_dir, filename)
 
-    generate_report(
-        ranked_sections        = ranked_sections,
-        output_path            = pdf_path,
-        total_stocks_screened  = len(all_stocks),
-    )
-    print(f"       Saved: {pdf_path}")
+    try:
+        generate_report(
+            ranked_sections        = ranked_sections,
+            output_path            = pdf_path,
+            total_stocks_screened  = len(all_stocks),
+        )
+        print(f"       Saved: {pdf_path}")
+    except Exception as e:
+        send_ops_alert('PDF Generation', str(e))
+        return False
 
     # ── Step 5: Send to Discord (#pse-value webhook) ──────────
     print(f"\n[5/5]  Discord delivery...")
@@ -254,6 +262,7 @@ def run_pipeline(dry_run: bool = False) -> bool:
         print("  Delivered to Discord.")
     else:
         print(f"  Discord delivery failed. PDF saved at: {pdf_path}")
+        send_ops_alert('Discord Delivery', f'send_report() returned False for {pdf_path}')
 
     _send_opportunistic_alerts(ranked_sections['dividend'])
     return True

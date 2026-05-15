@@ -73,7 +73,8 @@ if __name__ == '__main__':
 
     conn = get_connection()
     tables = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        "SELECT table_name AS name FROM information_schema.tables "
+        "WHERE table_schema = 'public' ORDER BY table_name"
     ).fetchall()
     conn.close()
 
@@ -81,5 +82,4 @@ if __name__ == '__main__':
     for t in tables:
         print(f"  {t['name']}")
 
-    print(f"\nDatabase file: {DB_PATH}")
-    print("Database initialisation complete.")
+    print("Database initialisation complete. (PostgreSQL)")

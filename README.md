@@ -148,7 +148,7 @@ A browser-based dashboard (Flask) for local admin use:
 - **Analytics** — Revenue charts, member growth, plan distribution
 - **Settings** — Webhook status, DB table sizes, configuration
 
-Run locally with `py dashboard/app.py` → `http://localhost:8080`. The scheduler and
+Run locally with `python dashboard/app.py` → `http://localhost:8080`. The scheduler and
 bot run automatically on Railway — the dashboard is for admin management only.
 
 ---
@@ -218,16 +218,16 @@ Health thresholds are calibrated from PSE market percentiles (top-10% = excellen
 ## Setup
 
 ### Requirements
-- **Cloud**: Railway account (hosting + persistent SQLite volume)
-- **Local**: Windows 10 or 11, Python 3.14.x (`py` command)
+- **Cloud**: Railway account (hosting + PostgreSQL addon)
+- **Local**: WSL2/Ubuntu or Linux, Python 3.14.x (`python` command)
 - A PSE Edge account (free at edge.pse.com.ph)
 - A Discord server with webhook URLs and a bot token
 
 ### Installation
 ```bash
-py -m pip install requests beautifulsoup4 pdfplumber reportlab
-py -m pip install apscheduler pydantic pandas pytest
-py -m pip install python-dotenv lxml anthropic flask discord.py
+python -m pip install requests beautifulsoup4 pdfplumber reportlab
+python -m pip install apscheduler pydantic pandas pytest
+python -m pip install python-dotenv lxml anthropic flask discord.py
 ```
 
 ### Configuration
@@ -259,45 +259,54 @@ PAYMONGO_SECRET_KEY=sk_test_...
 MONTHLY_PRICE_CENTAVOS=9900
 ANNUAL_PRICE_CENTAVOS=99900
 
+# PostgreSQL (required — Railway provides this via the Postgres addon)
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+
+# Dashboard admin auth
+DASHBOARD_USERNAME=admin
+DASHBOARD_PASSWORD=changeme
+
+# Optional: data dir for PDFs/caches (default /app/data)
+PSE_DATA_DIR=/app/data
+
 # Railway (set automatically by Railway, override if needed)
-PSE_DB_PATH=/app/data/pse_quant.db
 PORT=8080
 ```
 
 ### Running the System
 ```bash
 # Full unified pipeline (score + PDF + Discord)
-py main.py
+python main.py
 
 # Dry run (no Discord publish)
-py main.py --dry-run
+python main.py --dry-run
 
 # Start the scheduler (runs on automatic schedule)
-py scheduler.py
+python scheduler.py
 
 # Start the Discord bot
-py discord/bot.py
+python discord/bot.py
 
 # Open the admin dashboard
-py dashboard/app.py        # then open http://localhost:8080
+python dashboard/app.py    # then open http://localhost:8080
 
 # Manual pipeline triggers
-py scheduler.py --run-now           # trigger full scoring cycle
-py scheduler.py --run-alerts        # trigger alert check
-py scheduler.py --run-weekly        # trigger full financial scrape
-py scheduler.py --run-score         # scoring phase only (4 PM job)
-py scheduler.py --run-report        # report phase only (6 PM job)
-py scheduler.py --run-sotw          # Stock of the Week
-py scheduler.py --run-digest        # Weekly Digest DMs
-py scheduler.py --run-monthly       # Monthly reports
-py scheduler.py --run-backfill      # Historical data backfill (2018-2023)
+python scheduler.py --run-now           # trigger full scoring cycle
+python scheduler.py --run-alerts        # trigger alert check
+python scheduler.py --run-weekly        # trigger full financial scrape
+python scheduler.py --run-score         # scoring phase only (4 PM job)
+python scheduler.py --run-report        # report phase only (6 PM job)
+python scheduler.py --run-sotw          # Stock of the Week
+python scheduler.py --run-digest        # Weekly Digest DMs
+python scheduler.py --run-monthly       # Monthly reports
+python scheduler.py --run-backfill      # Historical data backfill (2018-2023)
 
 # Threshold calibration
-py engine/calibrate_thresholds.py   # Derive thresholds from DB percentiles
+python engine/calibrate_thresholds.py   # Derive thresholds from DB percentiles
 
 # Data quality
-py db/db_data_quality.py            # full audit of all stocks
-py db/db_data_quality.py --ticker DMC  # audit one ticker
+python db/db_data_quality.py            # full audit of all stocks
+python db/db_data_quality.py --ticker DMC  # audit one ticker
 ```
 
 ---

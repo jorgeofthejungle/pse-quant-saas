@@ -68,7 +68,7 @@ DEFAULT_YEARS = [2022, 2023, 2024, 2025]
 def _build_metrics_as_of(ticker: str, as_of_year: int, conn) -> dict | None:
     """Builds stock metrics dict using financials up to as_of_year + current price."""
     stock_row = conn.execute(
-        "SELECT ticker, name, sector, is_reit, is_bank FROM stocks WHERE ticker = ?",
+        "SELECT ticker, name, sector, is_reit, is_bank FROM stocks WHERE ticker = %s",
         (ticker,)
     ).fetchone()
     if not stock_row:
@@ -76,7 +76,7 @@ def _build_metrics_as_of(ticker: str, as_of_year: int, conn) -> dict | None:
 
     # Current price (we use latest available — see module docstring)
     price_row = conn.execute(
-        "SELECT close, market_cap FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
+        "SELECT close, market_cap FROM prices WHERE ticker = %s ORDER BY date DESC LIMIT 1",
         (ticker,)
     ).fetchone()
     if not price_row:
@@ -90,7 +90,7 @@ def _build_metrics_as_of(ticker: str, as_of_year: int, conn) -> dict | None:
         SELECT year, revenue, net_income, equity, total_debt, cash,
                operating_cf, capex, ebitda, eps, dps
         FROM financials
-        WHERE ticker = ? AND year <= ?
+        WHERE ticker = %s AND year <= %s
         ORDER BY year DESC LIMIT 10
     """, (ticker, as_of_year)).fetchall()
 
@@ -287,7 +287,7 @@ def run_simulation_v2(as_of_year: int) -> list:
             """SELECT year, revenue, net_income, equity, total_debt, cash,
                       operating_cf, capex, ebitda, eps, dps
                FROM financials
-               WHERE ticker = ? AND year <= ?
+               WHERE ticker = %s AND year <= %s
                ORDER BY year DESC LIMIT 10""",
             (metrics['ticker'], as_of_year)
         ).fetchall()

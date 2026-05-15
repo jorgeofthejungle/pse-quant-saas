@@ -7,6 +7,7 @@ to the Railway import endpoint in batches.
 Usage:
     py tools/export_and_sync.py --url https://your-railway-url.railway.app
 """
+import os
 import sys
 import json
 import time
@@ -16,7 +17,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-LOCAL_DB = Path(r'C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db')
+LOCAL_DB = Path(os.environ.get('PSE_DB_PATH', Path.home() / 'pse_quant' / 'pse_quant.db'))
 BATCH    = 200   # rows per POST (smaller to avoid timeouts)
 RETRIES  = 3
 RETRY_DELAY = 5  # seconds

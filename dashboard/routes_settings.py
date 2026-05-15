@@ -62,17 +62,15 @@ def index():
     score_h = int(get_setting('score_hour',   16))
     score_m = int(get_setting('score_minute', 0))
 
-    # DB stats
-    db_path = db.DB_PATH
-    try:
-        db_size_kb = round(os.path.getsize(db_path) / 1024, 1)
-    except Exception:
-        db_size_kb = 0
+    # DB stats (PostgreSQL — no local file size)
+    db_path    = 'PostgreSQL'
+    db_size_kb = 0
 
     try:
         conn   = db.get_connection()
         tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            "SELECT table_name AS name FROM information_schema.tables "
+            "WHERE table_schema = 'public' ORDER BY table_name"
         ).fetchall()
         table_counts = {}
         for t in tables:

@@ -25,34 +25,8 @@ from .state import _record_heartbeat
 
 
 def _backup_database():
-    """
-    Copies the SQLite DB to a timestamped backup file in the same directory.
-    Prunes backups older than 4 weeks to avoid disk accumulation.
-    """
-    db_path = Path(db.DB_PATH)
-    if not db_path.exists():
-        return
-    backup_dir  = db_path.parent
-    today_str   = datetime.now().strftime('%Y-%m-%d')
-    backup_path = backup_dir / f'pse_quant_backup_{today_str}.db'
-    try:
-        shutil.copy2(str(db_path), str(backup_path))
-        print(f"  DB backup saved: {backup_path.name}")
-    except Exception as e:
-        print(f"  DB backup failed: {e}")
-        return
-
-    # Prune backups older than 28 days
-    cutoff = datetime.now() - timedelta(days=28)
-    for old_backup in backup_dir.glob('pse_quant_backup_*.db'):
-        try:
-            date_str    = old_backup.stem.replace('pse_quant_backup_', '')
-            backup_date = datetime.strptime(date_str, '%Y-%m-%d')
-            if backup_date < cutoff:
-                old_backup.unlink()
-                print(f"  Pruned old backup: {old_backup.name}")
-        except Exception:
-            pass
+    """PostgreSQL: no file-based backup. Use pg_dump externally."""
+    print("  DB backup skipped — PostgreSQL backups handled via pg_dump.")
 
 
 def run_weekly_scrape():
@@ -192,14 +166,13 @@ def run_weekly_scrape():
         except Exception as e:
             print(f"  [weekly briefing] failed: {e}")
 
-    # ── Step 4: Cleanup stale data + VACUUM ───────────────────
-    print("\n[4/4]  Cleaning up stale data and vacuuming database...")
+    # ── Step 4: Cleanup stale data ───────────────────────────
+    print("\n[4/4]  Cleaning up stale data...")
     try:
         stats = db.cleanup_stale_data()
         print(f"  Pruned: {stats['prices_deleted']} price rows, "
               f"{stats['activity_deleted']} activity rows, "
               f"{stats['sentiment_deleted']} sentiment rows.")
-        print("  VACUUM complete — disk space reclaimed.")
     except Exception as e:
         print(f"  Cleanup failed: {e}")
 
@@ -271,14 +244,14 @@ def run_weekly_digest():
         prev_scores = {}
         if prev_date:
             rows = conn.execute(
-                "SELECT ticker, score FROM scores_v2 WHERE run_date = ?", (prev_date,)
+                "SELECT ticker, score FROM scores_v2 WHERE run_date = %s", (prev_date,)
             ).fetchall()
             prev_scores = {r['ticker']: r['score'] for r in rows}
 
         div_rows = conn.execute("""
             SELECT DISTINCT ticker, title, date FROM disclosures
             WHERE (LOWER(type) LIKE '%dividend%' OR LOWER(title) LIKE '%dividend%')
-              AND date >= ?
+              AND date >= %s
             ORDER BY date DESC
             LIMIT 5
         """, (week_ago,)).fetchall()
@@ -287,7 +260,7 @@ def run_weekly_digest():
         alert_rows = conn.execute("""
             SELECT detail, timestamp FROM activity_log
             WHERE action = 'price_alert'
-              AND timestamp >= ?
+              AND timestamp >= %s
             ORDER BY timestamp DESC
             LIMIT 5
         """, (week_ago + ' 00:00:00',)).fetchall()
@@ -464,7 +437,7 @@ def run_stock_of_week():
         prev_by_ticker = {}
         if prev_date:
             prev_rows = conn.execute(
-                "SELECT ticker, score FROM scores_v2 WHERE run_date = ?",
+                "SELECT ticker, score FROM scores_v2 WHERE run_date = %s",
                 (prev_date,)
             ).fetchall()
             prev_by_ticker = {r['ticker']: r['score'] for r in prev_rows}

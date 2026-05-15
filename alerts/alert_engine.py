@@ -53,7 +53,7 @@ def _get_seen_urls(ticker: str) -> set:
     """Returns URL keys already stored for this ticker (dedup guard)."""
     conn = db.get_connection()
     rows = conn.execute(
-        "SELECT url FROM disclosures WHERE ticker = ?", (ticker,)
+        "SELECT url FROM disclosures WHERE ticker = %s", (ticker,)
     ).fetchall()
     conn.close()
     return {r['url'] for r in rows if r['url']}
@@ -64,8 +64,8 @@ def _save_disclosure(ticker: str, date: str, disc_type: str,
     """Saves one disclosure record. Silently ignores duplicates."""
     conn = db.get_connection()
     conn.execute(
-        "INSERT OR IGNORE INTO disclosures (ticker, date, type, title, url) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO disclosures (ticker, date, type, title, url) "
+        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT(ticker, date, url) DO NOTHING",
         (ticker, date, disc_type, title, url),
     )
     conn.commit()
@@ -78,13 +78,13 @@ def _claim_disclosure(ticker: str, date: str, disc_type: str,
     Atomically inserts a disclosure record.
     Returns True if the record was new (this process claimed it),
     False if it already existed (duplicate — skip the send).
-    Using INSERT OR IGNORE + rowcount prevents duplicate sends even
+    ON CONFLICT DO NOTHING + rowcount prevents duplicate sends even
     when two scheduler processes run at the same time.
     """
     conn = db.get_connection()
     cur = conn.execute(
-        "INSERT OR IGNORE INTO disclosures (ticker, date, type, title, url) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO disclosures (ticker, date, type, title, url) "
+        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT(ticker, date, url) DO NOTHING",
         (ticker, date, disc_type, title, url),
     )
     conn.commit()
@@ -122,7 +122,7 @@ def _get_ranked_tickers() -> list:
                 SELECT ticker, MAX(date) FROM prices GROUP BY ticker
             )
         ) p ON v.ticker = p.ticker
-        WHERE v.run_date = ?
+        WHERE v.run_date = %s
         GROUP BY v.ticker
     """, (latest['run_date'],)).fetchall()
     conn.close()
@@ -261,7 +261,7 @@ def _get_alert_baseline_date(ticker: str) -> str | None:
     """
     conn = db.get_connection()
     row  = conn.execute(
-        "SELECT value FROM settings WHERE key = ?",
+        "SELECT value FROM settings WHERE key = %s",
         (f'div_baseline:{ticker}',)
     ).fetchone()
     conn.close()
@@ -273,7 +273,8 @@ def _set_alert_baseline_date(ticker: str, date_str: str):
     now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     conn = db.get_connection()
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+        "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) "
+        "ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
         (f'div_baseline:{ticker}', date_str, now)
     )
     conn.commit()

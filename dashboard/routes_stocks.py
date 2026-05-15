@@ -48,7 +48,7 @@ def _get_stock_analysis(ticker: str) -> dict:
         # Check if ticker exists at all
         conn = db.get_connection()
         row = conn.execute(
-            "SELECT ticker, name, status FROM stocks WHERE ticker = ?",
+            "SELECT ticker, name, status FROM stocks WHERE ticker = %s",
             (ticker.upper(),)
         ).fetchone()
         conn.close()
@@ -143,7 +143,7 @@ def _resolve_ticker(query: str) -> str | None:
     conn = db.get_connection()
     # Exact ticker match
     row = conn.execute(
-        "SELECT ticker FROM stocks WHERE ticker = ? AND status = 'active'",
+        "SELECT ticker FROM stocks WHERE ticker = %s AND status = 'active'",
         (q.upper(),)
     ).fetchone()
     if row:
@@ -151,7 +151,7 @@ def _resolve_ticker(query: str) -> str | None:
         return row['ticker']
     # Name contains search (case-insensitive)
     row = conn.execute(
-        "SELECT ticker FROM stocks WHERE UPPER(name) LIKE ? AND status = 'active' ORDER BY ticker LIMIT 1",
+        "SELECT ticker FROM stocks WHERE UPPER(name) LIKE %s AND status = 'active' ORDER BY ticker LIMIT 1",
         (f'%{q.upper()}%',)
     ).fetchone()
     conn.close()
@@ -184,10 +184,10 @@ def api_search():
     rows = conn.execute("""
         SELECT ticker, name FROM stocks
         WHERE status = 'active'
-          AND (UPPER(ticker) LIKE ? OR UPPER(name) LIKE ?)
+          AND (UPPER(ticker) LIKE %s OR UPPER(name) LIKE %s)
         ORDER BY
-          CASE WHEN UPPER(ticker) = ? THEN 0
-               WHEN UPPER(ticker) LIKE ? THEN 1
+          CASE WHEN UPPER(ticker) = %s THEN 0
+               WHEN UPPER(ticker) LIKE %s THEN 1
                ELSE 2 END,
           ticker
         LIMIT 10

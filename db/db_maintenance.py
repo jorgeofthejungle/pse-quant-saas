@@ -52,7 +52,7 @@ def clean_bad_dps(max_yield_non_reit: float = 20.0,
 
     if not dry_run and to_null:
         conn.executemany(
-            "UPDATE financials SET dps = NULL WHERE ticker = ? AND year = ?",
+            "UPDATE financials SET dps = NULL WHERE ticker = %s AND year = %s",
             [(t, y) for t, y, *_ in to_null]
         )
         conn.commit()
@@ -80,7 +80,7 @@ def cleanup_stale_data(
         prices_keep_days:   Keep daily prices for this many days (default 1 year)
         activity_keep_days: Keep activity_log rows for this many days (default 90)
         sentiment_keep_days: Keep sentiment cache for this many days (default 7)
-        vacuum:             Run VACUUM at the end to reclaim disk space
+        vacuum:             Ignored (PostgreSQL uses autovacuum)
 
     Returns:
         dict with 'prices_deleted', 'activity_deleted', 'sentiment_deleted' counts
@@ -95,26 +95,22 @@ def cleanup_stale_data(
 
     # Prune old price rows
     cur = conn.execute(
-        "DELETE FROM prices WHERE date < ?", (price_cutoff,)
+        "DELETE FROM prices WHERE date < %s", (price_cutoff,)
     )
     results['prices_deleted'] = cur.rowcount
 
     # Prune old activity log rows
     cur = conn.execute(
-        "DELETE FROM activity_log WHERE timestamp < ?", (activity_cutoff,)
+        "DELETE FROM activity_log WHERE timestamp < %s", (activity_cutoff,)
     )
     results['activity_deleted'] = cur.rowcount
 
     # Prune old sentiment cache rows
     cur = conn.execute(
-        "DELETE FROM sentiment WHERE date < ?", (sentiment_cutoff,)
+        "DELETE FROM sentiment WHERE date < %s", (sentiment_cutoff,)
     )
     results['sentiment_deleted'] = cur.rowcount
 
     conn.commit()
-
-    if vacuum:
-        conn.execute("VACUUM")
-
     conn.close()
     return results

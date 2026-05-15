@@ -82,7 +82,7 @@ def _count_consecutive_flags(conn, ticker: str, portfolio_type: str, before_mont
     """Count prior consecutive flagged months, stopping at first non-flagged."""
     rows = conn.execute(
         "SELECT month, score_change_flag FROM feedback_stock_returns "
-        "WHERE ticker = ? AND portfolio_type = ? AND month < ? "
+        "WHERE ticker = %s AND portfolio_type = %s AND month < %s "
         "ORDER BY month DESC",
         (ticker, portfolio_type, before_month),
     ).fetchall()
@@ -101,7 +101,7 @@ def _load_snapshots(conn, snapshot_date: str, portfolio_type: str) -> dict:
     """{ticker: row_dict} for a given snapshot_date + portfolio_type."""
     rows = conn.execute(
         "SELECT * FROM feedback_snapshots "
-        "WHERE snapshot_date = ? AND portfolio_type = ?",
+        "WHERE snapshot_date = %s AND portfolio_type = %s",
         (snapshot_date, portfolio_type),
     ).fetchall()
     return {row['ticker']: dict(row) for row in rows}
@@ -112,11 +112,11 @@ def _load_snapshots(conn, snapshot_date: str, portfolio_type: str) -> dict:
 def _index_return(conn, t_minus1: str, t_date: str) -> float | None:
     """PSEi return over the month window as decimal, or None if missing."""
     row_start = conn.execute(
-        "SELECT close FROM index_prices WHERE date <= ? ORDER BY date DESC LIMIT 1",
+        "SELECT close FROM index_prices WHERE date <= %s ORDER BY date DESC LIMIT 1",
         (t_minus1,),
     ).fetchone()
     row_end = conn.execute(
-        "SELECT close FROM index_prices WHERE date <= ? ORDER BY date DESC LIMIT 1",
+        "SELECT close FROM index_prices WHERE date <= %s ORDER BY date DESC LIMIT 1",
         (t_date,),
     ).fetchone()
     if not row_start or not row_end:
@@ -134,7 +134,7 @@ def _has_new_financials(conn, ticker: str, t_minus1: str, t_date: str) -> bool:
     """True if a financials row for this ticker was updated within the window."""
     row = conn.execute(
         "SELECT COUNT(*) AS cnt FROM financials "
-        "WHERE ticker = ? AND updated_at > ? AND updated_at <= ?",
+        "WHERE ticker = %s AND updated_at > %s AND updated_at <= %s",
         (ticker, t_minus1, t_date),
     ).fetchone()
     return (row['cnt'] or 0) > 0
@@ -256,12 +256,22 @@ def _run_for_portfolio(
 
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO feedback_stock_returns "
+                "INSERT INTO feedback_stock_returns "
                 "(ticker, month, portfolio_type, score_at_start, price_start, price_end, "
                 " return_pct, rank_at_start, was_top10, score_change_flag, "
                 " score_change_severity, score_change_magnitude, consecutive_flag_months, "
                 " created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT(ticker, month, portfolio_type) DO UPDATE SET "
+                "  score_at_start = EXCLUDED.score_at_start, "
+                "  price_start = EXCLUDED.price_start, price_end = EXCLUDED.price_end, "
+                "  return_pct = EXCLUDED.return_pct, rank_at_start = EXCLUDED.rank_at_start, "
+                "  was_top10 = EXCLUDED.was_top10, "
+                "  score_change_flag = EXCLUDED.score_change_flag, "
+                "  score_change_severity = EXCLUDED.score_change_severity, "
+                "  score_change_magnitude = EXCLUDED.score_change_magnitude, "
+                "  consecutive_flag_months = EXCLUDED.consecutive_flag_months, "
+                "  created_at = EXCLUDED.created_at",
                 (
                     ticker, month, portfolio_type,
                     score_start_f, float(price_start), float(price_end),
@@ -406,7 +416,7 @@ def _run_for_portfolio(
 
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO feedback_monthly "
+            "INSERT INTO feedback_monthly "
             "(month, portfolio_type, total_previous, total_current, total_matched, "
             " match_rate_pct, top10_avg_return, top10_vs_index, "
             " market_positive_rate, hit_rate_positive, mos_direction_accuracy, "
@@ -414,13 +424,32 @@ def _run_for_portfolio(
             " avg_score_of_losers, score_separation_power, score_change_flag_count, "
             " score_change_minor_count, score_change_major_count, confidence_level, "
             " created_at) "
-            "VALUES (:month, :portfolio_type, :total_previous, :total_current, "
-            " :total_matched, :match_rate_pct, :top10_avg_return, "
-            " :top10_vs_index, :market_positive_rate, :hit_rate_positive, "
-            " :mos_direction_accuracy, :iv_coverage_pct, :spearman_correlation, "
-            " :avg_score_of_gainers, :avg_score_of_losers, :score_separation_power, "
-            " :score_change_flag_count, :score_change_minor_count, "
-            " :score_change_major_count, :confidence_level, :created_at)",
+            "VALUES (%(month)s, %(portfolio_type)s, %(total_previous)s, %(total_current)s, "
+            " %(total_matched)s, %(match_rate_pct)s, %(top10_avg_return)s, "
+            " %(top10_vs_index)s, %(market_positive_rate)s, %(hit_rate_positive)s, "
+            " %(mos_direction_accuracy)s, %(iv_coverage_pct)s, %(spearman_correlation)s, "
+            " %(avg_score_of_gainers)s, %(avg_score_of_losers)s, %(score_separation_power)s, "
+            " %(score_change_flag_count)s, %(score_change_minor_count)s, "
+            " %(score_change_major_count)s, %(confidence_level)s, %(created_at)s) "
+            "ON CONFLICT(month, portfolio_type) DO UPDATE SET "
+            "  total_previous = EXCLUDED.total_previous, "
+            "  total_current = EXCLUDED.total_current, total_matched = EXCLUDED.total_matched, "
+            "  match_rate_pct = EXCLUDED.match_rate_pct, "
+            "  top10_avg_return = EXCLUDED.top10_avg_return, "
+            "  top10_vs_index = EXCLUDED.top10_vs_index, "
+            "  market_positive_rate = EXCLUDED.market_positive_rate, "
+            "  hit_rate_positive = EXCLUDED.hit_rate_positive, "
+            "  mos_direction_accuracy = EXCLUDED.mos_direction_accuracy, "
+            "  iv_coverage_pct = EXCLUDED.iv_coverage_pct, "
+            "  spearman_correlation = EXCLUDED.spearman_correlation, "
+            "  avg_score_of_gainers = EXCLUDED.avg_score_of_gainers, "
+            "  avg_score_of_losers = EXCLUDED.avg_score_of_losers, "
+            "  score_separation_power = EXCLUDED.score_separation_power, "
+            "  score_change_flag_count = EXCLUDED.score_change_flag_count, "
+            "  score_change_minor_count = EXCLUDED.score_change_minor_count, "
+            "  score_change_major_count = EXCLUDED.score_change_major_count, "
+            "  confidence_level = EXCLUDED.confidence_level, "
+            "  created_at = EXCLUDED.created_at",
             scorecard,
         )
         conn.commit()
@@ -454,8 +483,8 @@ def _run_for_portfolio(
         unstable_rows = conn.execute(
             "SELECT ticker, consecutive_flag_months, score_change_severity "
             "FROM feedback_stock_returns "
-            "WHERE month = ? AND portfolio_type = ? "
-            "AND consecutive_flag_months >= ?",
+            "WHERE month = %s AND portfolio_type = %s "
+            "AND consecutive_flag_months >= %s",
             (month, portfolio_type, SCORE_INSTABILITY_ALERT_MONTHS),
         ).fetchall()
         for row in unstable_rows:
@@ -484,7 +513,7 @@ def get_scorecard(month: str, portfolio_type: str) -> dict | None:
 
     try:
         row = conn.execute(
-            "SELECT * FROM feedback_monthly WHERE month = ? AND portfolio_type = ?",
+            "SELECT * FROM feedback_monthly WHERE month = %s AND portfolio_type = %s",
             (month, portfolio_type),
         ).fetchone()
         return dict(row) if row else None

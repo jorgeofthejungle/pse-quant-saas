@@ -38,7 +38,7 @@ def run_monthly_dividend_calendar():
             JOIN (
                 SELECT ticker, MAX(year) AS max_year
                 FROM financials
-                WHERE dps > 0 AND year < ?
+                WHERE dps > 0 AND year < %s
                 GROUP BY ticker
             ) latest ON f.ticker = latest.ticker AND f.year = latest.max_year
             JOIN stocks s ON f.ticker = s.ticker
@@ -50,7 +50,7 @@ def run_monthly_dividend_calendar():
             WHERE f.dps > 0
               AND s.status = 'active'
               AND p.close > 0
-              AND f.year < ?
+              AND f.year < %s
               AND (f.dps / p.close * 100.0) BETWEEN 0.5 AND 20.0
               AND (
                   s.is_reit = 1
@@ -79,7 +79,7 @@ def run_monthly_dividend_calendar():
         disc_rows = conn.execute("""
             SELECT ticker, date, title FROM disclosures
             WHERE (type LIKE '%dividend%' OR title LIKE '%dividend%')
-            AND date >= ?
+            AND date >= %s
             ORDER BY date DESC
             LIMIT 10
         """, (cutoff,)).fetchall()
@@ -129,7 +129,7 @@ def run_monthly_model_performance():
             SELECT sv.ticker, sv.score, sv.rank, sv.category, s.name
             FROM scores_v2 sv
             LEFT JOIN stocks s ON sv.ticker = s.ticker
-            WHERE sv.run_date = ? AND sv.rank IS NOT NULL
+            WHERE sv.run_date = %s AND sv.rank IS NOT NULL
             ORDER BY sv.rank
             LIMIT 20
         """, (latest_date,)).fetchall()
@@ -139,7 +139,7 @@ def run_monthly_model_performance():
         prior = {}
         if prior_date:
             prior_rows = conn.execute(
-                "SELECT ticker, score, rank FROM scores_v2 WHERE run_date = ? AND rank IS NOT NULL",
+                "SELECT ticker, score, rank FROM scores_v2 WHERE run_date = %s AND rank IS NOT NULL",
                 (prior_date,)
             ).fetchall()
             prior = {r['ticker']: {'score': r['score'], 'rank': r['rank']} for r in prior_rows}

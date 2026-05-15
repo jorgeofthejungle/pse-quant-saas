@@ -7,7 +7,7 @@
 ## 1. WHO YOU ARE
 
 You are the lead developer of **PSE Quant SaaS** — a deterministic
-multi-factor Philippine equity ranking engine that runs locally on Windows.
+multi-factor Philippine equity ranking engine. Dev: WSL2/Ubuntu. Deploy: Railway (Docker/Linux).
 
 ### AI Model Policy
 - **Pipeline / classification tasks** (sentiment analysis, news scoring):
@@ -72,13 +72,16 @@ PSE Edge → Scraper (canary checks) → Unit Validation → Database
 
 Root-level and scheduler files listed here. See each subdirectory's CLAUDE.md for engine/, scraper/, db/, discord/, dashboard/, alerts/, and reports/ entries.
 
-### scheduler_jobs.py — heartbeat + freshness gate
-- `_record_heartbeat(job_name)` — writes `scheduler_heartbeat_{job_name}` ISO timestamp to settings table after each job completes
-- `_check_price_freshness()` — queries prices table; if no rows within `PRICE_STALENESS_ERROR_DAYS`, sends admin DM and returns False; `run_daily_score()` calls this at start and skips if stale
-- `check_scheduler_health()` → dict with `last_run`, `hours_ago`, `ok` for daily_score / weekly_scrape / alert_check
-- Re-exported via `scheduler.py` facade
+### scheduler_jobs/ — package (replaces monolithic scheduler_jobs.py)
+Sub-modules: `state.py` (heartbeat, freshness gate), `daily_jobs.py` (4 PM score + 6 PM report),
+`weekly_jobs.py` (Sunday scrape), `monthly_jobs.py` (dividend calendar, model performance),
+`alert_jobs.py` (alert check, scheduler health), `member_jobs.py` (expiry notifications),
+`backfill_jobs.py` (one-time backfill). `__init__.py` re-exports all — `scheduler.py` import surface unchanged.
+- `state._record_heartbeat(job_name)` — writes `scheduler_heartbeat_{job_name}` ISO timestamp to settings after each job
+- `state._check_price_freshness()` — queries prices; sends admin DM and returns False if no rows within `PRICE_STALENESS_ERROR_DAYS`
+- `alert_jobs.check_scheduler_health()` → dict with `last_run`, `hours_ago`, `ok` for daily_score / weekly_scrape / alert_check
 
-### scheduler_jobs.py — run_weekly_scrape()
+### scheduler_jobs/weekly_jobs.py — run_weekly_scrape()
 Full Sunday scrape sequence:
 1. DB backup
 2. Full scrape (`scrape_all_and_save`)
@@ -89,6 +92,15 @@ Full Sunday scrape sequence:
 7. Re-score all stocks
 8. Weekly briefing to #daily-briefing
 9. Stale data cleanup + VACUUM
+
+### feedback/ — 3-tier model performance feedback loop (added 2026-05-14)
+- `snapshot.py` — captures score/rank/IV/price/MoS% per ticker at month start (Tier 1 input)
+- `monthly_scorecard.py` — measures prediction accuracy vs actual price moves; Spearman rank corr; stores in settings
+- `quarterly_review.py` — aggregates monthly scorecards; flags under/over-performing layers per sector
+- `correction_engine.py` — applies/decays/expires weight adjustments stored as `feedback_correction_{sector}_{layer}` in settings; cap ±8%, floor 10% per layer
+- `track_record.py` — rolling 1m/3m/6m/12m windows for presentation; pure deterministic math
+- `scheduler_feedback.py` — scheduler integration shim
+Corrections are tiny, bounded adjustments — they do not override `SCORER_WEIGHTS` in config.py.
 
 ### config.py — REIT_WHITELIST + SECTOR_MANUAL_MAP
 - `REIT_WHITELIST = {'VREIT', 'PREIT', 'MREIT', 'AREIT'}` — tickers always classified as REIT
@@ -155,7 +167,7 @@ stock = {
 
 ## 6. DATABASE SCHEMA
 
-SQLite database at: `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`
+PostgreSQL database — connection via `DATABASE_URL` env var.
 
 Tables:
 - `stocks` — ticker, name, sector, is_reit, is_bank, last_updated, last_scraped, status, cmpy_id, fiscal_year_end_month (default 12)
@@ -209,7 +221,7 @@ Tables:
 - Do not store raw financial data outside the local machine
 
 ### File size discipline
-- Keep all files under 500 lines
+- Keep all files under 700 lines
 - Use facade pattern: thin re-export module + focused sub-modules
 - Do not refactor working code unless explicitly instructed
 
@@ -244,17 +256,17 @@ All core engine, reports, data pipeline, automation, dashboard, scoring, backtes
 ## 9. HOW TO RUN THE SYSTEM
 
 ```bash
-py main.py                          # full pipeline (score + PDF + Discord)
-py main.py --dry-run                # no Discord publish
-py scheduler.py                     # continuous scheduler
-py scheduler.py --run-weekly        # manual full scrape
-py scheduler.py --run-backfill      # historical backfill (one-time)
-py dashboard/app.py                 # local dashboard → http://localhost:8080
-py engine/calibrate_thresholds.py   # recalibrate after scrape/backfill
-py db/db_data_quality.py            # data quality audit
+python main.py                          # full pipeline (score + PDF + Discord)
+python main.py --dry-run                # no Discord publish
+python scheduler.py                     # continuous scheduler
+python scheduler.py --run-weekly        # manual full scrape
+python scheduler.py --run-backfill      # historical backfill (one-time)
+python dashboard/app.py                 # local dashboard → http://localhost:8080
+python engine/calibrate_thresholds.py   # recalibrate after scrape/backfill
+python db/db_data_quality.py            # data quality audit
 ```
 
-**Python command: `py` (not `python`). Version 3.14.x.**
+**Python command: `python`. Version 3.14.x. Dev environment: WSL2/Ubuntu.**
 
 ---
 
@@ -264,35 +276,37 @@ Key vars: `PSE_EDGE_EMAIL`, `PSE_EDGE_PASSWORD`, `DISCORD_BOT_TOKEN`, `ADMIN_DIS
 `DISCORD_WEBHOOK_RANKINGS`, `DISCORD_WEBHOOK_ALERTS`, `DISCORD_WEBHOOK_DEEP_ANALYSIS`,
 `DISCORD_WEBHOOK_DAILY_BRIEFING`, `DISCORD_INVITE_URL`, `DISCORD_GUILD_ID`,
 `ANTHROPIC_API_KEY`, `PAYMONGO_SECRET_KEY`, `MONTHLY_PRICE_CENTAVOS`, `ANNUAL_PRICE_CENTAVOS`,
-`PSE_DB_PATH` (Railway: `/app/data/pse_quant.db`), `PORT` (Railway: set automatically).
+`DATABASE_URL` (Postgres connection string — required), `PORT` (Railway: set automatically),
+`PSE_DATA_DIR` (default `/app/data`), `FLASK_SECRET_KEY`,
+`DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD` (HTTP Basic Auth for admin dashboard).
 
-Install missing packages: `py -m pip install <package_name>`
+Install missing packages: `python -m pip install <package_name>`
 
 ---
 
 ## 12. SELF-CORRECTION PROTOCOL
 
-Common errors on this Windows setup:
-- `ModuleNotFoundError` → run `py -m pip install <module>`
+Common errors on this WSL2/Ubuntu setup:
+- `ModuleNotFoundError` → run `python -m pip install <module>`
 - `FileNotFoundError` → create the directory first with `os.makedirs`
 - `SyntaxError` → check indentation and missing colons
 - `KeyError` on stock dict → add `.get('key', default)` not `['key']`
-- `UnicodeEncodeError` in print() → replace Unicode chars with ASCII in print() calls (Discord sends UTF-8 fine; only console output breaks on cp1252)
 - SQL `SUM()` on empty table → returns NULL rows, always coerce with `or 0`
-- `sqlite3.ProgrammingError: SQLite objects created in a thread` → open a new connection inside the thread (`get_connection()` per call is correct)
+- `psycopg2.OperationalError` → check `DATABASE_URL` env var is set and Postgres is running
+- `psycopg2` thread safety → open a new connection inside each thread (`get_connection()` per call is correct)
 - Discord `The application did not respond` → `defer(thinking=True)` not called within 3s; check for exception before defer, or ensure blocking code uses `asyncio.to_thread()`
 
 ---
 
-## 15. IMPORTANT FILESYSTEM NOTE
+## 15. ENVIRONMENT / FILESYSTEM
 
-Python (via Bash tool) **cannot write new files** to `C:\Users\Josh\Documents\`.
-Use the **Write tool** directly to create new files — it bypasses this restriction.
-PDFs are saved to Desktop (`C:\Users\Josh\Desktop\`) for this reason.
-The SQLite DB lives at `C:\Users\Josh\AppData\Local\pse_quant\pse_quant.db`.
+Dev environment: WSL2/Ubuntu. Deploy: Railway (Docker/Linux).
+- Database: PostgreSQL via `DATABASE_URL` env var (no SQLite)
+- Runtime data (PDFs, caches): `PSE_DATA_DIR` env var, default `/app/data`
+- No Windows paths anywhere in application code
 
 ---
 
-*Last updated: Phase 13 sector-specific scoring + CLAUDE.md split (2026-03-24)*
+*Last updated: Postgres migration + Linux cleanup + HTTP Basic Auth (2026-05-14)*
 *Project owner: Josh*
 *Do not share this file or the .env file publicly.*

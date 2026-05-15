@@ -22,7 +22,7 @@ def upsert_sentiment(ticker: str, date: str, data: dict) -> None:
         INSERT INTO sentiment
             (ticker, date, score, category, key_events, summary,
              opportunistic_flag, risk_flag, headlines)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT(ticker, date) DO UPDATE SET
             score              = excluded.score,
             category           = excluded.category,
@@ -55,7 +55,7 @@ def get_sentiment(ticker: str) -> dict | None:
         SELECT ticker, date, score, category, key_events, summary,
                opportunistic_flag, risk_flag, headlines
         FROM sentiment
-        WHERE ticker = ?
+        WHERE ticker = %s
         ORDER BY date DESC
         LIMIT 1
     """, (ticker,)).fetchone()

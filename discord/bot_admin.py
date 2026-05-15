@@ -74,7 +74,7 @@ def get_admin_list_embed() -> dict:
 
     lines = []
     for m in active:
-        name    = m.get('discord_name', '?')
+        name    = m.get('discord_name', '%s')
         plan    = m.get('plan', 'monthly').title()
         expiry  = m.get('expiry_date', 'Unknown')
         did     = m.get('discord_id') or '—'
@@ -114,7 +114,7 @@ def get_admin_pending_embed() -> dict:
 
     lines = []
     for m in pending:
-        name  = m.get('discord_name', '?')
+        name  = m.get('discord_name', '%s')
         did   = m.get('discord_id') or '—'
         notes = m.get('notes') or ''
         lines.append(f'**{name}** · ID: `{did}`' + (f'\n_{notes}_' if notes else ''))
@@ -154,7 +154,7 @@ def confirm_member_embed(query: str) -> dict:
             'footer':      {'text': 'StockPilot PH · Admin'},
         }
 
-    name      = member.get('discord_name', '?')
+    name      = member.get('discord_name', '%s')
     discord_id = member.get('discord_id')
     plan      = member.get('plan', 'monthly')
 
@@ -164,7 +164,7 @@ def confirm_member_embed(query: str) -> dict:
 
     conn = get_connection()
     conn.execute(
-        "UPDATE members SET status = 'active', expiry_date = ?, tier = 'paid' WHERE id = ?",
+        "UPDATE members SET status = 'active', expiry_date = %s, tier = 'paid' WHERE id = %s",
         (expiry, member['id'])
     )
     conn.commit()
@@ -208,7 +208,7 @@ def extend_member_embed(query: str, days: int) -> dict:
             'footer':      {'text': 'StockPilot PH · Admin'},
         }
 
-    name = member.get('discord_name', '?')
+    name = member.get('discord_name', '%s')
     extend_member(member['id'], days, source='admin_discord')
     log_activity('member', 'admin_extended', f'{name} +{days} days via /admin extend')
 
@@ -216,9 +216,9 @@ def extend_member_embed(query: str, days: int) -> dict:
     try:
         from dashboard.db_members import get_member
         updated = get_member(member['id'])
-        new_expiry = updated.get('expiry_date', '?') if updated else '?'
+        new_expiry = updated.get('expiry_date', '%s') if updated else '%s'
     except Exception:
-        new_expiry = '?'
+        new_expiry = '%s'
 
     return {
         'title':       f'Subscription Extended — {name}',
@@ -248,12 +248,12 @@ def get_member_status_embed(query: str) -> dict:
             'footer':      {'text': 'StockPilot PH · Admin'},
         }
 
-    name      = member.get('discord_name', '?')
-    status    = member.get('status', '?').title()
-    plan      = member.get('plan', '?').title()
+    name      = member.get('discord_name', '%s')
+    status    = member.get('status', '%s').title()
+    plan      = member.get('plan', '%s').title()
     expiry    = member.get('expiry_date', 'Unknown')
     discord_id = member.get('discord_id') or '—'
-    joined    = member.get('joined_date', '?')
+    joined    = member.get('joined_date', '%s')
     notes     = member.get('notes') or '—'
 
     # Days remaining

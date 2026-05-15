@@ -57,7 +57,7 @@ def check_scheduler_health() -> dict:
             for job_name, warn_hours in JOB_WARN_HOURS.items():
                 key = f'scheduler_heartbeat_{job_name}'
                 row = conn.execute(
-                    "SELECT value FROM settings WHERE key = ?", (key,)
+                    "SELECT value FROM settings WHERE key = %s", (key,)
                 ).fetchone()
                 if row and row['value']:
                     last_run = row['value']

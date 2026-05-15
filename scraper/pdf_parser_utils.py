@@ -19,8 +19,8 @@ sys.path.insert(0, str(ROOT / 'scraper'))
 import pse_edge_scraper as edge
 
 # ── PDF storage directory ─────────────────────────────────────
-RAW_DIR = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) \
-          / 'pse_quant' / 'raw'
+_DATA_DIR = Path(os.environ.get('PSE_DATA_DIR', '/app/data'))
+RAW_DIR   = _DATA_DIR / 'pse_quant' / 'raw'
 
 PSE_EDGE_BASE = 'https://edge.pse.com.ph'
 DISC_VIEWER   = PSE_EDGE_BASE + '/openDiscViewer.do'

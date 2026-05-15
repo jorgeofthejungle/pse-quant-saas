@@ -28,7 +28,7 @@ def _read_blob(sector: str, layer: str) -> dict | None:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_key(sector, layer),)
+            "SELECT value FROM settings WHERE key = %s", (_key(sector, layer),)
         ).fetchone()
     finally:
         conn.close()
@@ -44,7 +44,7 @@ def _write_blob(sector: str, layer: str, blob: dict) -> None:
     conn = get_connection()
     try:
         conn.execute(
-            """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+            """INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s)
                ON CONFLICT(key) DO UPDATE SET
                    value = excluded.value, updated_at = excluded.updated_at""",
             (_key(sector, layer), json.dumps(blob), datetime.now(timezone.utc).isoformat())

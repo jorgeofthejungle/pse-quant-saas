@@ -89,7 +89,7 @@ def scrape_company_full(session, ticker: str, cmpy_id: str) -> dict | None:
     try:
         _fy_conn = db.get_connection()
         _fy_row  = _fy_conn.execute(
-            "SELECT fiscal_year_end_month FROM stocks WHERE ticker = ?", (ticker,)
+            "SELECT fiscal_year_end_month FROM stocks WHERE ticker = %s", (ticker,)
         ).fetchone()
         _fy_conn.close()
         fy_end_month = _fy_row['fiscal_year_end_month'] if _fy_row and _fy_row['fiscal_year_end_month'] else 12
@@ -290,11 +290,14 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
         print(f"  [{i}/{len(all_companies)}] {ticker}...", end=' ', flush=True)
         try:
             import db.db_connection as _dbc
-            _dbc.get_connection().execute(
-                "INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,datetime('now'))",
+            _conn = _dbc.get_connection()
+            _conn.execute(
+                "INSERT INTO settings(key,value,updated_at) VALUES(%s,%s,NOW()) "
+                "ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at",
                 ('scrape_progress', f'{i}/{len(all_companies)} — {ticker}')
             )
-            _dbc.get_connection().commit()
+            _conn.commit()
+            _conn.close()
         except Exception:
             pass
         stock_data = scrape_company_full(session, ticker, cmpy_id)
@@ -302,7 +305,7 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
         if stock_data:
             _save_company(company_info, stock_data)
             saved += 1
-            p = stock_data.get('current_price', '?')
+            p = stock_data.get('current_price', '%s')
             y = stock_data.get('dividend_yield', '')
             y_str = f"  yield={y:.1f}%" if y else ''
             print(f"PHP {p}{y_str}")
@@ -333,8 +336,8 @@ def scrape_all_and_save(tickers: list = None, sector: str = None) -> None:
         SELECT ticker, last_scraped FROM stocks
         WHERE status = 'active'
           AND ticker NOT IN ({})
-          AND (last_scraped IS NULL OR last_scraped < ?)
-    """.format(','.join('?' * len(scraped_tickers))),
+          AND (last_scraped IS NULL OR last_scraped < %s)
+    """.format(','.join('%s' * len(scraped_tickers))),
         (*scraped_tickers, cutoff)
     ).fetchall()
     conn.close()
@@ -377,7 +380,7 @@ def scrape_daily_prices(tickers: list = None) -> list:
     conn = db.get_connection()
     already_today = {
         r['ticker'] for r in conn.execute(
-            "SELECT ticker FROM prices WHERE date = ?", (today,)
+            "SELECT ticker FROM prices WHERE date = %s", (today,)
         ).fetchall()
     }
     conn.close()
@@ -404,7 +407,7 @@ def scrape_daily_prices(tickers: list = None) -> list:
             # Persist so we don't need to look it up again
             conn2 = db.get_connection()
             conn2.execute(
-                "UPDATE stocks SET cmpy_id = ? WHERE ticker = ?",
+                "UPDATE stocks SET cmpy_id = %s WHERE ticker = %s",
                 (cmpy_id, ticker)
             )
             conn2.commit()

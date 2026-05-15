@@ -132,8 +132,8 @@ def _claim_disclosure(ticker: str, date: str, disc_type: str,
     """Atomically claims a disclosure slot. Returns True if new."""
     conn = db.get_connection()
     cur  = conn.execute(
-        "INSERT OR IGNORE INTO disclosures (ticker, date, type, title, url) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO disclosures (ticker, date, type, title, url) "
+        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT(ticker, date, url) DO NOTHING",
         (ticker, date, disc_type, title, url),
     )
     conn.commit()
@@ -152,7 +152,7 @@ def _get_ranked_tickers_set() -> set:
         conn.close()
         return set()
     rows = conn.execute(
-        "SELECT DISTINCT ticker FROM scores WHERE run_date = ?",
+        "SELECT DISTINCT ticker FROM scores WHERE run_date = %s",
         (latest['run_date'],)
     ).fetchall()
     conn.close()
@@ -163,7 +163,7 @@ def _get_ticker_name(ticker: str) -> str:
     """Returns company name for a ticker, falls back to ticker."""
     conn = db.get_connection()
     row  = conn.execute(
-        "SELECT name FROM stocks WHERE ticker = ?", (ticker,)
+        "SELECT name FROM stocks WHERE ticker = %s", (ticker,)
     ).fetchone()
     conn.close()
     return row['name'] if row else ticker

@@ -13,7 +13,7 @@ def get_watchlist(discord_id: str) -> list[str]:
     """Returns the list of tickers in a member's watchlist, ordered by added_at."""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT ticker FROM watchlists WHERE discord_id = ? ORDER BY added_at ASC",
+        "SELECT ticker FROM watchlists WHERE discord_id = %s ORDER BY added_at ASC",
         (discord_id,)
     ).fetchall()
     conn.close()
@@ -23,7 +23,7 @@ def get_watchlist(discord_id: str) -> list[str]:
 def get_watchlist_count(discord_id: str) -> int:
     conn = get_connection()
     row  = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM watchlists WHERE discord_id = ?",
+        "SELECT COUNT(*) AS cnt FROM watchlists WHERE discord_id = %s",
         (discord_id,)
     ).fetchone()
     conn.close()
@@ -42,7 +42,7 @@ def add_to_watchlist(discord_id: str, ticker: str) -> tuple[bool, str]:
 
     # Validate ticker exists
     row = conn.execute(
-        "SELECT ticker FROM stocks WHERE ticker = ? AND status = 'active'",
+        "SELECT ticker FROM stocks WHERE ticker = %s AND status = 'active'",
         (ticker,)
     ).fetchone()
     if not row:
@@ -51,7 +51,7 @@ def add_to_watchlist(discord_id: str, ticker: str) -> tuple[bool, str]:
 
     # Check already in watchlist
     existing = conn.execute(
-        "SELECT 1 FROM watchlists WHERE discord_id = ? AND ticker = ?",
+        "SELECT 1 FROM watchlists WHERE discord_id = %s AND ticker = %s",
         (discord_id, ticker)
     ).fetchone()
     if existing:
@@ -60,7 +60,7 @@ def add_to_watchlist(discord_id: str, ticker: str) -> tuple[bool, str]:
 
     # Check max size
     count = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM watchlists WHERE discord_id = ?",
+        "SELECT COUNT(*) AS cnt FROM watchlists WHERE discord_id = %s",
         (discord_id,)
     ).fetchone()['cnt']
     if count >= MAX_WATCHLIST_SIZE:
@@ -73,7 +73,7 @@ def add_to_watchlist(discord_id: str, ticker: str) -> tuple[bool, str]:
     # Insert
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     conn.execute(
-        "INSERT INTO watchlists (discord_id, ticker, added_at) VALUES (?, ?, ?)",
+        "INSERT INTO watchlists (discord_id, ticker, added_at) VALUES (%s, %s, %s)",
         (discord_id, ticker, now)
     )
     conn.commit()
@@ -89,7 +89,7 @@ def remove_from_watchlist(discord_id: str, ticker: str) -> tuple[bool, str]:
     ticker = ticker.upper().strip()
     conn   = get_connection()
     cur    = conn.execute(
-        "DELETE FROM watchlists WHERE discord_id = ? AND ticker = ?",
+        "DELETE FROM watchlists WHERE discord_id = %s AND ticker = %s",
         (discord_id, ticker)
     )
     conn.commit()

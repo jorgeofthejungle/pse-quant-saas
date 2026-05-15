@@ -77,7 +77,7 @@ def get_subscribe_embed(discord_id: str, discord_name: str) -> dict:
             from db.db_connection import get_connection
             conn = get_connection()
             conn.execute(
-                "UPDATE members SET status = 'pending' WHERE id = ?",
+                "UPDATE members SET status = 'pending' WHERE id = %s",
                 (member_id,),
             )
             conn.commit()

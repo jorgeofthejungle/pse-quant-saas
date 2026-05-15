@@ -33,12 +33,11 @@ def calibrate_health_thresholds() -> dict:
     Returns the computed thresholds dict.
     """
     conn = get_connection()
-    cur = conn.cursor()
 
     thresholds = {}
 
     # ── ROE ──────────────────────────────────────────────
-    rows = cur.execute("""
+    rows = conn.execute("""
         SELECT f.net_income / f.equity * 100 as roe
         FROM financials f
         WHERE f.net_income IS NOT NULL
@@ -47,7 +46,7 @@ def calibrate_health_thresholds() -> dict:
           AND f.year >= 2018
         ORDER BY roe
     """).fetchall()
-    roe_vals = sorted([r[0] for r in rows if r[0] is not None])
+    roe_vals = sorted([r['roe'] for r in rows if r['roe'] is not None])
     if len(roe_vals) >= 20:
         thresholds['roe'] = {
             'p90': _percentile(roe_vals, 90),
@@ -57,7 +56,7 @@ def calibrate_health_thresholds() -> dict:
         }
 
     # ── OCF Margin ───────────────────────────────────────
-    rows = cur.execute("""
+    rows = conn.execute("""
         SELECT f.operating_cf / f.revenue * 100 as ocf_margin
         FROM financials f
         WHERE f.operating_cf IS NOT NULL
@@ -66,7 +65,7 @@ def calibrate_health_thresholds() -> dict:
           AND f.year >= 2018
         ORDER BY ocf_margin
     """).fetchall()
-    ocf_vals = sorted([r[0] for r in rows if r[0] is not None and r[0] > -50])
+    ocf_vals = sorted([r['ocf_margin'] for r in rows if r['ocf_margin'] is not None and r['ocf_margin'] > -50])
     if len(ocf_vals) >= 20:
         thresholds['ocf_margin'] = {
             'p90': _percentile(ocf_vals, 90),
@@ -78,7 +77,7 @@ def calibrate_health_thresholds() -> dict:
     # ── FCF Yield ────────────────────────────────────────
     # FCF yield = (operating_cf - capex) * 1e6 / market_cap * 100
     # operating_cf/capex are in PHP millions; market_cap is in absolute PHP
-    rows = cur.execute("""
+    rows = conn.execute("""
         SELECT (f.operating_cf - COALESCE(f.capex, 0)) * 1000000.0 / p.market_cap * 100 as fcf_yield
         FROM financials f
         JOIN (
@@ -93,7 +92,7 @@ def calibrate_health_thresholds() -> dict:
           AND f.year >= 2018
         ORDER BY fcf_yield
     """).fetchall()
-    fcf_vals = sorted([r[0] for r in rows if r[0] is not None and 0 < r[0] < 50])
+    fcf_vals = sorted([r['fcf_yield'] for r in rows if r['fcf_yield'] is not None and 0 < r['fcf_yield'] < 50])
     if len(fcf_vals) >= 20:
         thresholds['fcf_yield'] = {
             'p90': _percentile(fcf_vals, 90),
@@ -104,7 +103,7 @@ def calibrate_health_thresholds() -> dict:
 
     # ── EPS Stability CV ──────────────────────────────────────
     # CV = stdev(eps) / mean(abs(eps)) per ticker, then PSE percentiles
-    rows = cur.execute("""
+    rows = conn.execute("""
         SELECT ticker, eps FROM financials
         WHERE eps IS NOT NULL AND year >= 2018
         ORDER BY ticker, year
@@ -114,7 +113,7 @@ def calibrate_health_thresholds() -> dict:
 
     ticker_eps = defaultdict(list)
     for r in rows:
-        ticker_eps[r[0]].append(r[1])
+        ticker_eps[r['ticker']].append(r['eps'])
 
     cv_vals = []
     for eps_list in ticker_eps.values():

@@ -17,8 +17,8 @@ def run_backfill():
             import db.db_connection as _dbc
             conn = _dbc.get_connection()
             conn.execute(
-                "INSERT OR REPLACE INTO settings(key,value,updated_at) "
-                "VALUES(?,?,datetime('now'))",
+                "INSERT INTO settings(key,value,updated_at) VALUES(%s,%s,NOW()) "
+                "ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at",
                 ('backfill_progress', msg),
             )
             conn.commit()

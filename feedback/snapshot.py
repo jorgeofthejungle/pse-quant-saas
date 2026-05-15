@@ -14,7 +14,7 @@ def _get_latest_run_date(conn, portfolio_type: str, snapshot_date: str) -> str |
     """Most recent run_date in scores_v2 <= snapshot_date for this portfolio."""
     row = conn.execute(
         "SELECT run_date FROM scores_v2 "
-        "WHERE portfolio_type = ? AND run_date <= ? "
+        "WHERE portfolio_type = %s AND run_date <= %s "
         "ORDER BY run_date DESC LIMIT 1",
         (portfolio_type, snapshot_date),
     ).fetchone()
@@ -25,7 +25,7 @@ def _get_scores_for_run(conn, portfolio_type: str, run_date: str) -> list:
     """All scored rows for a given portfolio_type + run_date."""
     return conn.execute(
         "SELECT ticker, score, rank, breakdown_json "
-        "FROM scores_v2 WHERE portfolio_type = ? AND run_date = ?",
+        "FROM scores_v2 WHERE portfolio_type = %s AND run_date = %s",
         (portfolio_type, run_date),
     ).fetchall()
 
@@ -33,7 +33,7 @@ def _get_scores_for_run(conn, portfolio_type: str, run_date: str) -> list:
 def _get_latest_price(conn, ticker: str, snapshot_date: str) -> float | None:
     """Most recent close price on or before snapshot_date."""
     row = conn.execute(
-        "SELECT close FROM prices WHERE ticker = ? AND date <= ? "
+        "SELECT close FROM prices WHERE ticker = %s AND date <= %s "
         "ORDER BY date DESC LIMIT 1",
         (ticker, snapshot_date),
     ).fetchone()
@@ -42,7 +42,7 @@ def _get_latest_price(conn, ticker: str, snapshot_date: str) -> float | None:
 
 def _get_sector(conn, ticker: str) -> str | None:
     """Sector for a ticker from the stocks table."""
-    row = conn.execute("SELECT sector FROM stocks WHERE ticker = ?", (ticker,)).fetchone()
+    row = conn.execute("SELECT sector FROM stocks WHERE ticker = %s", (ticker,)).fetchone()
     return row['sector'] if row else None
 
 
@@ -109,11 +109,17 @@ def take_monthly_snapshot(snapshot_date: str | None = None) -> int:
                         mos_pct = (iv_estimate - price) / price
 
                     conn.execute(
-                        "INSERT OR REPLACE INTO feedback_snapshots "
+                        "INSERT INTO feedback_snapshots "
                         "(ticker, snapshot_date, portfolio_type, score, rank, "
                         " iv_estimate, price_at_snapshot, mos_pct, sector, "
                         " is_top10, price_source) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                        "ON CONFLICT(ticker, snapshot_date, portfolio_type) DO UPDATE SET "
+                        "  score = EXCLUDED.score, rank = EXCLUDED.rank, "
+                        "  iv_estimate = EXCLUDED.iv_estimate, "
+                        "  price_at_snapshot = EXCLUDED.price_at_snapshot, "
+                        "  mos_pct = EXCLUDED.mos_pct, sector = EXCLUDED.sector, "
+                        "  is_top10 = EXCLUDED.is_top10, price_source = EXCLUDED.price_source",
                         (ticker, snapshot_date, portfolio_type, score, rank,
                          iv_estimate, price, mos_pct, sector, is_top10, 'prices_table'),
                     )

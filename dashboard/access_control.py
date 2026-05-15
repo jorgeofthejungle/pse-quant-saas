@@ -64,7 +64,7 @@ def get_member_tier(discord_id: str) -> str:
     conn = get_connection()
     row  = conn.execute("""
         SELECT tier, status FROM members
-        WHERE discord_id = ? AND status = 'active'
+        WHERE discord_id = %s AND status = 'active'
         LIMIT 1
     """, (str(discord_id),)).fetchone()
     conn.close()
@@ -94,7 +94,7 @@ def get_member_by_discord_id(discord_id: str) -> dict | None:
     conn = get_connection()
     row  = conn.execute("""
         SELECT * FROM members
-        WHERE discord_id = ? AND status = 'active'
+        WHERE discord_id = %s AND status = 'active'
         LIMIT 1
     """, (str(discord_id),)).fetchone()
     conn.close()

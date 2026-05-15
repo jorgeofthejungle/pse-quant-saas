@@ -31,9 +31,10 @@ def _cache_result(date_str: str, close: float) -> None:
     conn = get_connection()
     try:
         conn.execute(
-            """INSERT OR REPLACE INTO index_prices
-               (index_name, date, close, created_at)
-               VALUES (?, ?, ?, datetime('now'))""",
+            """INSERT INTO index_prices (index_name, date, close, created_at)
+               VALUES (%s, %s, %s, NOW())
+               ON CONFLICT(index_name, date) DO UPDATE SET
+                   close = EXCLUDED.close, created_at = EXCLUDED.created_at""",
             (INDEX_NAME, date_str, close),
         )
         conn.commit()
@@ -46,7 +47,7 @@ def _load_cached(date_str: str) -> float | None:
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT close FROM index_prices WHERE index_name=? AND date=?",
+            "SELECT close FROM index_prices WHERE index_name=%s AND date=%s",
             (INDEX_NAME, date_str),
         ).fetchone()
         return float(row['close']) if row else None

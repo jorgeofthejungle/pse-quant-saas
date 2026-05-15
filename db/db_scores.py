@@ -26,7 +26,7 @@ def save_scores(run_date: str, ranked_stocks: list, portfolio_type: str):
     for rank, stock in enumerate(ranked_stocks, 1):
         conn.execute(f"""
             INSERT INTO scores (ticker, run_date, {score_col}, {rank_col})
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT(ticker, run_date)
             DO UPDATE SET {score_col} = excluded.{score_col},
                           {rank_col}  = excluded.{rank_col}
@@ -60,7 +60,7 @@ def get_last_top5(portfolio_type: str) -> list:
     rows = conn.execute(f"""
         SELECT ticker
         FROM scores
-        WHERE run_date = ? AND {rank_col} <= 5
+        WHERE run_date = %s AND {rank_col} <= 5
         ORDER BY {rank_col}
     """, (latest,)).fetchall()
 
@@ -95,7 +95,7 @@ def get_last_scores(portfolio_type: str) -> list:
                {score_col} AS score,
                {rank_col}  AS rank
         FROM scores
-        WHERE run_date = ? AND {rank_col} IS NOT NULL
+        WHERE run_date = %s AND {rank_col} IS NOT NULL
         ORDER BY {rank_col}
     """, (latest,)).fetchall()
 
@@ -127,7 +127,7 @@ def save_scores_v2(run_date: str, ranked_stocks: list,
             INSERT INTO scores_v2
                 (ticker, run_date, portfolio_type, score, rank, category,
                  confidence, breakdown_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker, run_date, portfolio_type)
             DO UPDATE SET score          = excluded.score,
                           rank           = excluded.rank,
@@ -154,7 +154,7 @@ def get_last_top5_v2(portfolio_type: str | None = None) -> list:
     if portfolio_type:
         row = conn.execute(
             "SELECT MAX(run_date) AS latest FROM scores_v2 "
-            "WHERE rank IS NOT NULL AND portfolio_type = ?",
+            "WHERE rank IS NOT NULL AND portfolio_type = %s",
             (portfolio_type,)
         ).fetchone()
     else:
@@ -168,12 +168,12 @@ def get_last_top5_v2(portfolio_type: str | None = None) -> list:
     if portfolio_type:
         rows = conn.execute(
             "SELECT ticker FROM scores_v2 "
-            "WHERE run_date = ? AND portfolio_type = ? AND rank <= 5 ORDER BY rank",
+            "WHERE run_date = %s AND portfolio_type = %s AND rank <= 5 ORDER BY rank",
             (latest, portfolio_type)
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT ticker FROM scores_v2 WHERE run_date = ? AND rank <= 5 ORDER BY rank",
+            "SELECT ticker FROM scores_v2 WHERE run_date = %s AND rank <= 5 ORDER BY rank",
             (latest,)
         ).fetchall()
     conn.close()
@@ -191,7 +191,7 @@ def get_last_scores_v2(portfolio_type: str | None = None) -> list:
     if portfolio_type:
         row = conn.execute(
             "SELECT MAX(run_date) AS latest FROM scores_v2 "
-            "WHERE rank IS NOT NULL AND portfolio_type = ?",
+            "WHERE rank IS NOT NULL AND portfolio_type = %s",
             (portfolio_type,)
         ).fetchone()
     else:
@@ -206,7 +206,7 @@ def get_last_scores_v2(portfolio_type: str | None = None) -> list:
         rows = conn.execute(
             """SELECT ticker, score, rank, category, portfolio_type
                FROM scores_v2
-               WHERE run_date = ? AND portfolio_type = ? AND rank IS NOT NULL
+               WHERE run_date = %s AND portfolio_type = %s AND rank IS NOT NULL
                ORDER BY rank""",
             (latest, portfolio_type)
         ).fetchall()
@@ -214,7 +214,7 @@ def get_last_scores_v2(portfolio_type: str | None = None) -> list:
         rows = conn.execute(
             """SELECT ticker, score, rank, category, portfolio_type
                FROM scores_v2
-               WHERE run_date = ? AND rank IS NOT NULL
+               WHERE run_date = %s AND rank IS NOT NULL
                ORDER BY rank""",
             (latest,)
         ).fetchall()

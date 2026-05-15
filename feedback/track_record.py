@@ -17,21 +17,20 @@ def _get_index_close(target_date: str, direction: str) -> float | None:
     """Return PSEi close nearest to target_date. direction='fwd' or 'back'."""
     conn = get_connection()
     try:
-        cur = conn.cursor()
         if direction == 'fwd':
-            cur.execute(
-                "SELECT close FROM index_prices WHERE index_name='PSEi' AND date >= ? "
+            cur = conn.execute(
+                "SELECT close FROM index_prices WHERE index_name='PSEi' AND date >= %s "
                 "ORDER BY date ASC LIMIT 1",
                 (target_date,),
             )
         else:
-            cur.execute(
-                "SELECT close FROM index_prices WHERE index_name='PSEi' AND date <= ? "
+            cur = conn.execute(
+                "SELECT close FROM index_prices WHERE index_name='PSEi' AND date <= %s "
                 "ORDER BY date DESC LIMIT 1",
                 (target_date,),
             )
         row = cur.fetchone()
-        return float(row[0]) if row else None
+        return float(row['close']) if row else None
     finally:
         conn.close()
 
@@ -52,21 +51,19 @@ def _load_monthly_rows(portfolio_type: str, evaluation_date: str, n: int) -> lis
     eval_month = evaluation_date[:7]  # YYYY-MM
     conn = get_connection()
     try:
-        cur = conn.cursor()
-        cur.execute(
+        cur = conn.execute(
             """
             SELECT month, top10_avg_return, top10_vs_index,
                    hit_rate_positive, mos_direction_accuracy, spearman_correlation
             FROM   feedback_monthly
-            WHERE  portfolio_type = ?
-              AND  month <= ?
+            WHERE  portfolio_type = %s
+              AND  month <= %s
             ORDER  BY month DESC
-            LIMIT  ?
+            LIMIT  %s
             """,
             (portfolio_type, eval_month, n),
         )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
@@ -212,16 +209,15 @@ def compute_track_record(evaluation_date: str | None = None) -> int:
     inserted = 0
 
     try:
-        cur = conn.cursor()
         for period_type, n in PERIOD_MONTHS.items():
             for portfolio_type in PORTFOLIO_TYPES:
                 rows    = _load_monthly_rows(portfolio_type, evaluation_date, n)
                 metrics = _compute_metrics(rows, n, evaluation_date)
                 pub, reason = _apply_gate(metrics, period_type, n)
 
-                cur.execute(
+                conn.execute(
                     """
-                    INSERT OR REPLACE INTO feedback_track_record (
+                    INSERT INTO feedback_track_record (
                         period_type, portfolio_type, evaluation_date,
                         top10_avg_return, top10_cumulative_return,
                         index_cumulative_return, top10_vs_index,
@@ -233,8 +229,24 @@ def compute_track_record(evaluation_date: str | None = None) -> int:
                         data_completeness_pct,
                         publishable, publish_reason, created_at
                     ) VALUES (
-                        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
                     )
+                    ON CONFLICT(period_type, portfolio_type, evaluation_date) DO UPDATE SET
+                        top10_avg_return = EXCLUDED.top10_avg_return,
+                        top10_cumulative_return = EXCLUDED.top10_cumulative_return,
+                        index_cumulative_return = EXCLUDED.index_cumulative_return,
+                        top10_vs_index = EXCLUDED.top10_vs_index,
+                        hit_rate = EXCLUDED.hit_rate, mos_accuracy = EXCLUDED.mos_accuracy,
+                        total_months_tracked = EXCLUDED.total_months_tracked,
+                        consecutive_months_outperforming_index = EXCLUDED.consecutive_months_outperforming_index,
+                        best_month_return = EXCLUDED.best_month_return,
+                        worst_month_return = EXCLUDED.worst_month_return,
+                        avg_spearman = EXCLUDED.avg_spearman,
+                        positive_spearman_ratio = EXCLUDED.positive_spearman_ratio,
+                        data_completeness_pct = EXCLUDED.data_completeness_pct,
+                        publishable = EXCLUDED.publishable,
+                        publish_reason = EXCLUDED.publish_reason,
+                        created_at = EXCLUDED.created_at
                     """,
                     (
                         period_type, portfolio_type, evaluation_date,
@@ -274,26 +286,24 @@ def get_track_record(
     """Return publishable track-record rows for a portfolio, sorted by evaluation_date DESC."""
     conn = get_connection()
     try:
-        cur = conn.cursor()
         if period_type:
-            cur.execute(
+            cur = conn.execute(
                 """
                 SELECT * FROM feedback_track_record
-                WHERE  portfolio_type = ? AND period_type = ? AND publishable = 1
+                WHERE  portfolio_type = %s AND period_type = %s AND publishable = 1
                 ORDER  BY evaluation_date DESC
                 """,
                 (portfolio_type, period_type),
             )
         else:
-            cur.execute(
+            cur = conn.execute(
                 """
                 SELECT * FROM feedback_track_record
-                WHERE  portfolio_type = ? AND publishable = 1
+                WHERE  portfolio_type = %s AND publishable = 1
                 ORDER  BY evaluation_date DESC
                 """,
                 (portfolio_type,),
             )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

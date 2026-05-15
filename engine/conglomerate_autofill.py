@@ -52,7 +52,7 @@ def autofill_segments_from_db(verbose: bool = False) -> dict[str, int]:
             row = conn.execute("""
                 SELECT year, revenue, net_income, equity
                 FROM financials
-                WHERE ticker = ?
+                WHERE ticker = %s
                   AND (revenue IS NOT NULL OR net_income IS NOT NULL)
                 ORDER BY year DESC
                 LIMIT 1

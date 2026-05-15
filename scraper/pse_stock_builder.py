@@ -48,7 +48,7 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
     conn = db.get_connection()
 
     stock_row = conn.execute(
-        "SELECT ticker, name, sector, is_reit, is_bank, status FROM stocks WHERE ticker = ?",
+        "SELECT ticker, name, sector, is_reit, is_bank, status FROM stocks WHERE ticker = %s",
         (ticker,)
     ).fetchone()
     if not stock_row:
@@ -63,7 +63,7 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
 
     price_row = conn.execute("""
         SELECT close, market_cap, date AS price_date FROM prices
-        WHERE ticker = ? ORDER BY date DESC LIMIT 1
+        WHERE ticker = %s ORDER BY date DESC LIMIT 1
     """, (ticker,)).fetchone()
     if not price_row:
         conn.close()
@@ -74,7 +74,7 @@ def build_stock_dict_from_db(ticker: str) -> dict | None:
                operating_cf, capex, ebitda, eps, dps,
                depreciation, amortization
         FROM financials
-        WHERE ticker = ? ORDER BY year DESC LIMIT 10
+        WHERE ticker = %s ORDER BY year DESC LIMIT 10
     """, (ticker,)).fetchall()
     conn.close()
 

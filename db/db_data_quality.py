@@ -3,21 +3,19 @@
 # PSE Quant SaaS
 # ============================================================
 # Checks the database for suspicious or inconsistent values.
-# Run: py db/db_data_quality.py
-# Run with ticker filter: py db/db_data_quality.py --ticker LFM
+# Run: python db/db_data_quality.py
+# Run with ticker filter: python db/db_data_quality.py --ticker LFM
 # ============================================================
 
 import sys
-import sqlite3
 import argparse
 import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'db'))
 
-from db_connection import DB_PATH
+from db.db_connection import get_connection
 
 
 def run_audit(ticker_filter: str = None) -> list[dict]:
@@ -25,14 +23,19 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
     Runs all data quality checks and returns a list of issue dicts.
     Each issue has: ticker, year, check, severity, detail, suggested_action
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_connection()
     current_year = datetime.date.today().year
 
     issues = []
 
     # ── 1. DPS cross-checks ──────────────────────────────────
-    where = f'AND f.ticker = "{ticker_filter}"' if ticker_filter else ''
+    if ticker_filter:
+        where = "AND f.ticker = %s"
+        params = (ticker_filter,)
+    else:
+        where = ""
+        params = ()
+
     rows = conn.execute(f"""
         SELECT f.ticker, f.year, f.dps, f.eps, f.revenue, f.net_income,
                s.is_reit, s.is_bank, s.name,
@@ -46,7 +49,7 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
         WHERE f.dps IS NOT NULL AND f.dps > 0
           {where}
         ORDER BY f.ticker, f.year DESC
-    """).fetchall()
+    """, params).fetchall()
 
     # Group by ticker for history-aware checks
     from collections import defaultdict
@@ -86,9 +89,6 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
             if close and close > 0 and not is_reit:
                 yield_pct = dps / close * 100.0
                 if yield_pct > 15.0:
-                    # Penny stocks (price < PHP 2) can legitimately show high
-                    # yield percentages from small absolute DPS amounts.
-                    # Downgrade to WARN so they don't drown out real errors.
                     is_penny = close < 2.0
                     issues.append({
                         'ticker': ticker,
@@ -106,7 +106,6 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
                                             'Check if scraper summed multiple ex-dates.',
                     })
                 elif yield_pct > 10.0 and eps is None:
-                    # Can't validate via payout — flag for review
                     prior_list = [h['dps'] for h in history[idx+1:] if h['dps'] and h['year'] < year]
                     jump_factor = (dps / prior_list[0]) if prior_list else None
                     detail = (
@@ -131,11 +130,6 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
             if not is_reit and eps is not None and eps > 0:
                 payout = dps / eps * 100.0
                 if payout > 200.0:
-                    # Holding companies often show high payout vs parent EPS
-                    # because they fund dividends from subsidiary earnings not
-                    # reflected in parent-only net income. If the yield is low
-                    # (<5%), this is almost certainly holding company mechanics
-                    # rather than a data error. Downgrade to WARN.
                     holding_co_pattern = (close and close > 0
                                           and (dps / close * 100.0) < 5.0)
                     issues.append({
@@ -179,7 +173,7 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
         if (latest['eps'] is None and latest['revenue'] is None
                 and latest['net_income'] is None):
             any_financials = conn.execute(
-                'SELECT 1 FROM financials WHERE ticker=? AND eps IS NOT NULL LIMIT 1',
+                'SELECT 1 FROM financials WHERE ticker = %s AND eps IS NOT NULL LIMIT 1',
                 (ticker,)
             ).fetchone()
             if not any_financials:
@@ -202,7 +196,7 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
         FROM financials f
         JOIN stocks s ON f.ticker = s.ticker
         WHERE 1=1 {where}
-    """).fetchall()
+    """, params).fetchall()
 
     for r in anomaly_rows:
         # Negative revenue (impossible unless restatement)
@@ -248,9 +242,6 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
             })
 
     # ── 3. EPS vs NI cross-check using market cap share count ──────
-    # When market_cap and close are available, derive actual shares
-    # and check if stored EPS is consistent with stored NI.
-    # A >100x discrepancy indicates a parser unit error.
     eps_check_rows = conn.execute(f"""
         SELECT f.ticker, f.year, f.net_income, f.eps, p.close, p.market_cap, s.name
         FROM financials f
@@ -264,7 +255,7 @@ def run_audit(ticker_filter: str = None) -> list[dict]:
           AND p.market_cap IS NOT NULL AND p.market_cap > 0 AND p.close > 0
           AND f.year >= 2020
           {where}
-    """).fetchall()
+    """, params).fetchall()
 
     for r in eps_check_rows:
         shares = r['market_cap'] / r['close']   # actual shares outstanding
@@ -328,13 +319,6 @@ def get_dividend_quality_flags() -> set[tuple]:
     """
     Returns a set of (ticker, year) tuples with suspicious dividend data.
     Used by the calendar query to exclude bad data.
-
-    Excludes any (ticker, year) where:
-      - Severity is ERROR and check involves DPS (clear data errors)
-      - Any severity with 'yield' in check name (high-yield flags, any level)
-      - Any severity with 'Payout' in check name (high-payout flags, any level)
-
-    Conservative by design: a false exclusion is safer than showing bad data.
     """
     issues = run_audit()
     return {

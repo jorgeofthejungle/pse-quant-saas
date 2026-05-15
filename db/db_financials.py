@@ -35,7 +35,7 @@ def upsert_financials(ticker: str, year: int,
                 (ticker, year, revenue, net_income, equity, total_debt,
                  cash, operating_cf, capex, ebitda, eps, dps,
                  depreciation, amortization, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker, year) DO UPDATE SET
                 revenue       = excluded.revenue,
                 net_income    = excluded.net_income,
@@ -59,7 +59,7 @@ def upsert_financials(ticker: str, year: int,
                 (ticker, year, revenue, net_income, equity, total_debt,
                  cash, operating_cf, capex, ebitda, eps, dps,
                  depreciation, amortization, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker, year) DO UPDATE SET
                 revenue       = COALESCE(excluded.revenue,       revenue),
                 net_income    = COALESCE(excluded.net_income,    net_income),
@@ -93,9 +93,9 @@ def get_financials(ticker: str, years: int = 5) -> list:
                operating_cf, capex, ebitda, eps, dps,
                depreciation, amortization
         FROM financials
-        WHERE ticker = ?
+        WHERE ticker = %s
         ORDER BY year DESC
-        LIMIT ?
+        LIMIT %s
     """, (ticker, years)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -141,7 +141,7 @@ def upsert_stock(ticker: str, name: str, sector: str,
             INSERT INTO stocks
                 (ticker, name, sector, is_reit, is_bank, last_updated,
                  last_scraped, status, cmpy_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker) DO UPDATE SET
                 name         = excluded.name,
                 sector       = excluded.sector,
@@ -155,7 +155,7 @@ def upsert_stock(ticker: str, name: str, sector: str,
         conn.execute("""
             INSERT INTO stocks
                 (ticker, name, sector, is_reit, is_bank, last_updated, status, cmpy_id)
-            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+            VALUES (%s, %s, %s, %s, %s, %s, 'active', %s)
             ON CONFLICT(ticker) DO UPDATE SET
                 name         = excluded.name,
                 sector       = excluded.sector,
@@ -167,7 +167,7 @@ def upsert_stock(ticker: str, name: str, sector: str,
 
     if status is not None:
         conn.execute(
-            "UPDATE stocks SET status = ? WHERE ticker = ?",
+            "UPDATE stocks SET status = %s WHERE ticker = %s",
             (status, ticker)
         )
 
@@ -181,7 +181,7 @@ def mark_stock_status(ticker: str, status: str):
     Used by the scraper to flag tickers missing from PSE Edge.
     """
     conn = get_connection()
-    conn.execute("UPDATE stocks SET status = ? WHERE ticker = ?", (status, ticker))
+    conn.execute("UPDATE stocks SET status = %s WHERE ticker = %s", (status, ticker))
     conn.commit()
     conn.close()
 
@@ -214,7 +214,7 @@ def get_stale_financials_tickers(days: int = 90) -> list:
     conn = get_connection()
     rows = conn.execute("""
         SELECT DISTINCT ticker FROM financials
-        WHERE updated_at IS NULL OR updated_at < ?
+        WHERE updated_at IS NULL OR updated_at < %s
         ORDER BY ticker
     """, (cutoff,)).fetchall()
     conn.close()

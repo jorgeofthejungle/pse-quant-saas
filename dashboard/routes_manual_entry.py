@@ -54,7 +54,7 @@ def _get_financials_all_years(ticker: str) -> list:
         SELECT year, revenue, net_income, equity, total_debt, cash,
                operating_cf, capex, ebitda, eps, dps, updated_at
         FROM financials
-        WHERE ticker = ?
+        WHERE ticker = %s
         ORDER BY year DESC
     """, (ticker.upper(),)).fetchall()
     conn.close()
@@ -66,7 +66,7 @@ def _get_stock_name(ticker: str) -> str | None:
     import database as db
     conn = db.get_connection()
     row = conn.execute(
-        "SELECT name FROM stocks WHERE ticker = ?", (ticker.upper(),)
+        "SELECT name FROM stocks WHERE ticker = %s", (ticker.upper(),)
     ).fetchone()
     conn.close()
     return row['name'] if row else None

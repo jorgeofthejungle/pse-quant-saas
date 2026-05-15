@@ -201,7 +201,7 @@ def _set_member_tier(member_id: int, tier: str):
     """Sets the tier column on a member record."""
     from db.db_connection import get_connection
     conn = get_connection()
-    conn.execute("UPDATE members SET tier = ? WHERE id = ?", (tier, member_id))
+    conn.execute("UPDATE members SET tier = %s WHERE id = %s", (tier, member_id))
     conn.commit()
     conn.close()
 

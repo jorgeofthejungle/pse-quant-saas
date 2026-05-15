@@ -22,7 +22,7 @@ def _get_setting(key: str) -> str | None:
         from db.db_connection import get_connection
         conn = get_connection()
         row = conn.execute(
-            'SELECT value FROM settings WHERE key = ?', (key,)
+            'SELECT value FROM settings WHERE key = %s', (key,)
         ).fetchone()
         conn.close()
         return row['value'] if row else None
@@ -37,7 +37,7 @@ def _save_setting(key: str, value: str) -> None:
         now = datetime.now().isoformat()
         conn = get_connection()
         conn.execute(
-            'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
+            'INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at',
             (key, value, now),
         )
         conn.commit()

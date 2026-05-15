@@ -28,7 +28,7 @@ def upsert_segment(
         INSERT INTO conglomerate_segments
             (parent_ticker, segment_name, segment_ticker,
              revenue, net_income, equity, year, notes, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT(parent_ticker, segment_name, year)
         DO UPDATE SET
             segment_ticker = excluded.segment_ticker,
@@ -56,13 +56,13 @@ def get_segments(parent_ticker: str, year: int | None = None) -> list[dict]:
     if year is not None:
         rows = conn.execute("""
             SELECT * FROM conglomerate_segments
-            WHERE parent_ticker = ? AND year = ?
+            WHERE parent_ticker = %s AND year = %s
             ORDER BY segment_name
         """, (parent_ticker.upper(), year)).fetchall()
     else:
         rows = conn.execute("""
             SELECT * FROM conglomerate_segments
-            WHERE parent_ticker = ?
+            WHERE parent_ticker = %s
             ORDER BY year DESC, segment_name
         """, (parent_ticker.upper(),)).fetchall()
     conn.close()
@@ -74,7 +74,7 @@ def get_latest_segments(parent_ticker: str) -> list[dict]:
     conn = get_connection()
     row = conn.execute("""
         SELECT MAX(year) AS yr FROM conglomerate_segments
-        WHERE parent_ticker = ?
+        WHERE parent_ticker = %s
     """, (parent_ticker.upper(),)).fetchone()
     if not row or not row['yr']:
         conn.close()
@@ -82,7 +82,7 @@ def get_latest_segments(parent_ticker: str) -> list[dict]:
     year = row['yr']
     rows = conn.execute("""
         SELECT * FROM conglomerate_segments
-        WHERE parent_ticker = ? AND year = ?
+        WHERE parent_ticker = %s AND year = %s
         ORDER BY revenue DESC NULLS LAST
     """, (parent_ticker.upper(), year)).fetchall()
     conn.close()
@@ -94,7 +94,7 @@ def get_segment_years(parent_ticker: str) -> list[int]:
     conn = get_connection()
     rows = conn.execute("""
         SELECT DISTINCT year FROM conglomerate_segments
-        WHERE parent_ticker = ?
+        WHERE parent_ticker = %s
         ORDER BY year DESC
     """, (parent_ticker.upper(),)).fetchall()
     conn.close()
@@ -106,7 +106,7 @@ def delete_segment(parent_ticker: str, segment_name: str, year: int) -> bool:
     conn = get_connection()
     cursor = conn.execute("""
         DELETE FROM conglomerate_segments
-        WHERE parent_ticker = ? AND segment_name = ? AND year = ?
+        WHERE parent_ticker = %s AND segment_name = %s AND year = %s
     """, (parent_ticker.upper(), segment_name, year))
     conn.commit()
     conn.close()

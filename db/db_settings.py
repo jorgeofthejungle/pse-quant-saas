@@ -15,7 +15,7 @@ def get_setting(key: str, default=None):
     """Returns the stored value for key, or default if not set."""
     try:
         conn  = get_connection()
-        row   = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        row   = conn.execute("SELECT value FROM settings WHERE key = %s", (key,)).fetchone()
         conn.close()
         return row['value'] if row else default
     except Exception:
@@ -28,7 +28,7 @@ def set_setting(key: str, value: str):
     conn = get_connection()
     conn.execute("""
         INSERT INTO settings (key, value, updated_at)
-        VALUES (?, ?, ?)
+        VALUES (%s, %s, %s)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     """, (key, str(value), now))
     conn.commit()

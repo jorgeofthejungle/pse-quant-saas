@@ -14,7 +14,7 @@ def upsert_price(ticker: str, date: str, close: float, market_cap: float = None)
     conn = get_connection()
     conn.execute("""
         INSERT INTO prices (ticker, date, close, market_cap)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT(ticker, date)
         DO UPDATE SET close      = excluded.close,
                       market_cap = excluded.market_cap
@@ -32,7 +32,7 @@ def get_latest_price(ticker: str) -> dict | None:
     row = conn.execute("""
         SELECT ticker, date, close, market_cap
         FROM prices
-        WHERE ticker = ?
+        WHERE ticker = %s
         ORDER BY date DESC
         LIMIT 1
     """, (ticker,)).fetchone()

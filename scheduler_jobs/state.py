@@ -4,9 +4,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-# Stored in AppData (same dir as the DB) — Python can write there freely.
-# Documents\ is write-restricted on this machine (see CLAUDE.md §16).
-_STATE_DIR         = Path.home() / 'AppData' / 'Local' / 'pse_quant'
+_STATE_DIR         = Path(os.environ.get('PSE_DATA_DIR', '/app/data')) / 'pse_quant'
 _PENDING_PDF_PATH  = _STATE_DIR / 'pending_pdf.json'
 _SIGNAL_CACHE_PATH = _STATE_DIR / 'last_signals.json'
 
@@ -90,7 +88,7 @@ def _record_heartbeat(job_name: str):
         conn = get_connection()
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
                 (key, ts, ts),
             )
             conn.commit()
@@ -118,8 +116,8 @@ def _check_price_freshness() -> bool:
         conn = get_connection()
         try:
             row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM prices WHERE date >= date('now', ?)",
-                (f'-{_days} days',),
+                "SELECT COUNT(*) AS cnt FROM prices WHERE date >= CURRENT_DATE - %s * INTERVAL '1 day'",
+                (_days,),
             ).fetchone()
         finally:
             conn.close()

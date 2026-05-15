@@ -31,7 +31,7 @@ def get_layer_weight_override(sector_group: str, layer: str) -> float:
         conn = get_connection()
         try:
             row = conn.execute(
-                "SELECT value FROM settings WHERE key = ?", (key,)
+                "SELECT value FROM settings WHERE key = %s", (key,)
             ).fetchone()
         finally:
             conn.close()
@@ -168,7 +168,7 @@ def log_scoring_run_weights(ticker: str, sector_group: str, portfolio_type: str)
         try:
             conn.execute(
                 """INSERT INTO activity_log (timestamp, category, action, detail, status)
-                   VALUES (?, 'scoring_weights', 'weight_log', ?, 'ok')""",
+                   VALUES (%s, 'scoring_weights', 'weight_log', %s, 'ok')""",
                 (now, detail)
             )
             conn.commit()

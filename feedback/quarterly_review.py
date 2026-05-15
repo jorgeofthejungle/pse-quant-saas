@@ -57,13 +57,13 @@ def _safe_mean(vals: list) -> float | None:
 
 
 def _get_setting(conn, key: str) -> str | None:
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    row = conn.execute("SELECT value FROM settings WHERE key = %s", (key,)).fetchone()
     return row['value'] if row else None
 
 
 def _set_setting(conn, key: str, value: str) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+        "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
         (key, value, datetime.utcnow().isoformat()),
     )
 
@@ -75,7 +75,7 @@ def _log_diag(conn, quarter, portfolio_type, sector, metric_name, metric_value,
             "INSERT INTO feedback_diagnostic_log "
             "(quarter, portfolio_type, sector, metric_name, metric_value, z_score, "
             " met_threshold, bias_direction, bias_magnitude, stock_count, notes, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (quarter, portfolio_type, sector, metric_name, metric_value, z_score,
              1 if met_threshold else 0, bias_direction, bias_magnitude,
              stock_count, notes, datetime.utcnow().isoformat()),
@@ -86,7 +86,7 @@ def _log_diag(conn, quarter, portfolio_type, sector, metric_name, metric_value,
 
 def _get_stock_info(conn, ticker: str) -> dict:
     row = conn.execute(
-        "SELECT ticker, sector, is_bank, is_reit FROM stocks WHERE ticker = ?", (ticker,)
+        "SELECT ticker, sector, is_bank, is_reit FROM stocks WHERE ticker = %s", (ticker,)
     ).fetchone()
     return dict(row) if row else {'ticker': ticker, 'sector': None, 'is_bank': 0, 'is_reit': 0}
 
@@ -131,7 +131,7 @@ def get_quarterly_review(quarter: str, portfolio_type: str) -> dict | None:
     try:
         conn = get_connection()
         row = conn.execute(
-            "SELECT * FROM feedback_quarterly WHERE quarter = ? AND portfolio_type = ?",
+            "SELECT * FROM feedback_quarterly WHERE quarter = %s AND portfolio_type = %s",
             (quarter, portfolio_type),
         ).fetchone()
         return dict(row) if row else None
@@ -151,11 +151,11 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
 
     # ── Step 1: Aggregate Monthly Data ────────────────────────────────────────
     months = _quarter_months(quarter)
-    ph = ','.join('?' * len(months))
+    ph = ','.join('%s' * len(months))
     monthly_rows = [
         dict(r) for r in conn.execute(
             f"SELECT * FROM feedback_monthly "
-            f"WHERE portfolio_type=? AND month IN ({ph}) ORDER BY month ASC",
+            f"WHERE portfolio_type=%s AND month IN ({ph}) ORDER BY month ASC",
             [portfolio_type] + months,
         ).fetchall()
     ]
@@ -181,7 +181,7 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
     all_snaps = [
         dict(r) for r in conn.execute(
             "SELECT * FROM feedback_snapshots "
-            "WHERE portfolio_type=? AND snapshot_date>=? AND snapshot_date<? "
+            "WHERE portfolio_type=%s AND snapshot_date>=%s AND snapshot_date<%s "
             "ORDER BY snapshot_date ASC",
             (portfolio_type, first_start, next_start),
         ).fetchall()
@@ -290,7 +290,7 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
     # ── Step 6: Persistence Tracking ──────────────────────────────────────────
     prev_row = conn.execute(
         "SELECT consecutive_bias_quarters FROM feedback_quarterly "
-        "WHERE portfolio_type=? AND quarter<? ORDER BY quarter DESC LIMIT 1",
+        "WHERE portfolio_type=%s AND quarter<%s ORDER BY quarter DESC LIMIT 1",
         (portfolio_type, quarter),
     ).fetchone()
     prev_cbq: dict[str, int] = {}
@@ -308,7 +308,7 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
     # ── Step 7: Score Instability Review ──────────────────────────────────────
     inst_rows = conn.execute(
         f"SELECT ticker, score_change_flag FROM feedback_stock_returns "
-        f"WHERE portfolio_type=? AND month IN ({ph})",
+        f"WHERE portfolio_type=%s AND month IN ({ph})",
         [portfolio_type] + months,
     ).fetchall()
     flag_counts: dict[str, int] = {}
@@ -354,7 +354,7 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
 
         # Read existing correction (single JSON blob)
         existing_row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (ck,)
+            "SELECT value FROM settings WHERE key = %s", (ck,)
         ).fetchone()
         if existing_row:
             try:
@@ -396,7 +396,7 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
             'applied_at':     _now,
         })
         conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+            "INSERT INTO settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
             (ck, correction_blob, _now)
         )
         corrections_applied.append({
@@ -430,19 +430,42 @@ def _run_for_portfolio(conn, quarter: str, portfolio_type: str) -> dict | None:
 
     try:
         conn.execute(
-            "INSERT OR REPLACE INTO feedback_quarterly "
+            "INSERT INTO feedback_quarterly "
             "(quarter, portfolio_type, evaluation_window_start, evaluation_window_end, "
             " avg_monthly_top10_return, avg_monthly_hit_rate, avg_monthly_mos_accuracy, "
             " avg_spearman, blind_spot_count, blind_spot_tickers, sector_bias_json, "
             " sectors_flagged, sectors_skipped, score_band_json, band_inversion_flag, "
             " consecutive_bias_quarters, total_stocks_evaluated, confidence_level, "
             " corrections_applied_json, corrections_blocked_json, created_at) "
-            "VALUES (:quarter,:portfolio_type,:evaluation_window_start,:evaluation_window_end,"
-            " :avg_monthly_top10_return,:avg_monthly_hit_rate,:avg_monthly_mos_accuracy,"
-            " :avg_spearman,:blind_spot_count,:blind_spot_tickers,:sector_bias_json,"
-            " :sectors_flagged,:sectors_skipped,:score_band_json,:band_inversion_flag,"
-            " :consecutive_bias_quarters,:total_stocks_evaluated,:confidence_level,"
-            " :corrections_applied_json,:corrections_blocked_json,:created_at)",
+            "VALUES (%(quarter)s,%(portfolio_type)s,%(evaluation_window_start)s,"
+            " %(evaluation_window_end)s,%(avg_monthly_top10_return)s,"
+            " %(avg_monthly_hit_rate)s,%(avg_monthly_mos_accuracy)s,"
+            " %(avg_spearman)s,%(blind_spot_count)s,%(blind_spot_tickers)s,"
+            " %(sector_bias_json)s,%(sectors_flagged)s,%(sectors_skipped)s,"
+            " %(score_band_json)s,%(band_inversion_flag)s,"
+            " %(consecutive_bias_quarters)s,%(total_stocks_evaluated)s,"
+            " %(confidence_level)s,%(corrections_applied_json)s,"
+            " %(corrections_blocked_json)s,%(created_at)s) "
+            "ON CONFLICT(quarter, portfolio_type) DO UPDATE SET "
+            "  evaluation_window_start = EXCLUDED.evaluation_window_start, "
+            "  evaluation_window_end = EXCLUDED.evaluation_window_end, "
+            "  avg_monthly_top10_return = EXCLUDED.avg_monthly_top10_return, "
+            "  avg_monthly_hit_rate = EXCLUDED.avg_monthly_hit_rate, "
+            "  avg_monthly_mos_accuracy = EXCLUDED.avg_monthly_mos_accuracy, "
+            "  avg_spearman = EXCLUDED.avg_spearman, "
+            "  blind_spot_count = EXCLUDED.blind_spot_count, "
+            "  blind_spot_tickers = EXCLUDED.blind_spot_tickers, "
+            "  sector_bias_json = EXCLUDED.sector_bias_json, "
+            "  sectors_flagged = EXCLUDED.sectors_flagged, "
+            "  sectors_skipped = EXCLUDED.sectors_skipped, "
+            "  score_band_json = EXCLUDED.score_band_json, "
+            "  band_inversion_flag = EXCLUDED.band_inversion_flag, "
+            "  consecutive_bias_quarters = EXCLUDED.consecutive_bias_quarters, "
+            "  total_stocks_evaluated = EXCLUDED.total_stocks_evaluated, "
+            "  confidence_level = EXCLUDED.confidence_level, "
+            "  corrections_applied_json = EXCLUDED.corrections_applied_json, "
+            "  corrections_blocked_json = EXCLUDED.corrections_blocked_json, "
+            "  created_at = EXCLUDED.created_at",
             {**review, 'created_at': datetime.utcnow().isoformat()},
         )
         conn.commit()

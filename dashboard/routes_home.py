@@ -79,11 +79,8 @@ def api_status():
     except Exception:
         ticker_count = 0
 
-    db_path = db.DB_PATH
-    try:
-        db_size_kb = round(os.path.getsize(db_path) / 1024, 1)
-    except Exception:
-        db_size_kb = 0
+    db_path    = 'PostgreSQL'
+    db_size_kb = 0
 
     member_stats = get_member_stats()
     job          = get_job_status()
@@ -272,7 +269,7 @@ def _build_export_rows() -> list:
         try:
             row = conn.execute(
                 "SELECT MAX(run_date) AS latest FROM scores_v2 "
-                "WHERE rank IS NOT NULL AND portfolio_type = ?",
+                "WHERE rank IS NOT NULL AND portfolio_type = %s",
                 (pt,)
             ).fetchone()
             if not row or not row['latest']:
@@ -283,7 +280,7 @@ def _build_export_rows() -> list:
             score_rows = conn.execute(
                 """SELECT ticker, score, rank, confidence, breakdown_json, run_date
                    FROM scores_v2
-                   WHERE run_date = ? AND portfolio_type = ? AND rank IS NOT NULL
+                   WHERE run_date = %s AND portfolio_type = %s AND rank IS NOT NULL
                    ORDER BY rank""",
                 (latest, pt)
             ).fetchall()
@@ -350,10 +347,7 @@ def api_health():
     except Exception as e:
         last_run = f'DB error: {e}'
 
-    try:
-        db_size_kb = round(os.path.getsize(db.DB_PATH) / 1024, 1)
-    except Exception:
-        pass
+    db_size_kb = 0
 
     sched = get_scheduler_status()
 

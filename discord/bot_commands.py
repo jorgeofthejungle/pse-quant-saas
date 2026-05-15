@@ -87,7 +87,7 @@ def get_stock_embed(ticker: str, discord_id: str = None) -> dict:
     # Resolve ticker
     conn = db.get_connection()
     row = conn.execute(
-        "SELECT ticker, name, sector FROM stocks WHERE ticker = ? AND status = 'active'",
+        "SELECT ticker, name, sector FROM stocks WHERE ticker = %s AND status = 'active'",
         (t,)
     ).fetchone()
     conn.close()

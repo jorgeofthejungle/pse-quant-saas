@@ -28,7 +28,7 @@ def expire_overdue_members():
         UPDATE members SET status = 'expired'
         WHERE status = 'active'
           AND expiry_date IS NOT NULL
-          AND expiry_date < ?
+          AND expiry_date < %s
     """, (today,))
     conn.commit()
     changed = cur.rowcount
@@ -64,7 +64,7 @@ def get_all_members(status_filter: str = None) -> list:
     query = "SELECT * FROM members"
     args  = ()
     if status_filter:
-        query += " WHERE status = ?"
+        query += " WHERE status = %s"
         args   = (status_filter,)
     query += " ORDER BY expiry_date ASC"
     rows  = conn.execute(query, args).fetchall()
@@ -76,7 +76,7 @@ def get_member(member_id: int) -> dict | None:
     """Returns a single member by ID, or None if not found."""
     conn = get_connection()
     row  = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (member_id,)
+        "SELECT * FROM members WHERE id = %s", (member_id,)
     ).fetchone()
     conn.close()
     return dict(row) if row else None
@@ -100,11 +100,12 @@ def add_member(discord_name: str, plan: str,
         INSERT INTO members
             (discord_id, discord_name, email, plan, status,
              joined_date, expiry_date, notes, created_at)
-        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s)
+        RETURNING id
     """, (discord_id, discord_name, email, plan,
           today, expiry, notes, now_str))
     conn.commit()
-    member_id = cur.lastrowid
+    member_id = cur.fetchone()['id']
     conn.close()
     log_activity('member', 'member_added',
                  f"{discord_name} ({plan}) joined", status='ok')
@@ -118,12 +119,12 @@ def update_member(member_id: int, discord_name: str = None,
     conn = get_connection()
     conn.execute("""
         UPDATE members SET
-            discord_name = COALESCE(?, discord_name),
-            discord_id   = COALESCE(?, discord_id),
-            email        = COALESCE(?, email),
-            plan         = COALESCE(?, plan),
-            notes        = COALESCE(?, notes)
-        WHERE id = ?
+            discord_name = COALESCE(%s, discord_name),
+            discord_id   = COALESCE(%s, discord_id),
+            email        = COALESCE(%s, email),
+            plan         = COALESCE(%s, plan),
+            notes        = COALESCE(%s, notes)
+        WHERE id = %s
     """, (discord_name, discord_id, email, plan, notes, member_id))
     conn.commit()
     conn.close()
@@ -137,7 +138,7 @@ def extend_member(member_id: int, days: int, source: str = 'manual'):
     today = datetime.now().strftime('%Y-%m-%d')
     conn  = get_connection()
     row   = conn.execute(
-        "SELECT expiry_date, discord_name FROM members WHERE id = ?",
+        "SELECT expiry_date, discord_name FROM members WHERE id = %s",
         (member_id,)
     ).fetchone()
     if not row:
@@ -149,8 +150,8 @@ def extend_member(member_id: int, days: int, source: str = 'manual'):
               ).strftime('%Y-%m-%d')
 
     conn.execute("""
-        UPDATE members SET expiry_date = ?, status = 'active'
-        WHERE id = ?
+        UPDATE members SET expiry_date = %s, status = 'active'
+        WHERE id = %s
     """, (new_ex, member_id))
     conn.commit()
     conn.close()
@@ -162,10 +163,10 @@ def cancel_member(member_id: int):
     """Sets a member's status to 'cancelled'."""
     conn = get_connection()
     row  = conn.execute(
-        "SELECT discord_name FROM members WHERE id = ?", (member_id,)
+        "SELECT discord_name FROM members WHERE id = %s", (member_id,)
     ).fetchone()
     conn.execute(
-        "UPDATE members SET status = 'cancelled' WHERE id = ?", (member_id,)
+        "UPDATE members SET status = 'cancelled' WHERE id = %s", (member_id,)
     )
     conn.commit()
     conn.close()
@@ -191,15 +192,16 @@ def record_payment(member_id: int, amount: float, plan: str,
         INSERT INTO subscriptions
             (member_id, payment_id, amount, plan, status, payment_method,
              paid_date, period_start, period_end)
-        VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, 'paid', %s, %s, %s, %s)
+        RETURNING id
     """, (member_id, payment_id, amount, plan, payment_method,
           today, today, p_end))
     conn.commit()
-    sub_id = cur.lastrowid
+    sub_id = cur.fetchone()['id']
 
     # Get member name for log
     row = conn.execute(
-        "SELECT discord_name FROM members WHERE id = ?", (member_id,)
+        "SELECT discord_name FROM members WHERE id = %s", (member_id,)
     ).fetchone()
     conn.close()
 
@@ -215,7 +217,7 @@ def get_member_subscriptions(member_id: int) -> list:
     conn  = get_connection()
     rows  = conn.execute("""
         SELECT * FROM subscriptions
-        WHERE member_id = ?
+        WHERE member_id = %s
         ORDER BY paid_date DESC
     """, (member_id,)).fetchall()
     conn.close()
@@ -230,7 +232,7 @@ def get_expiring_soon(days: int = 7) -> list:
     rows   = conn.execute("""
         SELECT * FROM members
         WHERE status = 'active'
-          AND expiry_date BETWEEN ? AND ?
+          AND expiry_date BETWEEN %s AND %s
         ORDER BY expiry_date ASC
     """, (today, cutoff)).fetchall()
     conn.close()
@@ -249,7 +251,7 @@ def log_activity(category: str, action: str,
     conn = get_connection()
     conn.execute("""
         INSERT INTO activity_log (timestamp, category, action, detail, status)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     """, (now, category, action, detail, status))
     conn.commit()
     conn.close()
@@ -261,7 +263,7 @@ def get_recent_activity(limit: int = 30) -> list:
     rows = conn.execute("""
         SELECT * FROM activity_log
         ORDER BY timestamp DESC
-        LIMIT ?
+        LIMIT %s
     """, (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -276,7 +278,7 @@ def get_revenue_by_month() -> list:
     """
     conn = get_connection()
     rows = conn.execute("""
-        SELECT strftime('%Y-%m', paid_date) AS month,
+        SELECT to_char(paid_date::date, 'YYYY-MM') AS month,
                SUM(amount) AS revenue
         FROM subscriptions
         WHERE status = 'paid'
@@ -294,7 +296,7 @@ def get_member_growth() -> list:
     """
     conn = get_connection()
     rows = conn.execute("""
-        SELECT strftime('%Y-%m', joined_date) AS month,
+        SELECT to_char(joined_date::date, 'YYYY-MM') AS month,
                COUNT(*) AS new_members
         FROM members
         GROUP BY month

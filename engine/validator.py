@@ -177,7 +177,7 @@ def check_price_staleness(stock: dict) -> dict:
 
     Priority for price_date:
       1. stock['price_date'] if present
-      2. Query SELECT MAX(date) FROM prices WHERE ticker = ?
+      2. Query SELECT MAX(date) FROM prices WHERE ticker = %s
       3. None (is_critical=True if current_price is also None)
     """
     try:
@@ -199,7 +199,7 @@ def check_price_staleness(stock: dict) -> dict:
             from db.db_connection import get_connection
             conn = get_connection()
             row = conn.execute(
-                "SELECT MAX(date) AS max_date FROM prices WHERE ticker = ?",
+                "SELECT MAX(date) AS max_date FROM prices WHERE ticker = %s",
                 (ticker,)
             ).fetchone()
             conn.close()

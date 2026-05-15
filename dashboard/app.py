@@ -2,7 +2,7 @@
 # app.py — Flask App Factory & Entry Point
 # PSE Quant SaaS — Dashboard
 # ============================================================
-# Run with:  py dashboard/app.py
+# Run with:  python dashboard/app.py
 # Open:      http://localhost:8080
 # ============================================================
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / 'scraper'))
 sys.path.insert(0, str(ROOT / 'alerts'))
 sys.path.insert(0, str(ROOT))
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, Response, render_template, jsonify, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
@@ -28,13 +28,30 @@ load_dotenv(ROOT / '.env')
 
 import database as db
 
+
+# ── HTTP Basic Auth guard for all admin blueprints ────────────────────
+def _admin_auth_check():
+    auth = request.authorization
+    ok = (
+        auth is not None
+        and auth.username == os.getenv('DASHBOARD_USERNAME', 'admin')
+        and auth.password == os.getenv('DASHBOARD_PASSWORD', '')
+    )
+    if not ok:
+        return Response(
+            'Admin access required.',
+            401,
+            {'WWW-Authenticate': 'Basic realm="PSE Quant Admin"'},
+        )
+
+
 # ── Secret key: load from .env or generate a stable per-session one ───
 # Set FLASK_SECRET_KEY in .env for a persistent key across restarts.
-_SECRET_KEY_PATH = Path.home() / 'AppData' / 'Local' / 'pse_quant' / '.flask_secret'
+_SECRET_KEY_PATH = Path(os.environ.get('PSE_DATA_DIR', '/app/data')) / 'pse_quant' / '.flask_secret'
 
 
 def _get_or_create_secret_key() -> str:
-    """Returns a persistent secret key stored in AppData."""
+    """Returns a persistent secret key, falling back to a file in PSE_DATA_DIR."""
     key = os.getenv('FLASK_SECRET_KEY')
     if key:
         return key
@@ -108,6 +125,11 @@ def create_app() -> Flask:
     from dashboard.routes_conglomerates import conglomerates_bp
     from dashboard.routes_manual_entry  import manual_entry_bp
     from dashboard.routes_feedback      import feedback_bp
+
+    # Protect all admin blueprints with HTTP Basic Auth (portal_bp excluded)
+    for _bp in (home_bp, pipeline_bp, members_bp, analytics_bp, settings_bp,
+                paymongo_bp, stocks_bp, conglomerates_bp, manual_entry_bp, feedback_bp):
+        _bp.before_request(_admin_auth_check)
 
     app.register_blueprint(home_bp)
     app.register_blueprint(pipeline_bp,  url_prefix='/pipeline')

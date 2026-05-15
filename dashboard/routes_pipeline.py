@@ -141,7 +141,6 @@ def import_db():
             return jsonify({'inserted': 0, 'message': 'No rows provided'})
 
         conn = db.get_connection()
-        conn.execute('PRAGMA journal_mode=WAL')
         inserted = 0
 
         if table == 'stocks':
@@ -150,7 +149,7 @@ def import_db():
                     """INSERT INTO stocks
                        (ticker, name, sector, is_reit, is_bank, status,
                         cmpy_id, fiscal_year_end_month)
-                    VALUES (?,?,?,?,?,?,?,?)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT(ticker) DO UPDATE SET
                         name                  = COALESCE(excluded.name, name),
                         sector                = COALESCE(excluded.sector, sector),
@@ -176,7 +175,7 @@ def import_db():
                     """INSERT INTO financials
                        (ticker, year, revenue, net_income, equity, total_debt,
                         cash, operating_cf, capex, ebitda, eps, dps, updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                     ON CONFLICT(ticker, year) DO UPDATE SET
                         revenue      = COALESCE(excluded.revenue,      revenue),
                         net_income   = COALESCE(excluded.net_income,   net_income),
@@ -196,7 +195,7 @@ def import_db():
             for r in rows:
                 conn.execute(
                     """INSERT INTO prices (ticker, date, close, market_cap)
-                    VALUES (?,?,?,?)
+                    VALUES (%s,%s,%s,%s)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close      = COALESCE(excluded.close,      close),
                         market_cap = COALESCE(excluded.market_cap, market_cap)
@@ -262,7 +261,7 @@ def history():
                 rows = conn.execute("""
                     SELECT ticker, rank AS rnk
                     FROM scores_v2
-                    WHERE run_date = ? AND portfolio_type = ?
+                    WHERE run_date = %s AND portfolio_type = %s
                       AND rank IS NOT NULL
                     ORDER BY rnk ASC LIMIT 5
                 """, (run_date, pt)).fetchall()

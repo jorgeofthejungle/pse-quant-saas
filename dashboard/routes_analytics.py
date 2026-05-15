@@ -76,7 +76,7 @@ def scores():
         latest = run_dates[-1]
         top5_rows = conn.execute("""
             SELECT ticker FROM scores_v2
-            WHERE run_date = ? AND portfolio_type = 'dividend'
+            WHERE run_date = %s AND portfolio_type = 'dividend'
               AND rank IS NOT NULL
             ORDER BY rank ASC LIMIT 5
         """, (latest,)).fetchall()
@@ -86,7 +86,7 @@ def scores():
             # Fallback: top 5 by value portfolio
             top5_rows = conn.execute("""
                 SELECT ticker FROM scores_v2
-                WHERE run_date = ? AND portfolio_type = 'value'
+                WHERE run_date = %s AND portfolio_type = 'value'
                   AND rank IS NOT NULL
                 ORDER BY rank ASC LIMIT 5
             """, (latest,)).fetchall()
@@ -100,7 +100,7 @@ def scores():
             for run_date in run_dates:
                 row = conn.execute("""
                     SELECT score FROM scores_v2
-                    WHERE ticker = ? AND run_date = ?
+                    WHERE ticker = %s AND run_date = %s
                       AND portfolio_type = 'dividend'
                 """, (ticker, run_date)).fetchone()
                 score_data.append(

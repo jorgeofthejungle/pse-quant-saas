@@ -7,10 +7,14 @@ Async safety rules are in root CLAUDE.md Section 7. For message and embed writin
 ---
 
 ## discord/publisher.py (facade)
-Loads webhook URLs from `.env`. 4 webhooks: `rankings`, `alerts`, `deep_analysis`, `daily_briefing`.
+Loads webhook URLs from `.env`. 5 webhooks: `rankings`, `alerts`, `deep_analysis`, `daily_briefing`, `ops`.
 Functions: `send_report`, `send_dividend_alert`, `send_price_alert`, `send_earnings_alert`,
 `send_rescore_notice`, `send_weekly_briefing`, `send_stock_of_week`,
-`send_dividend_calendar`, `send_model_performance`
+`send_dividend_calendar`, `send_model_performance`, `send_ops_alert`
+
+## discord/discord_ops.py
+Sends pipeline failure alerts to the private ops channel.
+- `send_ops_alert(stage, error)` — posts a red embed (title "Pipeline Failure") with Stage, Error (truncated to 1000 chars), and Timestamp fields. Silently swallows all failures — callers never need to handle exceptions from this function. No-ops when `DISCORD_WEBHOOK_OPS` is not set.
 
 ## discord/bot.py
 Slash command bot. Run with `py discord/bot.py`.
@@ -47,3 +51,4 @@ Uses synchronous `requests` — always call from a thread (not directly from asy
 | `#deep-analysis` | Premium | `DISCORD_WEBHOOK_DEEP_ANALYSIS` | Stock of the Week, monthly reports |
 | `#alerts` | Public | `DISCORD_WEBHOOK_ALERTS` | Price, dividend, earnings alerts |
 | `#daily-briefing` | Public | `DISCORD_WEBHOOK_DAILY_BRIEFING` | Top 3 grades (no scores) |
+| `#ops-alerts` | Private (owner only) | `DISCORD_WEBHOOK_OPS` | Internal pipeline failure alerts |

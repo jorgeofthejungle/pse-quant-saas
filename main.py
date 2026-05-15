@@ -38,6 +38,7 @@ from engine.sector_stats  import compute_sector_stats
 from validator            import validate_all, print_validation_summary
 from pdf_generator        import generate_report
 from publisher            import WEBHOOKS, send_report
+from discord.discord_ops  import send_ops_alert
 from mos import (calc_ddm, calc_eps_pe, calc_dcf,
                   calc_hybrid_intrinsic, calc_mos_pct)
 from config import CONGLOMERATE_DISCOUNT, IV_WEIGHTS as _IV_WEIGHTS
@@ -139,6 +140,13 @@ def run_pipeline(dry_run: bool = False) -> bool:
     print("\n[1/5]  Loading stock data...")
     all_stocks = load_stocks()
     print(f"       {len(all_stocks)} stocks loaded")
+
+    if not all_stocks:
+        send_ops_alert(
+            'Load: no stocks in DB',
+            'load_stocks() returned an empty list — no stocks available to score',
+        )
+        return False
 
     all_stocks, val_results = validate_all(all_stocks)
     blocked = sum(1 for r in val_results if not r['valid'])

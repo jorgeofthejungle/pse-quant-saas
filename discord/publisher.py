@@ -31,6 +31,7 @@ from discord.discord_feedback import (
     send_correction_batch_dm,
     send_correction_expiry_dm,
 )
+from discord.discord_ops import send_ops_alert
 
 __all__ = [
     'send_report',
@@ -42,6 +43,7 @@ __all__ = [
     'send_monthly_scorecard_dm', 'send_quarterly_review_dm',
     'send_score_instability_alert', 'send_correction_batch_dm',
     'send_correction_expiry_dm',
+    'send_ops_alert',
     'test_webhook',
     'WEBHOOKS', 'DISCLAIMER', 'SIGNAL_DISCLAIMER',
 ]

@@ -21,6 +21,7 @@ WEBHOOKS = {
     'alerts':         os.getenv('DISCORD_WEBHOOK_ALERTS',         ''),
     'deep_analysis':  os.getenv('DISCORD_WEBHOOK_DEEP_ANALYSIS',  ''),
     'daily_briefing': os.getenv('DISCORD_WEBHOOK_DAILY_BRIEFING', ''),
+    'ops':            os.getenv('DISCORD_WEBHOOK_OPS',            ''),
 }
 
 # ── Colour codes (Discord embed colours) ──────────────────

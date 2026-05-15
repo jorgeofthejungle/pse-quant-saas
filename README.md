@@ -237,11 +237,12 @@ Create a `.env` file in the project root:
 PSE_EDGE_EMAIL=your@email.com
 PSE_EDGE_PASSWORD=yourpassword
 
-# Discord webhooks (4 channels)
+# Discord webhooks (5 channels)
 DISCORD_WEBHOOK_RANKINGS=https://discord.com/api/webhooks/...
 DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...
 DISCORD_WEBHOOK_DEEP_ANALYSIS=https://discord.com/api/webhooks/...
 DISCORD_WEBHOOK_DAILY_BRIEFING=https://discord.com/api/webhooks/...
+DISCORD_WEBHOOK_OPS=https://discord.com/api/webhooks/...  # ops channel (private, pipeline failure alerts)
 
 # Discord bot
 DISCORD_BOT_TOKEN=your_bot_token_here

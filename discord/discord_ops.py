@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 
 from discord.discord_core import WEBHOOKS, COLOUR_ALERT, _post_webhook
 
+__all__ = ['send_ops_alert']
+
 
 def send_ops_alert(stage: str, error: str) -> None:
     """

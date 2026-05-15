@@ -13,12 +13,12 @@ from discord.discord_ops import send_ops_alert
 # ============================================================
 
 def test_no_post_when_webhook_not_set():
-    """When DISCORD_WEBHOOK_OPS is not set (WEBHOOKS['ops'] == ''), requests.post is never called."""
+    """When DISCORD_WEBHOOK_OPS is not set (WEBHOOKS['ops'] == ''), _post_webhook is never called."""
     # Patch WEBHOOKS in discord_ops' own namespace (where it was imported into)
     with patch('discord.discord_ops.WEBHOOKS', {'ops': ''}):
-        with patch('discord.discord_core.requests.post') as mock_post:
+        with patch('discord.discord_ops._post_webhook') as mock_post_fn:
             send_ops_alert('TestStage', 'some error')
-            mock_post.assert_not_called()
+            mock_post_fn.assert_not_called()
 
 
 # ============================================================

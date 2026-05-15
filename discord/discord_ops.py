@@ -1,13 +1,7 @@
 # ============================================================
 # discord_ops.py — Ops Alert Channel
 # PSE Quant SaaS
-# ============================================================
-# Sends internal pipeline failure alerts to the private ops
-# Discord channel. Failures are silently swallowed — callers
-# never need to handle errors from this module.
-#
-# Public API:
-#   send_ops_alert(stage, error) -> None
+# Sends pipeline failure alerts to the private ops channel.
 # ============================================================
 
 from datetime import datetime, timezone

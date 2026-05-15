@@ -37,8 +37,7 @@ from engine.scorer_v2     import rank_stocks_v2
 from engine.sector_stats  import compute_sector_stats
 from validator            import validate_all, print_validation_summary
 from pdf_generator        import generate_report
-from publisher            import WEBHOOKS, send_report
-from discord.discord_ops  import send_ops_alert
+from publisher            import WEBHOOKS, send_report, send_ops_alert
 from mos import (calc_ddm, calc_eps_pe, calc_dcf,
                   calc_hybrid_intrinsic, calc_mos_pct)
 from config import CONGLOMERATE_DISCOUNT, IV_WEIGHTS as _IV_WEIGHTS

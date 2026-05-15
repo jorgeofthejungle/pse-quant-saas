@@ -34,7 +34,7 @@ FILTERS        = {}
 SCORERS        = {}
 PORTFOLIO_NAMES = {}
 from scheduler_jobs import (
-    run_daily_job, run_daily_score, run_daily_report, run_weekly_scrape,
+    run_daily_job, run_daily_score, run_daily_report, run_approve_pdf, run_weekly_scrape,
     run_expiry_notifications, run_weekly_briefing, run_stock_of_week,
     run_weekly_digest, run_monthly_jobs,
     run_monthly_dividend_calendar, run_monthly_model_performance,
@@ -331,11 +331,19 @@ def main():
                         help='Compute track record now')
     parser.add_argument('--run-quarterly', action='store_true',
                         help='Run quarterly review now')
+    parser.add_argument(
+        '--approve-pdf',
+        action='store_true',
+        help='Send a held PDF that was blocked by the bad-PDF fail switch',
+    )
     args = parser.parse_args()
 
     db.init_db()
 
-    if args.run_monthly:
+    if args.approve_pdf:
+        print("Approving held PDF...")
+        run_approve_pdf()
+    elif args.run_monthly:
         print("Running both monthly reports now...")
         run_monthly_jobs()
     elif args.run_calendar:

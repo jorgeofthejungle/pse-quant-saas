@@ -26,6 +26,7 @@ from .state import (
     _check_price_freshness, _record_heartbeat,
     _load_signal_cache, _save_signal_cache, _signal_is_new,
     _write_pending_pdf, _read_pending_pdf, _clear_pending_pdf,
+    _write_held_pdf, _read_held_pdf, _clear_held_pdf,
 )
 
 # Scraper import for price updates (PSE Edge)
@@ -221,7 +222,7 @@ def run_daily_score():
 
     Does NOT generate or send the PDF — that is run_daily_report().
     """
-    from publisher import WEBHOOKS, send_rescore_notice, send_sentiment_signal
+    from publisher import WEBHOOKS, send_rescore_notice, send_sentiment_signal, send_ops_alert
 
     if not _rescore_lock.acquire(blocking=False):
         print("  [run_daily_score] Already running — skipped.")
@@ -394,10 +395,12 @@ def run_daily_score():
                     print(f"  Scores saved for portfolio_type={pt}.")
                 except Exception as e:
                     print(f"  DB save error for portfolio_type={pt}: {e}")
+                    send_ops_alert("Daily Score: portfolio save failed", str(e))
 
             print("  Scores saved to DB (scores + scores_v2 all portfolio types).")
         except Exception as e:
             print(f"  DB save error: {e}")
+            send_ops_alert("Daily Score: DB save failed", str(e))
 
         _record_heartbeat('daily_score')
 
@@ -448,7 +451,7 @@ def run_daily_report():
     If present and from today, generates the PDF and sends to Discord.
     If nothing is pending, prints a note and exits silently.
     """
-    from publisher           import WEBHOOKS, send_report
+    from publisher           import WEBHOOKS, send_report, send_ops_alert
     from engine.scorer_v2    import rank_stocks_v2
     from engine.sector_stats import compute_sector_stats
 
@@ -477,6 +480,7 @@ def run_daily_report():
 
     _sector_stats = compute_sector_stats(all_stocks)
     ranked_sections = {}
+    bad_pdf_sections = []
     for pt in ['dividend', 'value']:
         try:
             ranked_pt = rank_stocks_v2(
@@ -487,6 +491,7 @@ def run_daily_report():
         except Exception as e:
             print(f"  Score error for {pt}: {e}")
             ranked_sections[pt] = []
+            bad_pdf_sections.append(pt)
 
     print(f"  MoS enriched: dividend={len(ranked_sections['dividend'])}, value={len(ranked_sections['value'])} stocks")
 
@@ -505,6 +510,23 @@ def run_daily_report():
         total_stocks_screened  = len(all_stocks),
     )
 
+    if bad_pdf_sections:
+        _write_held_pdf(
+            pdf_path,
+            f"Empty sections: {', '.join(bad_pdf_sections)}",
+            ranked_sections.get('dividend', []),
+        )
+        send_ops_alert(
+            "Daily Report: portfolio scoring failed",
+            f"Sections empty: {', '.join(bad_pdf_sections)}. "
+            f"PDF held at {pdf_path}. "
+            f"Approve with: python scheduler.py --approve-pdf",
+        )
+        _clear_pending_pdf()
+        print(f"  Bad PDF detected ({', '.join(bad_pdf_sections)} empty) — held for review.")
+        print(f"  Approve with: python scheduler.py --approve-pdf")
+        return
+
     webhook_url = WEBHOOKS.get('rankings', '')
     if webhook_url:
         print("  Sending PDF to Discord #rankings...")
@@ -522,6 +544,55 @@ def run_daily_report():
     print(f"\n{'='*55}")
     print(f"  6 PM report complete.  {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*55}\n")
+
+
+def run_approve_pdf():
+    """
+    Sends a held PDF that was blocked by the bad-PDF fail switch.
+    The PDF was generated but not sent because one or more portfolio
+    sections were empty due to a scoring failure.
+
+    Usage: python scheduler.py --approve-pdf
+    """
+    from publisher import WEBHOOKS, send_report
+
+    held = _read_held_pdf()
+    if not held:
+        print("  No held PDF found. Nothing to approve.")
+        return
+
+    pdf_path       = held.get('pdf_path', '')
+    ranked_preview = held.get('ranked_preview', [])
+    reason         = held.get('reason', 'unknown')
+    held_at        = held.get('held_at', '')[:19]
+
+    print(f"  Held PDF found (held at {held_at})")
+    print(f"  Reason: {reason}")
+    print(f"  File:   {pdf_path}")
+
+    if not os.path.exists(pdf_path):
+        print(f"  File no longer on disk — clearing hold.")
+        _clear_held_pdf()
+        return
+
+    webhook_url = WEBHOOKS.get('rankings', '')
+    if not webhook_url:
+        print("  DISCORD_WEBHOOK_RANKINGS not set — cannot send. Clearing hold.")
+        _clear_held_pdf()
+        return
+
+    print("  Sending held PDF to Discord #rankings...")
+    success = send_report(
+        webhook_url    = webhook_url,
+        pdf_path       = pdf_path,
+        portfolio_type = 'unified',
+        ranked_stocks  = ranked_preview,
+    )
+    if success:
+        print("  Held PDF delivered to Discord.")
+    else:
+        print("  Held PDF delivery failed — check webhook URL.")
+    _clear_held_pdf()
 
 
 def run_daily_job():

@@ -1,6 +1,6 @@
 # scheduler_jobs/__init__.py — Re-exports public surface for scheduler.py
 from .daily_jobs import (
-    run_daily_job, run_daily_score, run_daily_report,
+    run_daily_job, run_daily_score, run_daily_report, run_approve_pdf,
     _run_score_pipeline, _top5_changed, _significant_score_change,
     _build_changes, _build_shortlist_changes,
 )

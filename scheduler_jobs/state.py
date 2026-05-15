@@ -6,6 +6,7 @@ from pathlib import Path
 
 _STATE_DIR         = Path(os.environ.get('PSE_DATA_DIR', '/app/data')) / 'pse_quant'
 _PENDING_PDF_PATH  = _STATE_DIR / 'pending_pdf.json'
+_HELD_PDF_PATH     = _STATE_DIR / 'held_pdf.json'
 _SIGNAL_CACHE_PATH = _STATE_DIR / 'last_signals.json'
 
 
@@ -71,6 +72,41 @@ def _read_pending_pdf() -> dict | None:
 def _clear_pending_pdf():
     try:
         _PENDING_PDF_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _write_held_pdf(pdf_path: str, reason: str, ranked_preview: list):
+    """Records a PDF that was generated but held pending operator approval."""
+    try:
+        _HELD_PDF_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            'pdf_path':       str(pdf_path),
+            'reason':         reason,
+            'held_at':        datetime.now().isoformat(),
+            'ranked_preview': [
+                {'ticker': s['ticker'], 'score': s.get('score', 0), 'rank': s.get('rank', 0)}
+                for s in (ranked_preview or [])[:10]
+            ],
+        }
+        with open(_HELD_PDF_PATH, 'w', encoding='utf-8') as f:
+            json.dump(payload, f)
+    except Exception as e:
+        print(f"  [held pdf] write failed: {e}")
+
+
+def _read_held_pdf() -> dict | None:
+    """Returns held PDF info if it exists, or None."""
+    try:
+        with open(_HELD_PDF_PATH, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _clear_held_pdf():
+    try:
+        _HELD_PDF_PATH.unlink(missing_ok=True)
     except Exception:
         pass
 

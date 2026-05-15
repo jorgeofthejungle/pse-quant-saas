@@ -37,7 +37,7 @@ def run_weekly_scrape():
     Runs the full scraper to update financials, then triggers
     a full re-score so Monday morning rankings are fresh.
     """
-    from publisher import WEBHOOKS, send_weekly_briefing
+    from publisher import WEBHOOKS, send_weekly_briefing, send_ops_alert
 
     today = datetime.now().strftime('%Y-%m-%d')
     now   = datetime.now().strftime('%H:%M')
@@ -69,10 +69,12 @@ def run_weekly_scrape():
             print(f"  Full scrape complete: {count} stock(s) in DB.")
         except ImportError as e:
             print(f"  Scrape failed: {e}")
+            send_ops_alert("Weekly Scrape", str(e))
             print(f"{'='*55}\n")
             return
     except Exception as e:
         print(f"  Full scrape failed: {e}")
+        send_ops_alert("Weekly Scrape", str(e))
         print(f"{'='*55}\n")
         return
 

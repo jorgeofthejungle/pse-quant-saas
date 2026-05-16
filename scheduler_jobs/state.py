@@ -41,28 +41,95 @@ def _signal_is_new(cache: dict, ticker: str, signal: str, score: float) -> bool:
     return abs((prev.get('score') or 0.0) - score) >= 0.15
 
 
-def _write_pending_pdf(ranked: list, reason: str, today: str):
-    """Records that a PDF should be sent at the 6 PM report run."""
+_PENDING_PDF_SIZE_LIMIT = 2 * 1024 * 1024  # 2 MB
+
+
+def _make_json_safe(obj):
+    """
+    Recursively strip non-JSON-serializable values from dicts/lists.
+    Non-serializable leaf values are replaced with None.
+    """
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_json_safe(item) for item in obj]
+    try:
+        json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return None
+
+
+def _write_pending_pdf(ranked_sections: dict, reason: str, today: str):
+    """
+    Records that a PDF should be sent at the 6 PM report run.
+
+    ranked_sections: dict[str, list] mapping portfolio type to ranked stock list.
+    The full pre-scored, MoS-enriched data is embedded so run_daily_report()
+    can skip re-scoring entirely.
+
+    Falls back to trigger-only format {date, reason, tickers} if:
+    - ranked_sections is not serializable, or
+    - the resulting JSON exceeds 2 MB.
+    Never raises.
+    """
     try:
         _PENDING_PDF_PATH.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            'date':    today,
-            'reason':  reason,
-            'tickers': [s['ticker'] for s in ranked],
-        }
+
+        # Derive tickers from the first portfolio section (backward compat)
+        first_section = next(iter(ranked_sections.values()), []) if ranked_sections else []
+        tickers = [s['ticker'] for s in first_section if isinstance(s, dict) and 'ticker' in s]
+
+        # Attempt to serialize ranked_sections with safety filter
+        try:
+            safe_sections = _make_json_safe(ranked_sections)
+            full_payload = {
+                'date':            today,
+                'reason':          reason,
+                'tickers':         tickers,
+                'ranked_sections': safe_sections,
+            }
+            serialized = json.dumps(full_payload)
+            if len(serialized.encode('utf-8')) > _PENDING_PDF_SIZE_LIMIT:
+                raise ValueError(
+                    f"ranked_sections JSON exceeds 2 MB "
+                    f"({len(serialized.encode('utf-8'))} bytes)"
+                )
+            payload_to_write = full_payload
+            use_json = serialized
+        except Exception as serialize_err:
+            print(f"  [pending pdf] ranked_sections not serializable — "
+                  f"falling back to trigger-only format: {serialize_err}")
+            fallback = {
+                'date':    today,
+                'reason':  reason,
+                'tickers': tickers,
+            }
+            payload_to_write = fallback
+            use_json = json.dumps(fallback)
+
         with open(_PENDING_PDF_PATH, 'w', encoding='utf-8') as f:
-            json.dump(payload, f)
+            f.write(use_json)
     except Exception as e:
         print(f"  [pending pdf] write failed: {e}")
 
 
 def _read_pending_pdf() -> dict | None:
-    """Returns pending PDF info if it exists and was written today."""
+    """
+    Returns pending PDF info if it exists and was written today, else None.
+
+    The returned dict includes:
+      'date', 'reason', 'tickers' — always present (when not None)
+      'ranked_sections': dict | None — present when written by the new format;
+                         None when the state file uses the old trigger-only format.
+    """
     try:
         with open(_PENDING_PDF_PATH, encoding='utf-8') as f:
             data = json.load(f)
         today = datetime.now().strftime('%Y-%m-%d')
         if data.get('date') == today:
+            if 'ranked_sections' not in data:
+                data['ranked_sections'] = None
             return data
     except Exception:
         pass

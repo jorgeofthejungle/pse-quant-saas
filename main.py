@@ -38,9 +38,7 @@ from engine.sector_stats  import compute_sector_stats
 from validator            import validate_all, print_validation_summary
 from pdf_generator        import generate_report
 from publisher            import WEBHOOKS, send_report, send_ops_alert
-from mos import (calc_ddm, calc_eps_pe, calc_dcf,
-                  calc_hybrid_intrinsic, calc_mos_pct)
-from config import CONGLOMERATE_DISCOUNT, IV_WEIGHTS as _IV_WEIGHTS
+from engine.mos import enrich_mos
 
 
 # ── Data loader ───────────────────────────────────────────────
@@ -58,33 +56,6 @@ def load_stocks():
         print(f"       DB load failed ({e}) — using sample data")
     from scheduler_data import load_sample_stocks
     return load_sample_stocks()
-
-
-# ── MoS enrichment ────────────────────────────────────────────
-
-def _enrich_mos(stocks: list) -> list:
-    """Adds intrinsic_value, mos_price, mos_pct to each stock dict."""
-    for stock in stocks:
-        try:
-            fins   = db.get_financials(stock['ticker'], years=3)
-            eps_3y = [f['eps'] for f in fins if f.get('eps') is not None][:3]
-            ddm_iv,  _ = calc_ddm(stock.get('dps_last'),
-                                   stock.get('dividend_cagr_5y'))
-            eps_iv,  _ = calc_eps_pe(eps_3y)
-            dcf_iv,  _ = calc_dcf(stock.get('fcf_per_share'),
-                                   stock.get('revenue_cagr'))
-            is_holding = (stock.get('sector', '') == 'Holding Firms')
-            iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
-                                               weights=_IV_WEIGHTS)
-            if is_holding and iv:
-                iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
-        except Exception:
-            iv = None
-        price = stock.get('current_price')
-        stock['intrinsic_value'] = iv
-        stock['mos_price']       = round(iv * 0.70, 2) if iv else None
-        stock['mos_pct']         = calc_mos_pct(iv, price) if iv and price else None
-    return stocks
 
 
 # ── Sentiment enrichment ──────────────────────────────────────
@@ -214,7 +185,7 @@ def run_pipeline(dry_run: bool = False) -> bool:
 
     # ── Step 3b: MoS enrichment (all sections) ───────────────
     for pt in portfolio_types:
-        ranked_sections[pt] = _enrich_mos(ranked_sections[pt])
+        ranked_sections[pt] = enrich_mos(ranked_sections[pt])
 
     # ── Step 3c: Sentiment enrichment (top 10 from dividend) ──
     _try_enrich_with_sentiment(ranked_sections['dividend'][:10])

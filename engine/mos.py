@@ -399,6 +399,49 @@ def calc_required_return(market_cap: float | None, sector: str | None) -> float:
     return base + (size_prem + sector_prem) / 100
 
 
+def enrich_mos(stocks: list) -> list:
+    """
+    Adds intrinsic_value, mos_price, and mos_pct to each stock dict in-place.
+
+    For each stock:
+      - Fetches 3 years of financials from DB via db.get_financials()
+      - Runs calc_ddm, calc_eps_pe, calc_dcf
+      - Blends into a hybrid IV using IV_WEIGHTS from config.py
+      - Applies the conglomerate discount for 'Holding Firms' sector stocks
+      - Sets mos_price = IV * 0.70
+      - Sets mos_pct via calc_mos_pct()
+
+    Per-stock exceptions are caught silently — all three fields are set to
+    None for that stock. The function never raises.
+
+    Returns the same list (mutated in-place).
+    """
+    import database as db
+    from config import IV_WEIGHTS
+
+    for stock in stocks:
+        try:
+            fins   = db.get_financials(stock['ticker'], years=3)
+            eps_3y = [f['eps'] for f in fins if f.get('eps') is not None][:3]
+            ddm_iv, _ = calc_ddm(stock.get('dps_last'),
+                                  stock.get('dividend_cagr_5y'))
+            eps_iv, _ = calc_eps_pe(eps_3y)
+            dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'),
+                                  stock.get('revenue_cagr'))
+            is_holding = (stock.get('sector', '') == 'Holding Firms')
+            iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
+                                               weights=IV_WEIGHTS)
+            if is_holding and iv:
+                iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
+        except Exception:
+            iv = None
+        price = stock.get('current_price')
+        stock['intrinsic_value'] = iv
+        stock['mos_price']       = round(iv * 0.70, 2) if iv else None
+        stock['mos_pct']         = calc_mos_pct(iv, price) if iv and price else None
+    return stocks
+
+
 def calc_mos_price_v2(stock: dict) -> dict:
     """
     Compute intrinsic value and MoS using risk-adjusted discount rate.

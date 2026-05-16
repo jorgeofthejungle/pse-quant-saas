@@ -14,11 +14,11 @@ sys.path.insert(0, str(ROOT / 'db'))
 import database as db
 
 try:
-    from config import SCORE_CHANGE_THRESHOLD, CONGLOMERATE_DISCOUNT, IV_WEIGHTS
+    from config import SCORE_CHANGE_THRESHOLD
 except ImportError:
     SCORE_CHANGE_THRESHOLD = 5.0
-    CONGLOMERATE_DISCOUNT  = 0.20
-    IV_WEIGHTS             = (0.30, 0.35, 0.35)
+
+from engine.mos import enrich_mos
 
 from scheduler_data import _load_stocks
 
@@ -456,37 +456,6 @@ def run_daily_score():
         _rescore_lock.release()
 
 
-def _enrich_mos(stocks: list) -> list:
-    """
-    Adds intrinsic_value, mos_price, mos_pct to each stock dict.
-    Called before PDF generation so MoS% appears in the report.
-    """
-    from engine.mos import (calc_ddm, calc_eps_pe, calc_dcf,
-                             calc_hybrid_intrinsic, calc_mos_pct)
-
-    for stock in stocks:
-        try:
-            fins   = db.get_financials(stock['ticker'], years=3)
-            eps_3y = [f['eps'] for f in fins if f.get('eps') is not None][:3]
-            ddm_iv, _ = calc_ddm(stock.get('dps_last'),
-                                  stock.get('dividend_cagr_5y'))
-            eps_iv, _ = calc_eps_pe(eps_3y)
-            dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'),
-                                  stock.get('revenue_cagr'))
-            is_holding = (stock.get('sector', '') == 'Holding Firms')
-            iv, _      = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
-                                               weights=IV_WEIGHTS)
-            if is_holding and iv:
-                iv = round(iv * (1 - CONGLOMERATE_DISCOUNT), 2)
-        except Exception:
-            iv = None
-        price = stock.get('current_price')
-        stock['intrinsic_value'] = iv
-        stock['mos_price']       = round(iv * 0.70, 2) if iv else None
-        stock['mos_pct']         = calc_mos_pct(iv, price) if iv and price else None
-    return stocks
-
-
 def run_daily_report():
     """
     Phase 2 — called by the scheduler at 6:00 PM PHT.
@@ -526,7 +495,7 @@ def run_daily_report():
     bad_pdf_sections = []
     for pt in ['dividend', 'value']:
         try:
-            ranked_sections[pt] = _enrich_mos(_ranked_sections_raw.get(pt, []))
+            ranked_sections[pt] = enrich_mos(_ranked_sections_raw.get(pt, []))
         except Exception as e:
             print(f"  Score error for {pt}: {e}")
             ranked_sections[pt] = []

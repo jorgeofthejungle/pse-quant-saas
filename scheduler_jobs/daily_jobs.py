@@ -111,6 +111,57 @@ def _build_changes(new_ranked: list, old_scores: list) -> list:
     return changes
 
 
+def detect_ranking_changes(
+    old_top5:   list,
+    old_scores: list,
+    new_ranked: list,
+    all_stocks: list,
+) -> dict:
+    """
+    Single entry point for all change-detection logic.
+
+    Returns a dict:
+      {
+        'should_send':       bool,
+        'reason':            str,
+        'changes':           list,   # rank/score deltas for send_rescore_notice
+        'shortlist_changes': list,   # entry/exit events
+      }
+
+    reason values:
+      'first run'
+      'top-5 changed'
+      f'score change >= {SCORE_CHANGE_THRESHOLD} pts in top-10'
+      'no significant changes'
+    """
+    new_top5     = [s['ticker'] for s in new_ranked[:5]]
+    is_first_run = not old_top5
+    top5_changed = _top5_changed(old_top5, new_top5)
+    score_moved  = bool(old_scores and _significant_score_change(old_scores, new_ranked))
+
+    should_send = is_first_run or top5_changed or score_moved
+
+    if should_send:
+        if is_first_run:
+            reason = 'first run'
+        elif top5_changed:
+            reason = 'top-5 changed'
+        else:
+            reason = f'score change >= {SCORE_CHANGE_THRESHOLD} pts in top-10'
+    else:
+        reason = 'no significant changes'
+
+    changes           = _build_changes(new_ranked, old_scores) if old_scores else []
+    shortlist_changes = _build_shortlist_changes(old_scores, new_ranked, all_stocks)
+
+    return {
+        'should_send':       should_send,
+        'reason':            reason,
+        'changes':           changes,
+        'shortlist_changes': shortlist_changes,
+    }
+
+
 def _build_shortlist_changes(
     old_scores:     list,
     new_ranked:     list,
@@ -285,18 +336,12 @@ def run_daily_score():
         else:
             print("  Old top 5: (no previous run)")
 
-        is_first_run = not old_top5
-        top5_changed = _top5_changed(old_top5, new_top5)
-        score_moved  = bool(old_scores and _significant_score_change(old_scores, ranked))
-        should_send  = is_first_run or top5_changed or score_moved
+        detection   = detect_ranking_changes(old_top5, old_scores, ranked, all_stocks)
+        should_send = detection['should_send']
+        reason      = detection['reason']
+        changes     = detection['changes']
 
         if should_send:
-            if is_first_run:
-                reason = 'first run'
-            elif top5_changed:
-                reason = 'top-5 changed'
-            else:
-                reason = f'score change >= {SCORE_CHANGE_THRESHOLD} pts in top-10'
             print(f"  PDF queued for 6 PM ({reason}).")
             _write_pending_pdf(ranked, reason, today)
         else:
@@ -305,7 +350,6 @@ def run_daily_score():
 
         # ── Rank/score change notices ──────────────────────────
         if old_scores:
-            changes = _build_changes(ranked, old_scores)
             if changes:
                 print(f"  {len(changes)} rank/score change(s) detected.")
                 alerts_url = WEBHOOKS.get('alerts', '')

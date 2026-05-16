@@ -364,7 +364,16 @@ def run_daily_score():
 
         if should_send:
             print(f"  PDF queued for 6 PM ({reason}).")
-            _write_pending_pdf(ranked, reason, today)
+            # Enrich the PDF portfolio sections with MoS before persisting so
+            # run_daily_report() can skip re-scoring entirely.
+            pdf_sections_for_state: dict = {}
+            for pt in ['dividend', 'value']:
+                try:
+                    pdf_sections_for_state[pt] = enrich_mos(ranked_sections.get(pt, []))
+                except Exception as mos_err:
+                    print(f"  [pending pdf] MoS enrichment failed for {pt}: {mos_err}")
+                    pdf_sections_for_state[pt] = ranked_sections.get(pt, [])
+            _write_pending_pdf(pdf_sections_for_state, reason, today)
         else:
             print("  No significant changes — no PDF queued.")
             _clear_pending_pdf()
@@ -482,26 +491,40 @@ def run_daily_report():
     reason = pending.get('reason', 'rankings changed')
     print(f"  Pending PDF found ({reason}) — generating report...")
 
-    # Rebuild ranked data for all portfolios — single pass (dividend + value for PDF)
-    try:
-        _ranked_sections_raw, all_stocks, _old_top5, _old_scores, eligible, fins_map = (
-            _run_score_pipeline()
-        )
-    except Exception as e:
-        print(f"  Could not rebuild rankings for PDF: {e}")
-        return
-
+    pre_scored = pending.get('ranked_sections')
     ranked_sections = {}
     bad_pdf_sections = []
-    for pt in ['dividend', 'value']:
-        try:
-            ranked_sections[pt] = enrich_mos(_ranked_sections_raw.get(pt, []))
-        except Exception as e:
-            print(f"  Score error for {pt}: {e}")
-            ranked_sections[pt] = []
-            bad_pdf_sections.append(pt)
 
-    print(f"  MoS enriched: dividend={len(ranked_sections['dividend'])}, value={len(ranked_sections['value'])} stocks")
+    if pre_scored and isinstance(pre_scored, dict) and any(pre_scored.values()):
+        print("  Using pre-scored ranked_sections from 4 PM run.")
+        for pt in ['dividend', 'value']:
+            section = pre_scored.get(pt, [])
+            ranked_sections[pt] = section if isinstance(section, list) else []
+            if not ranked_sections[pt]:
+                bad_pdf_sections.append(pt)
+        # total_stocks_screened is informational; use the tickers count from state
+        # as the best available proxy when skipping re-scoring.
+        _state_tickers = pending.get('tickers') or []
+        all_stocks = [None] * len(_state_tickers)  # length-only placeholder
+    else:
+        print("  ranked_sections not in state file — re-scoring (fallback).")
+        try:
+            _ranked_sections_raw, all_stocks, _old_top5, _old_scores, eligible, fins_map = (
+                _run_score_pipeline()
+            )
+        except Exception as e:
+            print(f"  Could not rebuild rankings for PDF: {e}")
+            return
+
+        for pt in ['dividend', 'value']:
+            try:
+                ranked_sections[pt] = enrich_mos(_ranked_sections_raw.get(pt, []))
+            except Exception as e:
+                print(f"  Score error for {pt}: {e}")
+                ranked_sections[pt] = []
+                bad_pdf_sections.append(pt)
+
+    print(f"  Sections ready: dividend={len(ranked_sections['dividend'])}, value={len(ranked_sections['value'])} stocks")
 
     from pdf_generator import generate_report
     from config import REPORTS_DIR

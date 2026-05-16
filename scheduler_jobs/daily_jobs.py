@@ -179,15 +179,30 @@ def _build_shortlist_changes(
     return changes
 
 
-def _run_score_pipeline() -> tuple[list, list, list, list, list, dict]:
+def _run_score_pipeline(
+    portfolio_types: list | None = None,
+) -> tuple[dict, list, list, list, list, dict]:
     """
-    Loads stocks, applies unified filter, scores, enriches sentiment.
-    Returns (ranked, all_stocks, old_top5, old_scores, eligible, fins_map).
+    Loads stocks once, applies unified filter, then scores every portfolio type.
+
+    Args:
+        portfolio_types: List of portfolio type keys to score.  When None,
+                         defaults to all keys in SCORER_WEIGHTS.
+
+    Returns:
+        (ranked_sections, all_stocks, old_top5, old_scores, eligible, fins_map)
+
+        ranked_sections maps portfolio_type -> ranked list.  The 'unified'
+        entry is the primary ranking used for change detection.
     Raises on critical failure.
     """
     from engine.filters_v2   import filter_unified_batch
     from engine.scorer_v2    import rank_stocks_v2
     from engine.sector_stats import compute_sector_stats
+    from config import SCORER_WEIGHTS
+
+    if portfolio_types is None:
+        portfolio_types = list(SCORER_WEIGHTS.keys())
 
     all_stocks   = _load_stocks()
     sector_stats = compute_sector_stats(all_stocks)
@@ -200,12 +215,19 @@ def _run_score_pipeline() -> tuple[list, list, list, list, list, dict]:
         except Exception:
             fins_map[stock['ticker']] = []
 
-    ranked = rank_stocks_v2(eligible, sector_stats=sector_stats,
-                             financials_map=fins_map)
+    ranked_sections: dict[str, list] = {}
+    for pt in portfolio_types:
+        ranked_sections[pt] = rank_stocks_v2(
+            eligible, sector_stats=sector_stats,
+            financials_map=fins_map, portfolio_type=pt,
+        )
+
+    # Backward-compat: 'unified' is the primary ranking
+    ranked = ranked_sections.get('unified', [])
 
     old_top5   = db.get_last_top5('unified')
     old_scores = db.get_last_scores('unified')
-    return ranked, all_stocks, old_top5, old_scores, eligible, fins_map
+    return ranked_sections, all_stocks, old_top5, old_scores, eligible, fins_map
 
 
 def run_daily_score():
@@ -262,18 +284,17 @@ def run_daily_score():
 
         # ── Step 2: Load + score ───────────────────────────────
         print("\n[2/3]  Loading and scoring stocks...")
-        all_stocks = _load_stocks()
-        print(f"  {len(all_stocks)} stocks available.")
-        if not all_stocks:
-            print("  No stock data available. Aborting run.")
-            return
-
         try:
-            ranked, all_stocks, old_top5, old_scores, eligible, fins_map = _run_score_pipeline()
+            ranked_sections, all_stocks, old_top5, old_scores, eligible, fins_map = _run_score_pipeline()
         except Exception as e:
             print(f"  Scoring failed: {e}")
             return
 
+        ranked = ranked_sections.get('unified', [])
+        print(f"  {len(all_stocks)} stocks available.")
+        if not all_stocks:
+            print("  No stock data available. Aborting run.")
+            return
         print(f"  Ranked {len(ranked)} stock(s).")
 
         # ── Step 3: Detect changes ─────────────────────────────
@@ -366,31 +387,10 @@ def run_daily_score():
 
         # ── Save scores ────────────────────────────────────────
         try:
-            from engine.filters_v2   import filter_unified_batch
-            from engine.scorer_v2    import rank_stocks_v2
-            from engine.sector_stats import compute_sector_stats
-            from config import SCORER_WEIGHTS
-
             db.save_scores(today, ranked, 'unified')              # legacy table (backward compat)
-            db.save_scores_v2(today, ranked, portfolio_type='unified')  # new clean scores_v2 table
 
-            # Also score and save each portfolio type (pure_dividend, dividend_growth, value)
-            _all_stocks_pt  = _load_stocks()
-            _sector_stats   = compute_sector_stats(_all_stocks_pt)
-            _eligible_pt, _ = filter_unified_batch(_all_stocks_pt)
-            _fins_map = {}
-            for _s in _eligible_pt:
+            for pt, ranked_pt in ranked_sections.items():
                 try:
-                    _fins_map[_s['ticker']] = db.get_financials(_s['ticker'], years=10)
-                except Exception:
-                    _fins_map[_s['ticker']] = []
-
-            for pt in [p for p in SCORER_WEIGHTS.keys() if p != 'unified']:
-                try:
-                    ranked_pt = rank_stocks_v2(
-                        _eligible_pt, sector_stats=_sector_stats,
-                        financials_map=_fins_map, portfolio_type=pt,
-                    )
                     db.save_scores_v2(today, ranked_pt, portfolio_type=pt)
                     print(f"  Scores saved for portfolio_type={pt}.")
                 except Exception as e:
@@ -451,9 +451,7 @@ def run_daily_report():
     If present and from today, generates the PDF and sends to Discord.
     If nothing is pending, prints a note and exits silently.
     """
-    from publisher           import WEBHOOKS, send_report, send_ops_alert
-    from engine.scorer_v2    import rank_stocks_v2
-    from engine.sector_stats import compute_sector_stats
+    from publisher import WEBHOOKS, send_report, send_ops_alert
 
     today = datetime.now().strftime('%Y-%m-%d')
     now   = datetime.now().strftime('%H:%M')
@@ -471,23 +469,20 @@ def run_daily_report():
     reason = pending.get('reason', 'rankings changed')
     print(f"  Pending PDF found ({reason}) — generating report...")
 
-    # Rebuild ranked data for both portfolios (same as main.py)
+    # Rebuild ranked data for all portfolios — single pass (dividend + value for PDF)
     try:
-        _, all_stocks, _old_top5, _old_scores, eligible, fins_map = _run_score_pipeline()
+        _ranked_sections_raw, all_stocks, _old_top5, _old_scores, eligible, fins_map = (
+            _run_score_pipeline()
+        )
     except Exception as e:
         print(f"  Could not rebuild rankings for PDF: {e}")
         return
 
-    _sector_stats = compute_sector_stats(all_stocks)
     ranked_sections = {}
     bad_pdf_sections = []
     for pt in ['dividend', 'value']:
         try:
-            ranked_pt = rank_stocks_v2(
-                eligible, sector_stats=_sector_stats,
-                financials_map=fins_map, portfolio_type=pt,
-            )
-            ranked_sections[pt] = _enrich_mos(ranked_pt)
+            ranked_sections[pt] = _enrich_mos(_ranked_sections_raw.get(pt, []))
         except Exception as e:
             print(f"  Score error for {pt}: {e}")
             ranked_sections[pt] = []

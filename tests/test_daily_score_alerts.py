@@ -35,12 +35,13 @@ def _reach_save_block(mock_alert, db_mock=None, scorer_weights=None):
     mock_db = db_mock or MagicMock()
 
     sw = scorer_weights or {'unified': {}, 'dividend': {}}
+    ranked_sections = {pt: ranked for pt in sw}
 
     with patch.object(djobs, '_check_price_freshness', return_value=True), \
          patch.object(djobs, 'scrape_daily_prices', None), \
          patch.object(djobs, '_load_stocks', return_value=[stock]), \
          patch.object(djobs, '_run_score_pipeline',
-                      return_value=(ranked, [stock], [], [], [stock], {})), \
+                      return_value=(ranked_sections, [stock], [], [], [stock], {})), \
          patch.object(djobs, '_record_heartbeat'), \
          patch.object(djobs, '_write_pending_pdf'), \
          patch.object(djobs, '_clear_pending_pdf'), \
@@ -61,26 +62,47 @@ def _reach_report_block(mock_alert, mock_write_held=None, mock_send_report=None,
                         fail_portfolio=None):
     """
     Run run_daily_report() with all prerequisites mocked so it reaches
-    the portfolio scoring step. If fail_portfolio is set, rank_stocks_v2
-    raises for that portfolio type.
+    the portfolio scoring step. If fail_portfolio is set, _enrich_mos
+    raises for that portfolio type, triggering the bad-PDF hold path.
     """
     stock = _stock()
     ranked = [stock]
     mock_db = MagicMock()
     mock_db.get_all_tickers.return_value = ['TEST']
 
-    def _rank_side_effect(eligible, sector_stats=None, financials_map=None,
-                          portfolio_type=None):
-        if portfolio_type == fail_portfolio:
-            raise RuntimeError(f"scorer crash for {portfolio_type}")
-        return ranked
+    ranked_sections_raw = {'unified': ranked, 'dividend': ranked, 'value': ranked}
+
+    def _enrich_side_effect(stocks):
+        # _enrich_mos is called once per portfolio type in the loop;
+        # we detect which portfolio we're on via a call counter.
+        _enrich_side_effect.call_count = getattr(_enrich_side_effect, 'call_count', 0) + 1
+        return stocks
+
+    # If fail_portfolio is set, make _enrich_mos raise for that section.
+    # run_daily_report iterates ['dividend', 'value'], so we raise based on the
+    # argument passed (stocks list is the same object — we can't distinguish by
+    # content, so we patch differently: raise on 2nd call for 'value', 1st for 'dividend').
+    if fail_portfolio == 'dividend':
+        call_index_to_fail = 1   # first call in the loop
+    elif fail_portfolio == 'value':
+        call_index_to_fail = 2   # second call
+    else:
+        call_index_to_fail = None
+
+    call_counter = {'n': 0}
+
+    def _enrich_maybe_fail(stocks):
+        call_counter['n'] += 1
+        if call_index_to_fail is not None and call_counter['n'] == call_index_to_fail:
+            raise RuntimeError(f"scorer crash for {fail_portfolio}")
+        return stocks
 
     with patch.object(djobs, '_read_pending_pdf',
                       return_value={'date': '2026-05-15', 'reason': 'top-5 changed'}), \
          patch.object(djobs, '_clear_pending_pdf'), \
          patch.object(djobs, '_run_score_pipeline',
-                      return_value=(ranked, [stock], [], [], [stock], {})), \
-         patch.object(djobs, '_enrich_mos', side_effect=lambda s: s), \
+                      return_value=(ranked_sections_raw, [stock], [], [], [stock], {})), \
+         patch.object(djobs, '_enrich_mos', side_effect=_enrich_maybe_fail), \
          patch.object(djobs, '_write_held_pdf', mock_write_held or MagicMock()), \
          patch.object(djobs, '_read_held_pdf', return_value=None), \
          patch.object(djobs, '_clear_held_pdf', MagicMock()), \
@@ -88,8 +110,6 @@ def _reach_report_block(mock_alert, mock_write_held=None, mock_send_report=None,
          patch('publisher.send_ops_alert', mock_alert), \
          patch('publisher.send_report', mock_send_report or MagicMock(return_value=True)), \
          patch('publisher.WEBHOOKS', {'rankings': 'https://discord.com/fake'}), \
-         patch('engine.scorer_v2.rank_stocks_v2', side_effect=_rank_side_effect), \
-         patch('engine.sector_stats.compute_sector_stats', return_value={}), \
          patch('pdf_generator.generate_report'), \
          patch('os.makedirs'):
         run_daily_report()

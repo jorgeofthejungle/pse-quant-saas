@@ -1,14 +1,28 @@
+# Secrets and environment
 .env
+data/pse_quant/
+
+# Python bytecode and caches
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
 *.egg-info/
 dist/
 build/
-.worktrees/
+
+# Runtime / generated data
 data/raw/
 data/parsed/
-data/pse_quant/.flask_secret
+data/reports/
+*.log
+
+# Claude Code worktrees
+.worktrees/
 .claude/worktrees/

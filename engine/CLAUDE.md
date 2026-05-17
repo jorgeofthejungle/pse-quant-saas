@@ -58,10 +58,15 @@ DPS persistence for REITs filters zero/None years before scoring.
 `normalise(value, low, high)` → score 0–100.
 
 ## engine/mos.py
-Functions: `calc_ddm`, `calc_eps_pe`, `calc_dcf`, `calc_mos_price`, `calc_mos_pct`, `calc_hybrid_intrinsic`
 Risk-free rate = 6.5% (PH 10Y T-bond). Max DDM growth rate capped at 7%.
 Discount rate = risk-free + equity premium (5%) + size premium (0-5%) + sector premium (0-2%).
 All constants imported from `config.py` — no local duplicates.
+- `calc_mos_price_v2(stock, portfolio_type='unified')` → `{intrinsic_value, mos_pct, required_return}` — **main entry point**; runs all 3 methods with risk-adjusted discount rate. Prefer over `calc_mos_price`.
+- `calc_required_return(market_cap, sector)` → `float` — computes risk-adjusted rate used by `calc_mos_price_v2`.
+- `calc_two_stage_ddm(dps, g_near, g_terminal, required_return, years=5)` → `float | None` — two-stage DDM for high-growth dividend payers.
+- `calc_hybrid_intrinsic(ddm, eps_pe, dcf, portfolio_type)` → `float | None` — blends three IV estimates.
+- `apply_conglomerate_discount(intrinsic_value, sector)` → `float` — applies holding-company discount.
+- `calc_ddm`, `calc_eps_pe`, `calc_dcf`, `calc_mos_price`, `calc_mos_pct` — individual building blocks.
 
 ## engine/sentiment_engine.py
 Uses `PIPELINE_AI_MODEL` from `config.py` (Claude Haiku).

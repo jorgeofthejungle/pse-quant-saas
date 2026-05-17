@@ -6,6 +6,21 @@ All scrapers use PSE Edge (edge.pse.com.ph) exclusively — no third-party data 
 
 ---
 
+## scraper/pse_lookup.py
+PSE Edge company directory and autocomplete API wrapper.
+- `get_all_companies(session)` → `list[dict]` — full ticker/name/sector list from PSE Edge paginated directory
+- `lookup_cmpy_id(session, ticker)` → `str | None` — resolves a ticker to PSE's internal `cmpy_id`
+- `lookup_company_info(session, ticker)` → `dict | None` — returns name, sector, cmpy_id
+- `get_companies_by_sector(session, sector)` → `list[dict]`
+- Has autocomplete canary (`_check_autocomplete_canary`) — fires if PSE Edge JSON shape changes
+
+## scraper/pse_financial_reports.py
+Scrapes annual financial reports from PSE Edge (income statement, balance sheet, cash flow).
+- `scrape_financial_reports_page(session, cmpy_id)` → `list[dict]` — scrapes all available years
+- `backfill_historical_financials(session, cmpy_id, ticker, ...)` — fills gaps for a single ticker
+- `get_annual_report_edge_nos(session, cmpy_id)` → `list` — available report IDs from Edge
+- `_detect_financial_unit(soup)` — detects thousands/millions from page header (unit mismatch is a common scrape error)
+
 ## scraper/pse_stock_data.py — scrape_dividend_history()
 Key quality controls (permanent — do not loosen):
 - COMMON shares whitelist: `{'COMMON', 'ORDINARY', 'COMMON SHARES', 'ORDINARY SHARES', 'SHARES', ''}`

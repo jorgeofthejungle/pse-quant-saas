@@ -6,6 +6,18 @@ All PDF generation uses ReportLab. PDFs save to `~/Desktop/` (resolved via `os.p
 
 ---
 
+## reports/pdf_styles.py
+Color palette, page constants, and shared style helpers. Registers the Inter font family (Regular/Bold/Italic) from `assets/fonts/`. Exports: color constants (`NAVY`, `GOLD`, `GREEN`, etc.), `CONTENT_WIDTH`, `score_color`, `score_bg`, `grade`, `grade_label`, `mos_signal`, `get_stock_profiles`, `BarChartIcon`, `PORTFOLIO_EXPLAIN`, `MOS_EXPLAIN`.
+
+## reports/pdf_cover_page.py
+Builds the cover hero panel and the full disclaimer page. Key functions: `build_cover_page(portfolio_name, run_date)`, `build_disclaimer_page()`.
+
+## reports/pdf_rankings_table.py
+Renders the ranked stock table and per-stock overall assessment callout. Key function: `generate_overall_assessment(stock)` → ReportLab flowables. Also exports the rankings table builder used by `pdf_generator.py`.
+
+## reports/pdf_stock_detail_page.py
+Builds the per-stock detail page (metrics, MoS bar, score breakdown, sentiment). Calls `generate_overall_assessment()` from `pdf_rankings_table`. Entry: `build_stock_detail_page(stock, portfolio_type)`.
+
 ## reports/pdf_portfolio_sections.py
 Renders the per-portfolio (Dividend / Value) ranked stock sections within the PDF.
 
@@ -14,7 +26,7 @@ Renders the sentiment panel when `sentiment` data is present on ranked stocks.
 
 ## reports/pdf_generator.py (facade)
 Function: `generate_report(portfolio_type, ranked_stocks, output_path, total_stocks_screened)`
-Shows all qualifying stocks (those passing the dynamic threshold). Includes sentiment panel when data is present.
+Orchestrates: cover → rankings table → per-stock detail pages → disclaimer. Includes sentiment panel when data is present.
 
 ---
 

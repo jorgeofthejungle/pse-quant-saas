@@ -3,38 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PSE Quant SaaS — {% block title %}Dashboard{% endblock %}</title>
+  <title>StockPilot Admin — {% block title %}Dashboard{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
-<body>
+<body class="bg-gray-100 text-gray-800" style="display:flex;min-height:100vh;font-size:14px;">
 
+  <!-- Hamburger (mobile only) -->
   <button class="hamburger" id="hamburger" aria-label="Open menu">&#9776;</button>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-  <nav class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <span class="logo-text">PSE Quant</span>
-      <span class="logo-sub">SaaS Admin</span>
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar" style="width:210px;min-height:100vh;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;background:#0D1F3C;z-index:150;">
+
+    <!-- Logo -->
+    <div style="padding:1.5rem 1.25rem 1rem;border-bottom:1px solid rgba(255,255,255,0.1);">
+      <span style="display:block;color:#fff;font-size:1.1rem;font-weight:700;letter-spacing:0.02em;">StockPilot</span>
+      <span style="display:block;color:#F0A500;font-size:0.75rem;margin-top:0.15rem;font-weight:600;">Admin Dashboard</span>
     </div>
-    <ul class="nav-links">
-      <li><a href="{{ url_for('home.index') }}"       class="{{ 'active' if request.endpoint == 'home.index' }}">Overview</a></li>
-      <li><a href="{{ url_for('pipeline.index') }}"   class="{{ 'active' if request.blueprint == 'pipeline' }}">Pipeline</a></li>
-      <li><a href="{{ url_for('members.index') }}"    class="{{ 'active' if request.blueprint == 'members' }}">Members</a></li>
-      <li><a href="{{ url_for('analytics.index') }}"  class="{{ 'active' if request.blueprint == 'analytics' }}">Analytics</a></li>
-      <li><a href="{{ url_for('settings.index') }}"   class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a></li>
-      <li><a href="{{ url_for('stocks.index') }}"     class="{{ 'active' if request.blueprint == 'stocks' }}">Stock Lookup</a></li>
-      <li><a href="{{ url_for('conglomerates.index') }}" class="{{ 'active' if request.blueprint == 'conglomerates' }}">Conglomerates</a></li>
-      <li><a href="{{ url_for('portal.index') }}"        class="{{ 'active' if request.blueprint == 'portal' }}">Portal</a></li>
-      <li><a href="{{ url_for('manual_entry.index') }}"  class="{{ 'active' if request.blueprint == 'manual_entry' }}">Manual Entry</a></li>
-      <li><a href="{{ url_for('feedback.index') }}"      class="{{ 'active' if request.blueprint == 'feedback' }}">Feedback</a></li>
+
+    <!-- Nav links -->
+    <ul style="list-style:none;padding:0.75rem 0;flex:1;">
+      {% set nav_items = [
+        ('home.index',          request.endpoint == 'home.index',         'Overview'),
+        ('pipeline.index',      request.blueprint == 'pipeline',           'Pipeline'),
+        ('members.index',       request.blueprint == 'members',            'Members'),
+        ('analytics.index',     request.blueprint == 'analytics',          'Analytics'),
+        ('settings.index',      request.blueprint == 'settings',           'Settings'),
+        ('stocks.index',        request.blueprint == 'stocks',             'Stock Lookup'),
+        ('conglomerates.index', request.blueprint == 'conglomerates',      'Conglomerates'),
+        ('portal.index',        request.blueprint == 'portal',             'Portal'),
+        ('manual_entry.index',  request.blueprint == 'manual_entry',       'Manual Entry'),
+        ('feedback.index',      request.blueprint == 'feedback',           'Feedback'),
+      ] %}
+      {% for endpoint, is_active, label in nav_items %}
+      <li>
+        <a href="{{ url_for(endpoint) }}"
+           style="display:block;padding:0.65rem 1.25rem;text-decoration:none;font-size:0.875rem;transition:background 0.15s,color 0.15s;
+                  {% if is_active %}
+                    color:#F0A500;border-left:3px solid #F0A500;background:rgba(240,165,0,0.1);
+                  {% else %}
+                    color:rgba(255,255,255,0.75);border-left:3px solid transparent;
+                  {% endif %}">
+          {{ label }}
+        </a>
+      </li>
+      {% endfor %}
     </ul>
-    <div class="sidebar-footer">
-      <span>v1.0 &bull; Local</span>
+
+    <!-- Footer -->
+    <div style="padding:1rem 1.25rem;color:rgba(255,255,255,0.3);font-size:0.72rem;border-top:1px solid rgba(255,255,255,0.08);">
+      v1.0 &bull; StockPilot PH
     </div>
   </nav>
 
-  <main class="content">
+  <!-- Main content -->
+  <main class="content" style="margin-left:210px;padding:1.75rem 2rem;flex:1;max-width:1200px;">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for cat, msg in messages %}

@@ -70,7 +70,7 @@ def _get_stock_analysis(ticker: str) -> dict:
     eps_iv, _ = calc_eps_pe(eps_3y)
     dcf_iv, _ = calc_dcf(stock.get('fcf_per_share'), stock.get('revenue_cagr'))
     iv, _     = calc_hybrid_intrinsic(ddm_iv, eps_iv, dcf_iv,
-                                      weights=(0.30, 0.35, 0.35))
+                                      portfolio_type='unified')
     # Apply conglomerate IV discount — calculated if segment data exists, else flat 20%
     if stock.get('sector') == 'Holding Firms' and iv:
         cong_data = breakdown.get('conglomerate', {})

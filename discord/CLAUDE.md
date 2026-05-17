@@ -2,7 +2,7 @@
 > See root CLAUDE.md for system rules, stock data format, DB schema, and architecture.
 > This file covers discord-specific implementation details only.
 
-Async safety rules are in root CLAUDE.md Section 7. For message and embed writing tone, see `reports/CLAUDE.md` Section 7A — the educational communication standard applies to all Discord content too.
+Async safety rules are in root CLAUDE.md (Discord async safety section). For message and embed writing tone, see `reports/CLAUDE.md` Section 7A — the educational communication standard applies to all Discord content too.
 
 ---
 

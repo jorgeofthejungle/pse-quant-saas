@@ -113,6 +113,17 @@ def scrape_progress():
         return jsonify({'progress': 'Unknown'})
 
 
+@pipeline_bp.route('/audit', methods=['POST'])
+def run_audit():
+    """Run the data quality audit and return issues as JSON."""
+    try:
+        from db.db_data_quality import run_audit as _run_audit
+        issues = _run_audit()
+        return jsonify({'ok': True, 'issues': issues, 'count': len(issues)})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @pipeline_bp.route('/clean-dps', methods=['POST'])
 def clean_dps():
     """Run clean_bad_dps to NULL implausible DPS values. Returns summary."""

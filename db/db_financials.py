@@ -61,18 +61,18 @@ def upsert_financials(ticker: str, year: int,
                  depreciation, amortization, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(ticker, year) DO UPDATE SET
-                revenue       = COALESCE(excluded.revenue,       revenue),
-                net_income    = COALESCE(excluded.net_income,    net_income),
-                equity        = COALESCE(excluded.equity,        equity),
-                total_debt    = COALESCE(excluded.total_debt,    total_debt),
-                cash          = COALESCE(excluded.cash,          cash),
-                operating_cf  = COALESCE(excluded.operating_cf,  operating_cf),
-                capex         = COALESCE(excluded.capex,         capex),
-                ebitda        = COALESCE(excluded.ebitda,        ebitda),
-                eps           = COALESCE(excluded.eps,           eps),
-                dps           = COALESCE(excluded.dps,           dps),
-                depreciation  = COALESCE(excluded.depreciation,  depreciation),
-                amortization  = COALESCE(excluded.amortization,  amortization),
+                revenue       = COALESCE(excluded.revenue,       financials.revenue),
+                net_income    = COALESCE(excluded.net_income,    financials.net_income),
+                equity        = COALESCE(excluded.equity,        financials.equity),
+                total_debt    = COALESCE(excluded.total_debt,    financials.total_debt),
+                cash          = COALESCE(excluded.cash,          financials.cash),
+                operating_cf  = COALESCE(excluded.operating_cf,  financials.operating_cf),
+                capex         = COALESCE(excluded.capex,         financials.capex),
+                ebitda        = COALESCE(excluded.ebitda,        financials.ebitda),
+                eps           = COALESCE(excluded.eps,           financials.eps),
+                dps           = COALESCE(excluded.dps,           financials.dps),
+                depreciation  = COALESCE(excluded.depreciation,  financials.depreciation),
+                amortization  = COALESCE(excluded.amortization,  financials.amortization),
                 updated_at    = excluded.updated_at
         """, (ticker, year, revenue, net_income, equity, total_debt,
               cash, operating_cf, capex, ebitda, eps, dps,
@@ -149,7 +149,7 @@ def upsert_stock(ticker: str, name: str, sector: str,
                 is_bank      = excluded.is_bank,
                 last_updated = excluded.last_updated,
                 last_scraped = excluded.last_scraped,
-                cmpy_id      = COALESCE(excluded.cmpy_id, cmpy_id)
+                cmpy_id      = COALESCE(excluded.cmpy_id, stocks.cmpy_id)
         """, params_insert)
     else:
         conn.execute("""
@@ -162,7 +162,7 @@ def upsert_stock(ticker: str, name: str, sector: str,
                 is_reit      = excluded.is_reit,
                 is_bank      = excluded.is_bank,
                 last_updated = excluded.last_updated,
-                cmpy_id      = COALESCE(excluded.cmpy_id, cmpy_id)
+                cmpy_id      = COALESCE(excluded.cmpy_id, stocks.cmpy_id)
         """, (ticker, name, sector, int(is_reit), int(is_bank), now, cmpy_id))
 
     if status is not None:

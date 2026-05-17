@@ -18,6 +18,26 @@ from reports.pdf_styles import (
 )
 
 
+_SIG_HEX = {
+    'DEEP DISCOUNT':  '#27AE60',
+    'DISCOUNTED':     '#2471A3',
+    'FAIRLY VALUED':  '#E67E22',
+    'ABOVE ESTIMATE': '#E74C3C',
+}
+
+
+def _score_hex(sc: float) -> str:
+    if sc >= 75:   return '#27AE60'
+    elif sc >= 55: return '#2471A3'
+    elif sc >= 40: return '#E67E22'
+    else:          return '#E74C3C'
+
+
+def _score_bar(sc: float, blocks: int = 10) -> str:
+    filled = max(0, min(blocks, round(sc / 100 * blocks)))
+    return '▓' * filled + '░' * (blocks - filled)
+
+
 def build_rankings_table(styles, ranked_stocks, portfolio_type):
     elements = []
     elements.append(Paragraph('RANKINGS', styles['SectionHeader']))
@@ -33,166 +53,128 @@ def build_rankings_table(styles, ranked_stocks, portfolio_type):
     elements.append(Spacer(1, 3 * mm))
 
     th = ParagraphStyle(
-        'TH', fontSize=8, textColor=WHITE,
-        fontName='Helvetica-Bold', alignment=TA_CENTER
+        'TH', fontSize=9, textColor=WHITE,
+        fontName='Inter-Bold', alignment=TA_CENTER, leading=13,
     )
     td = ParagraphStyle(
-        'TD', fontSize=8, textColor=BLACK,
-        fontName='Helvetica', alignment=TA_CENTER
+        'TD', fontSize=9, textColor=BLACK,
+        fontName='Inter-Regular', alignment=TA_CENTER, leading=12,
+    )
+    td_left = ParagraphStyle(
+        'TDLeft', fontSize=9, textColor=BLACK,
+        fontName='Inter-Regular', alignment=TA_LEFT, leading=11,
     )
 
+    # ── 5-column layout — content width 174mm ─────────────
     if portfolio_type == 'dividend':
-        headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'Yield', 'CAGR', 'MoS%', 'Buy Price', 'Signal', 'Data']
-        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
-                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
+        headers = ['#', 'Ticker / Company', 'Score', 'Yield / CAGR', 'MoS% · Signal']
+        col_w   = [6*mm, 64*mm, 36*mm, 32*mm, 36*mm]
     elif portfolio_type == 'value':
-        headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'P/E', 'ROE', 'MoS%', 'Buy Price', 'Signal', 'Data']
-        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
-                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
+        headers = ['#', 'Ticker / Company', 'Score', 'P/E · ROE', 'MoS% · Signal']
+        col_w   = [6*mm, 64*mm, 36*mm, 32*mm, 36*mm]
     elif portfolio_type == 'unified':
-        headers = ['#', 'Ticker', 'Company', 'Score', 'Category',
-                   'Hlth', 'Impr', 'Prst', 'MoS%', 'Signal', 'Data']
-        col_w   = [9*mm, 12*mm, 30*mm, 12*mm, 20*mm,
-                   12*mm, 12*mm, 12*mm, 11*mm, 30*mm, 11*mm]
+        headers = ['#', 'Ticker / Company', 'Score', 'Hlth · Impr · Prst', 'MoS% · Signal']
+        col_w   = [6*mm, 57*mm, 36*mm, 45*mm, 30*mm]
     else:
-        headers = ['#', 'Ticker', 'Company', 'Score', 'Grade',
-                   'Yield', 'P/E', 'MoS%', 'Buy Price', 'Signal', 'Data']
-        col_w   = [9*mm, 13*mm, 28*mm, 13*mm, 17*mm,
-                   13*mm, 13*mm, 11*mm, 16*mm, 30*mm, 11*mm]
-
-    def _conf_label(confidence):
-        if confidence >= 0.95:  return '5yr'
-        if confidence >= 0.85:  return '4yr'
-        if confidence >= 0.75:  return '3yr'
-        return '2yr'
-
-    def _conf_color(confidence):
-        if confidence >= 0.95:  return GREEN
-        if confidence >= 0.85:  return BLUE
-        if confidence >= 0.75:  return ORANGE
-        return RED
+        headers = ['#', 'Ticker / Company', 'Score', 'Yield · P/E', 'MoS% · Signal']
+        col_w   = [6*mm, 64*mm, 36*mm, 32*mm, 36*mm]
 
     header_row = [Paragraph(h, th) for h in headers]
     data_rows  = [header_row]
 
     for i, stock in enumerate(ranked_stocks):
-        sc  = stock.get('score', 0)
-        mp  = stock.get('mos_pct', None)
-        sig = mos_signal(mp)
-        conf = stock.get('confidence', 1.0)
+        sc     = stock.get('score', 0)
+        mp     = stock.get('mos_pct', None)
+        sig    = mos_signal(mp)
+        ticker = stock.get('ticker', '')
+        name   = stock.get('name', '') or ''
+        name_s = (name[:34] + '…') if len(name) > 34 else name
 
+        # Col 1: rank
+        c_rank = Paragraph(str(i + 1), td)
+
+        # Col 2: ticker (bold) + company name (small, grey) — two lines
+        c_ticker = Paragraph(
+            f'<b>{ticker}</b><br/>'
+            f'<font size="7" color="#566573">{name_s}</font>',
+            td_left,
+        )
+
+        # Col 3: score number + unicode color bar below
+        hex_s = _score_hex(sc)
+        c_score = Paragraph(
+            f'<font color="{hex_s}"><b>{sc:.0f}/100</b></font><br/>'
+            f'<font size="7" color="{hex_s}">{_score_bar(sc)}</font>',
+            td,
+        )
+
+        # Col 4: portfolio-specific metric pair
         if portfolio_type == 'dividend':
-            cols = [
-                str(i+1), stock.get('ticker', ''),
-                stock.get('name', ''),
-                f"{sc}/100",
-                f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('dividend_yield') or 0:.1f}%",
-                f"+{stock.get('dividend_cagr_5y') or 0:.1f}%/yr",
-                f"{mp:.1f}%" if mp is not None else 'N/A',
-                f"P{stock.get('mos_price', 0):.2f}"
-                if stock.get('mos_price') else 'N/A',
-                sig,
-                _conf_label(conf),
-            ]
+            dy   = stock.get('dividend_yield') or 0
+            cagr = stock.get('dividend_cagr_5y') or 0
+            c_metric = Paragraph(
+                f'<b>{dy:.1f}%</b><br/>'
+                f'<font size="7" color="#566573">CAGR +{cagr:.1f}%/yr</font>',
+                td,
+            )
         elif portfolio_type == 'value':
-            cols = [
-                str(i+1), stock.get('ticker', ''),
-                stock.get('name', ''),
-                f"{sc}/100",
-                f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('pe') or 0:.1f}x",
-                f"{stock.get('roe') or 0:.1f}%",
-                f"{mp:.1f}%" if mp is not None else 'N/A',
-                f"P{stock.get('mos_price', 0):.2f}"
-                if stock.get('mos_price') else 'N/A',
-                sig,
-                _conf_label(conf),
-            ]
+            pe  = stock.get('pe') or 0
+            roe = stock.get('roe') or 0
+            c_metric = Paragraph(
+                f'<b>{pe:.1f}x</b><br/>'
+                f'<font size="7" color="#566573">ROE {roe:.1f}%</font>',
+                td,
+            )
         elif portfolio_type == 'unified':
             layers = stock.get('breakdown', {}).get('layers', {})
             h_s = layers.get('health',      {}).get('score')
             i_s = layers.get('improvement', {}).get('score')
             p_s = layers.get('persistence', {}).get('score')
-            cat = stock.get('category', '')
-            cols = [
-                str(i+1), stock.get('ticker', ''),
-                stock.get('name', ''),
-                f"{sc:.0f}/100",
-                cat,
-                f"{h_s:.0f}" if h_s is not None else 'N/A',
-                f"{i_s:.0f}" if i_s is not None else 'N/A',
-                f"{p_s:.0f}" if p_s is not None else 'N/A',
-                f"{mp:.1f}%" if mp is not None else 'N/A',
-                sig,
-                _conf_label(conf),
-            ]
+            def _ls(v): return f'{v:.0f}' if v is not None else '—'
+            c_metric = Paragraph(
+                f'<font color="{_score_hex(h_s or 0)}"><b>{_ls(h_s)}</b></font>'
+                f' · '
+                f'<font color="{_score_hex(i_s or 0)}"><b>{_ls(i_s)}</b></font>'
+                f' · '
+                f'<font color="{_score_hex(p_s or 0)}"><b>{_ls(p_s)}</b></font>',
+                td,
+            )
         else:
-            cols = [
-                str(i+1), stock.get('ticker', ''),
-                stock.get('name', ''),
-                f"{sc}/100",
-                f"{grade(sc)} {grade_label(sc)}",
-                f"{stock.get('dividend_yield', 0):.1f}%",
-                f"{stock.get('pe', 0):.1f}x",
-                f"{mp:.1f}%" if mp is not None else 'N/A',
-                f"P{stock.get('mos_price', 0):.2f}"
-                if stock.get('mos_price') else 'N/A',
-                sig,
-                _conf_label(conf),
-            ]
+            dy = stock.get('dividend_yield') or 0
+            pe = stock.get('pe') or 0
+            c_metric = Paragraph(f'{dy:.1f}% · {pe:.1f}x', td)
 
-        data_rows.append([Paragraph(str(c), td) for c in cols])
+        # Col 5: MoS% (colored bold) + signal label below
+        mos_str = f'{mp:.1f}%' if mp is not None else 'N/A'
+        hex_m   = '#27AE60' if (mp is not None and mp >= 15) else \
+                  '#E67E22' if (mp is not None and mp >= 0)  else \
+                  '#E74C3C' if mp is not None else '#566573'
+        hex_sig = _SIG_HEX.get(sig, '#566573')
+        c_mos = Paragraph(
+            f'<font color="{hex_m}"><b>{mos_str}</b></font><br/>'
+            f'<font size="7" color="{hex_sig}">{sig}</font>',
+            td,
+        )
+
+        data_rows.append([c_rank, c_ticker, c_score, c_metric, c_mos])
 
     tbl = Table(data_rows, colWidths=col_w, repeatRows=1)
     tbl_style = [
         ('BACKGROUND',    (0, 0), (-1, 0),  NAVY),
         ('TEXTCOLOR',     (0, 0), (-1, 0),  WHITE),
         ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN',         (1, 1), (1, -1),  'LEFT'),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTSIZE',      (0, 0), (-1, -1), 8),
-        ('TOPPADDING',    (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('FONTSIZE',      (0, 0), (-1, -1), 9),
+        ('TOPPADDING',    (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING',   (1, 1), (1, -1),  4),
         ('GRID',          (0, 0), (-1, -1), 0.3, MID_GREY),
         ('LINEBELOW',     (0, 0), (-1, 0),  1.5, GOLD),
     ]
     for i in range(1, len(data_rows)):
         bg = LIGHT_GREY if i % 2 == 0 else WHITE
         tbl_style.append(('BACKGROUND', (0, i), (-1, i), bg))
-
-    mos_col_idx  = 8  if portfolio_type == 'unified' else 7
-    sig_col_idx  = 9  if portfolio_type == 'unified' else 9
-    data_col_idx = 10
-
-    for i, stock in enumerate(ranked_stocks):
-        sc  = stock.get('score', 0)
-        mp  = stock.get('mos_pct', None)
-        sig = mos_signal(mp)
-        tbl_style.append(('TEXTCOLOR',  (3, i+1), (3, i+1), score_color(sc)))
-        tbl_style.append(('FONTNAME',   (3, i+1), (3, i+1), 'Helvetica-Bold'))
-        tbl_style.append(('BACKGROUND', (3, i+1), (3, i+1), score_bg(sc)))
-        if mp is not None:
-            mc = GREEN if mp >= 15 else ORANGE if mp >= 0 else RED
-            tbl_style.append(('TEXTCOLOR', (mos_col_idx, i+1), (mos_col_idx, i+1), mc))
-            tbl_style.append(('FONTNAME',  (mos_col_idx, i+1), (mos_col_idx, i+1), 'Helvetica-Bold'))
-        sig_col, _ = MOS_EXPLAIN.get(sig, (DARK_GREY, ''))
-        tbl_style.append(('TEXTCOLOR', (sig_col_idx, i+1), (sig_col_idx, i+1), sig_col))
-        tbl_style.append(('FONTNAME',  (sig_col_idx, i+1), (sig_col_idx, i+1), 'Helvetica-Bold'))
-        # Data confidence column — color coded green/blue/orange/red
-        conf = stock.get('confidence', 1.0)
-        tbl_style.append(('TEXTCOLOR', (data_col_idx, i+1), (data_col_idx, i+1), _conf_color(conf)))
-        tbl_style.append(('FONTNAME',  (data_col_idx, i+1), (data_col_idx, i+1), 'Helvetica-Bold'))
-
-        # Unified: color each layer score column by its score
-        if portfolio_type == 'unified':
-            layers = stock.get('breakdown', {}).get('layers', {})
-            for col_idx, lname in [(5, 'health'), (6, 'improvement'), (7, 'persistence')]:
-                ls = layers.get(lname, {}).get('score')
-                if ls is not None:
-                    tbl_style.append(('TEXTCOLOR', (col_idx, i+1), (col_idx, i+1), score_color(ls)))
-                    tbl_style.append(('FONTNAME',  (col_idx, i+1), (col_idx, i+1), 'Helvetica-Bold'))
 
     tbl.setStyle(TableStyle(tbl_style))
     elements.append(tbl)

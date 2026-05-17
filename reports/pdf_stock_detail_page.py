@@ -8,20 +8,32 @@ from reportlab.platypus import (
     Paragraph, Spacer, Table, TableStyle, KeepTogether
 )
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
+from reportlab.lib import colors as _rl_colors
 
 from reports.pdf_styles import (
     NAVY, GOLD, BLUE_LIGHT, LIGHT_GREY, MID_GREY, DARK_GREY, WHITE, BLACK,
     CONTENT_WIDTH, MOS_EXPLAIN,
     score_color, score_bg, grade, grade_label, mos_signal, get_stock_profiles,
 )
-from reportlab.lib import colors as _rl_colors
+from reports.pdf_rankings_table import generate_overall_assessment
 
 # Segment health score colours
 COLOUR_SEG_GOOD = _rl_colors.HexColor('#27AE60')
 COLOUR_SEG_FAIR = _rl_colors.HexColor('#E67E22')
 COLOUR_SEG_WEAK = _rl_colors.HexColor('#E74C3C')
-from reports.pdf_rankings_table import generate_overall_assessment
+
+
+def _score_hex(sc: float) -> str:
+    if sc >= 75:   return '#27AE60'
+    elif sc >= 55: return '#2471A3'
+    elif sc >= 40: return '#E67E22'
+    else:          return '#E74C3C'
+
+
+def _score_bar(sc: float, blocks: int = 10) -> str:
+    filled = max(0, min(blocks, round(sc / 100 * blocks)))
+    return '▓' * filled + '░' * (blocks - filled)
 
 
 def build_stock_detail(styles, stock, rank, portfolio_type):
@@ -33,29 +45,21 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     sig       = mos_signal(mos_pct)
     sig_col, sig_desc = MOS_EXPLAIN.get(sig, (DARK_GREY, ''))
 
-    # ── Stock header ──
+    # ── Stock header ──────────────────────────────────────────
     hdr = Table(
         [[
             Paragraph(
                 f"#{rank}  {stock.get('ticker', '')}",
-                ParagraphStyle(
-                    'Tk', fontSize=13, textColor=GOLD,
-                    fontName='Helvetica-Bold'
-                )
+                ParagraphStyle('Tk', fontSize=13, textColor=GOLD, fontName='Inter-Bold')
             ),
             Paragraph(
                 stock.get('name', ''),
-                ParagraphStyle(
-                    'SN', fontSize=10, textColor=WHITE,
-                    fontName='Helvetica'
-                )
+                ParagraphStyle('SN', fontSize=10, textColor=WHITE, fontName='Inter-Regular')
             ),
             Paragraph(
-                f"{sc}/100",
-                ParagraphStyle(
-                    'ScH', fontSize=15, textColor=GOLD,
-                    fontName='Helvetica-Bold', alignment=TA_RIGHT
-                )
+                f"{sc:.0f}/100",
+                ParagraphStyle('ScH', fontSize=15, textColor=GOLD,
+                               fontName='Inter-Bold', alignment=TA_RIGHT)
             ),
         ]],
         colWidths=[28*mm, CONTENT_WIDTH - 72*mm, 44*mm]
@@ -72,90 +76,108 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     elements.append(KeepTogether([hdr]))
     elements.append(Spacer(1, 3 * mm))
 
-    # ── Grade badge ──
-    grade_tbl = Table(
+    # ── Score + MoS hero panel ────────────────────────────────
+    hex_sc  = _score_hex(sc)
+    hex_m   = '#27AE60' if (mos_pct is not None and mos_pct >= 15) else \
+              '#E67E22' if (mos_pct is not None and mos_pct >= 0)  else \
+              '#E74C3C' if mos_pct is not None else '#566573'
+    mos_str = f'{mos_pct:.1f}%' if mos_pct is not None else 'N/A'
+    iv_str  = f'P{iv:.2f}'        if iv        else 'N/A'
+    mp_str  = f'P{mos_price:.2f}' if mos_price else 'N/A'
+    half_w  = CONTENT_WIDTH / 2 - 2*mm
+
+    score_sub = Table(
         [
-            [Paragraph('GRADE', ParagraphStyle(
-                'GL', fontSize=7, textColor=DARK_GREY,
-                fontName='Helvetica', alignment=TA_CENTER
-            ))],
+            [Paragraph('QUALITY SCORE', ParagraphStyle(
+                'HSlbl', fontSize=7, fontName='Inter-Regular',
+                textColor=DARK_GREY, alignment=TA_CENTER))],
             [Paragraph(
-                f"{grade(sc)}  {grade_label(sc)}",
-                ParagraphStyle(
-                    'GV', fontSize=11, textColor=score_color(sc),
-                    fontName='Helvetica-Bold', alignment=TA_CENTER
-                )
-            )],
+                f'<font color="{hex_sc}"><b>{sc:.0f}</b></font>'
+                f'<font color="#BDC3C7" size="20">/100</font>',
+                ParagraphStyle('HSsc', fontSize=30, fontName='Inter-Bold',
+                               alignment=TA_CENTER, leading=36))],
+            [Paragraph(
+                f'{grade(sc)}  {grade_label(sc)}',
+                ParagraphStyle('HSgr', fontSize=10, fontName='Inter-Bold',
+                               textColor=score_color(sc), alignment=TA_CENTER))],
+            [Paragraph(
+                f'<font color="{hex_sc}">{_score_bar(sc)}</font>',
+                ParagraphStyle('HSbr', fontSize=11, fontName='Inter-Regular',
+                               alignment=TA_CENTER, leading=13))],
         ],
-        colWidths=[CONTENT_WIDTH / 2 - 2*mm]
+        colWidths=[half_w]
     )
-    grade_tbl.setStyle(TableStyle([
+    score_sub.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), score_bg(sc)),
         ('BOX',           (0, 0), (-1, -1), 1, score_color(sc)),
         ('TOPPADDING',    (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
     ]))
 
-    # ── Signal badge ──
-    signal_tbl = Table(
-        [
-            [Paragraph('SIGNAL', ParagraphStyle(
-                'SL', fontSize=7, textColor=DARK_GREY,
-                fontName='Helvetica', alignment=TA_CENTER
-            ))],
-            [Paragraph(
-                sig,
-                ParagraphStyle(
-                    'SV', fontSize=11, textColor=sig_col,
-                    fontName='Helvetica-Bold', alignment=TA_CENTER
-                )
-            )],
-        ],
-        colWidths=[CONTENT_WIDTH / 2 - 2*mm]
+    mos_bg = (
+        _rl_colors.HexColor('#D5F5E3') if mos_pct is not None and mos_pct >= 15 else
+        _rl_colors.HexColor('#FDEBD0') if mos_pct is not None and mos_pct >= 0  else
+        _rl_colors.HexColor('#FADBD8') if mos_pct is not None else LIGHT_GREY
     )
-    signal_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), LIGHT_GREY),
+    mos_sub = Table(
+        [
+            [Paragraph('MARGIN OF SAFETY', ParagraphStyle(
+                'HMlbl', fontSize=7, fontName='Inter-Regular',
+                textColor=DARK_GREY, alignment=TA_CENTER))],
+            [Paragraph(
+                f'<font color="{hex_m}"><b>{mos_str}</b></font>',
+                ParagraphStyle('HMsc', fontSize=30, fontName='Inter-Bold',
+                               alignment=TA_CENTER, leading=36))],
+            [Paragraph(sig, ParagraphStyle(
+                'HMsig', fontSize=10, fontName='Inter-Bold',
+                textColor=sig_col, alignment=TA_CENTER))],
+            [Paragraph(
+                f'IV: {iv_str}  ·  MoS Price: {mp_str}',
+                ParagraphStyle('HMiv', fontSize=7.5, fontName='Inter-Regular',
+                               textColor=DARK_GREY, alignment=TA_CENTER))],
+        ],
+        colWidths=[half_w]
+    )
+    mos_sub.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), mos_bg),
         ('BOX',           (0, 0), (-1, -1), 1, sig_col),
         ('TOPPADDING',    (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
     ]))
 
-    # ── Badges side by side ──
-    badges = Table(
-        [[grade_tbl, signal_tbl]],
+    hero = Table(
+        [[score_sub, mos_sub]],
         colWidths=[CONTENT_WIDTH / 2, CONTENT_WIDTH / 2]
     )
-    badges.setStyle(TableStyle([
+    hero.setStyle(TableStyle([
         ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING',   (0, 0), (-1, -1), 0),
         ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
         ('TOPPADDING',    (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
-    elements.append(badges)
+    elements.append(hero)
+    elements.append(Spacer(1, 2 * mm))
 
-    # ── Confidence badge ──
+    # ── Confidence badge ──────────────────────────────────────
     confidence = stock.get('confidence', 1.0)
     if confidence >= 0.9:
         conf_label = 'High Confidence (5yr data)'
     elif confidence >= 0.8:
         conf_label = 'Medium Confidence (3-4yr data)'
-    elif confidence >= 0.65:
+    elif confidence >= 0.60:
         conf_label = 'Limited Data (2yr)'
     else:
         conf_label = 'Insufficient Data'
-    elements.append(Spacer(1, 2 * mm))
     elements.append(Paragraph(
         f'Data confidence: {conf_label}',
-        ParagraphStyle(
-            'ConfBadge', fontSize=7.5, textColor=MID_GREY,
-            fontName='Helvetica', alignment=TA_CENTER,
-        )
+        ParagraphStyle('ConfBadge', fontSize=7.5, textColor=MID_GREY,
+                       fontName='Inter-Regular', alignment=TA_CENTER)
     ))
 
-    # ── Investment profile tags ──
+    # ── Investment profile tags ───────────────────────────────
     profiles = get_stock_profiles(stock)
     if profiles:
         elements.append(Spacer(1, 2 * mm))
@@ -165,16 +187,12 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
                 f'  {label}  ',
                 ParagraphStyle(
                     f'Tag_{label}', fontSize=7.5, textColor=txt_col,
-                    fontName='Helvetica-Bold', alignment=TA_CENTER,
+                    fontName='Inter-Bold', alignment=TA_CENTER,
                     backColor=bg_col,
                 )
             ))
-        # Pad to fill the row (up to 5 tags max)
         col_w = CONTENT_WIDTH / max(len(tag_cells), 1)
-        tag_tbl = Table(
-            [tag_cells],
-            colWidths=[col_w] * len(tag_cells)
-        )
+        tag_tbl = Table([tag_cells], colWidths=[col_w] * len(tag_cells))
         tag_tbl.setStyle(TableStyle([
             ('TOPPADDING',    (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
@@ -187,13 +205,13 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
         ]))
         elements.append(tag_tbl)
 
-    # ── Signal explanation ──
+    # ── Signal explanation ────────────────────────────────────
     if sig_desc:
         elements.append(Spacer(1, 2 * mm))
         exp_tbl = Table(
             [[Paragraph(sig_desc, ParagraphStyle(
                 'SE', fontSize=8.5, textColor=sig_col,
-                fontName='Helvetica-Oblique', leading=13
+                fontName='Inter-Italic', leading=13
             ))]],
             colWidths=[CONTENT_WIDTH]
         )
@@ -208,13 +226,13 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
 
     elements.append(Spacer(1, 3 * mm))
 
-    # ── Overall Assessment ──
+    # ── Overall Assessment ────────────────────────────────────
     assessment_text = generate_overall_assessment(stock, sc, portfolio_type)
     elements.append(Paragraph('OVERALL ASSESSMENT', styles['GoldLabel']))
     assess_tbl = Table(
         [[Paragraph(assessment_text, ParagraphStyle(
             'Assess', fontSize=8.5, textColor=BLACK,
-            fontName='Helvetica', leading=13
+            fontName='Inter-Regular', leading=13
         ))]],
         colWidths=[CONTENT_WIDTH]
     )
@@ -230,7 +248,7 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     elements.append(assess_tbl)
     elements.append(Spacer(1, 3 * mm))
 
-    # ── Key numbers ──
+    # ── Key numbers ───────────────────────────────────────────
     elements.append(Paragraph('KEY NUMBERS', styles['GoldLabel']))
 
     price_data = [
@@ -296,16 +314,14 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     for label, value, explain in price_data:
         price_rows.append([
             Paragraph(label, ParagraphStyle(
-                'PL', fontSize=8, textColor=NAVY,
-                fontName='Helvetica-Bold'
+                'PL', fontSize=8, textColor=NAVY, fontName='Inter-Bold'
             )),
             Paragraph(value, ParagraphStyle(
-                'PV', fontSize=9, textColor=NAVY,
-                fontName='Helvetica-Bold'
+                'PV', fontSize=9, textColor=NAVY, fontName='Inter-Bold'
             )),
             Paragraph(explain, ParagraphStyle(
                 'PE', fontSize=7.5, textColor=DARK_GREY,
-                fontName='Helvetica-Oblique', leading=11
+                fontName='Inter-Italic', leading=11
             )),
         ])
 
@@ -326,7 +342,7 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
     elements.append(price_tbl)
     elements.append(Spacer(1, 3 * mm))
 
-    # ── Conglomerate segment breakdown (holding firms only) ──
+    # ── Conglomerate segment breakdown (holding firms only) ───
     cong_data = stock.get('breakdown', {}).get('conglomerate') if stock.get('breakdown') else None
     if cong_data and cong_data.get('segments'):
         elements.append(Paragraph('SEGMENT BREAKDOWN', styles['GoldLabel']))
@@ -337,10 +353,10 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
         elements.append(Spacer(1, 2 * mm))
 
         seg_header = [
-            Paragraph('Segment',       ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold')),
-            Paragraph('Listed',        ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold')),
-            Paragraph('Rev %',         ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
-            Paragraph('Health Score',  ParagraphStyle('SH', fontSize=7, textColor=DARK_GREY, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+            Paragraph('Segment',      ParagraphStyle('SH0', fontSize=7, textColor=DARK_GREY, fontName='Inter-Bold')),
+            Paragraph('Listed',       ParagraphStyle('SH1', fontSize=7, textColor=DARK_GREY, fontName='Inter-Bold')),
+            Paragraph('Rev %',        ParagraphStyle('SH2', fontSize=7, textColor=DARK_GREY, fontName='Inter-Bold', alignment=TA_RIGHT)),
+            Paragraph('Health Score', ParagraphStyle('SH3', fontSize=7, textColor=DARK_GREY, fontName='Inter-Bold', alignment=TA_RIGHT)),
         ]
         seg_rows = [seg_header]
         for seg in cong_data['segments']:
@@ -352,10 +368,10 @@ def build_stock_detail(styles, stock, rank, portfolio_type):
                 COLOUR_SEG_WEAK if hs else DARK_GREY
             )
             seg_rows.append([
-                Paragraph(seg.get('segment_name', ''), ParagraphStyle('SN', fontSize=8, textColor=BLACK, fontName='Helvetica')),
-                Paragraph(seg.get('segment_ticker') or '—', ParagraphStyle('ST', fontSize=8, textColor=DARK_GREY, fontName='Helvetica')),
-                Paragraph(f"{rev*100:.0f}%" if rev else '—', ParagraphStyle('SR', fontSize=8, textColor=DARK_GREY, fontName='Helvetica', alignment=TA_RIGHT)),
-                Paragraph(f"{hs:.0f}/100" if hs else 'N/A',  ParagraphStyle('SS', fontSize=8, textColor=hs_col, fontName='Helvetica-Bold', alignment=TA_RIGHT)),
+                Paragraph(seg.get('segment_name', ''),      ParagraphStyle('SN', fontSize=8, textColor=BLACK,    fontName='Inter-Regular')),
+                Paragraph(seg.get('segment_ticker') or '—', ParagraphStyle('ST', fontSize=8, textColor=DARK_GREY, fontName='Inter-Regular')),
+                Paragraph(f"{rev*100:.0f}%" if rev else '—', ParagraphStyle('SR', fontSize=8, textColor=DARK_GREY, fontName='Inter-Regular', alignment=TA_RIGHT)),
+                Paragraph(f"{hs:.0f}/100" if hs else 'N/A',  ParagraphStyle('SS', fontSize=8, textColor=hs_col,   fontName='Inter-Bold',    alignment=TA_RIGHT)),
             ])
 
         col_w = CONTENT_WIDTH / 4

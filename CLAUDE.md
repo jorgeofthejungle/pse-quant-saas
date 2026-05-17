@@ -90,8 +90,24 @@ Keep files under 700 lines. Facade pattern: thin re-export module + focused sub-
 
 ### Ops alerting
 - `discord/discord_ops.py` — `send_ops_alert(stage, error)` posts a red embed to `DISCORD_WEBHOOK_OPS`, silently swallows all failures. Import from `publisher`.
-- `scheduler_jobs/state.py` — `_write_held_pdf / _read_held_pdf / _clear_held_pdf` manage a JSON hold file under `PSE_DATA_DIR/pse_quant/held_pdf.json`.
+- `scheduler_jobs/state.py` — manages two JSON hold files under `PSE_DATA_DIR/pse_quant/`:
+  - `pending_pdf.json` — written by `run_daily_score()` to pass ranked results to `run_daily_report()`
+  - `held_pdf.json` — written when bad-PDF fail switch triggers; released by `--approve-pdf`
 - Bad-PDF fail switch: if portfolio scoring fails during `run_daily_report()`, the PDF is held (not sent) and `--approve-pdf` releases it.
 
 ---
 *Owner: Josh — do not share this file or .env publicly.*
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues (`jorgeofthejungle/pse-quant-saas`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Using the five canonical label strings (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

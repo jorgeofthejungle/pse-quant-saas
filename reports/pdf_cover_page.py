@@ -4,39 +4,117 @@
 # ============================================================
 
 from reportlab.lib.units import mm
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     Paragraph, Spacer, Table, TableStyle,
     HRFlowable, PageBreak
 )
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 from reports.pdf_styles import (
-    NAVY, NAVY_LIGHT, GOLD, GOLD_LIGHT, GREEN, GREEN_LIGHT, BLUE, BLUE_LIGHT,
+    NAVY, NAVY_LIGHT, GOLD, GOLD_LIGHT, GREEN, GREEN_LIGHT,
     RED, RED_LIGHT, LIGHT_GREY, MID_GREY, DARK_GREY, WHITE, BLACK,
     CONTENT_WIDTH, PORTFOLIO_EXPLAIN, BarChartIcon,
 )
 
 
-def _build_brand_header(portfolio_name, portfolio_type=''):
-    """Full-width dark navy header with bar-chart icon + title + sub-banner."""
-    elements = []
+# ── Inline style helpers ─────────────────────────────────────
+def _ps(name, **kw):
+    return ParagraphStyle(name, **kw)
 
+
+def _build_cover_hero(portfolio_name, run_date):
+    """Large full-width navy hero panel: icon + title + date."""
+    icon = BarChartIcon(40 * mm)
+
+    title = Paragraph(
+        'StockPilot PH Rankings',
+        _ps('CoverTitle', fontSize=24, textColor=WHITE, fontName='Inter-Bold',
+            alignment=TA_CENTER, spaceAfter=0, leading=28),
+    )
+    edition = Paragraph(
+        f'PHILIPPINES &nbsp;·&nbsp; {run_date}',
+        _ps('CoverEdition', fontSize=10, textColor=GOLD, fontName='Inter-Bold',
+            alignment=TA_CENTER, spaceAfter=0, leading=14),
+    )
+    portfolio_label = Paragraph(
+        portfolio_name,
+        _ps('CoverPortfolio', fontSize=8, textColor=WHITE, fontName='Inter-Regular',
+            alignment=TA_CENTER, spaceAfter=0, leading=12),
+    )
+
+    hero = Table(
+        [[icon], [Spacer(1, 4 * mm)], [title], [Spacer(1, 3 * mm)], [edition]],
+        colWidths=[CONTENT_WIDTH],
+    )
+    hero.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), NAVY),
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ('TOPPADDING',    (0, 0), (0, 0),   20),   # top padding on icon row
+        ('BOTTOMPADDING', (0, -1), (0, -1), 20),   # bottom padding on edition row
+    ]))
+    return hero
+
+
+def _build_toc(section_keys):
+    """Table of contents listing portfolio sections."""
+    header_style = _ps('TocHeader', fontSize=9, textColor=DARK_GREY,
+                        fontName='Inter-Bold', alignment=TA_LEFT)
+    item_style   = _ps('TocItem', fontSize=9, textColor=BLACK,
+                        fontName='Inter-Regular', alignment=TA_LEFT, leading=14)
+    page_style   = _ps('TocPage', fontSize=9, textColor=DARK_GREY,
+                        fontName='Inter-Regular', alignment=TA_RIGHT, leading=14)
+
+    section_labels = {
+        'dividend': 'Dividend Portfolio Rankings',
+        'value':    'Value Portfolio Rankings',
+        'unified':  'Unified Stock Rankings',
+    }
+
+    rows = [[Paragraph('Contents', header_style), '']]
+    for key in section_keys:
+        label = section_labels.get(key, key.title())
+        rows.append([
+            Paragraph(label, item_style),
+            Paragraph('→', page_style),
+        ])
+
+    toc = Table(rows, colWidths=[CONTENT_WIDTH - 14 * mm, 14 * mm])
+    toc.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0),  GOLD_LIGHT),
+        ('LINEBELOW',     (0, 0), (-1, 0),  1, GOLD),
+        ('LINEBELOW',     (0, 1), (-1, -1), 0.3, MID_GREY),
+        ('TOPPADDING',    (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('LINEBEFORE',    (0, 0), (0, -1),  3, GOLD),
+    ]))
+    return toc
+
+
+def build_section_brand_header(portfolio_name, portfolio_type=''):
+    """Compact navy header used at the top of each portfolio section (not the cover)."""
     logo_cell = BarChartIcon(18 * mm)
 
-    # "Stockpilot" and "PHILIPPINES" stacked vertically, matching the logo layout
     text_cell = Table(
         [
-            [Paragraph('Stockpilot', ParagraphStyle(
-                'BrandName', fontSize=22, textColor=WHITE,
-                fontName='Helvetica-Bold', alignment=TA_LEFT, spaceAfter=0, leading=24
+            [Paragraph('Stockpilot', _ps(
+                'BrandName2', fontSize=22, textColor=WHITE,
+                fontName='Inter-Bold', alignment=TA_LEFT, spaceAfter=0, leading=24
             ))],
-            [Paragraph('PHILIPPINES', ParagraphStyle(
-                'BrandCountry', fontSize=9, textColor=GOLD,
-                fontName='Helvetica-Bold', alignment=TA_LEFT, spaceBefore=0, leading=11
+            [Paragraph('PHILIPPINES', _ps(
+                'BrandCountry2', fontSize=9, textColor=GOLD,
+                fontName='Inter-Bold', alignment=TA_LEFT, spaceBefore=0, leading=11
             ))],
         ],
-        colWidths=[CONTENT_WIDTH - 32*mm]
+        colWidths=[CONTENT_WIDTH - 32 * mm]
     )
     text_cell.setStyle(TableStyle([
         ('TOPPADDING',    (0, 0), (-1, -1), 0),
@@ -45,7 +123,7 @@ def _build_brand_header(portfolio_name, portfolio_type=''):
         ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
     ]))
 
-    icon_col_w = 22 * mm   # just enough for the 18mm icon + small gap
+    icon_col_w = 22 * mm
     brand_row = Table(
         [[logo_cell, text_cell]],
         colWidths=[icon_col_w, CONTENT_WIDTH - icon_col_w]
@@ -55,30 +133,19 @@ def _build_brand_header(portfolio_name, portfolio_type=''):
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING',    (0, 0), (-1, -1), 14),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
-        ('LEFTPADDING',   (0, 0), (0, 0),   10),  # left edge padding
-        ('RIGHTPADDING',  (0, 0), (0, 0),   0),   # no gap between icon and text
-        ('LEFTPADDING',   (1, 0), (1, 0),   4),   # tight to the icon
+        ('LEFTPADDING',   (0, 0), (0, 0),   10),
+        ('RIGHTPADDING',  (0, 0), (0, 0),   0),
+        ('LEFTPADDING',   (1, 0), (1, 0),   4),
     ]))
-    elements.append(brand_row)
 
-    # Gold accent line
-    elements.append(HRFlowable(
-        width=CONTENT_WIDTH, thickness=4,
-        color=GOLD, spaceAfter=0, spaceBefore=0
-    ))
-
-    # Portfolio sub-banner
     _banner = (f'{portfolio_name} REPORT'
                if portfolio_type == 'unified'
                else f'{portfolio_name} PORTFOLIO REPORT')
     sub_tbl = Table(
-        [[Paragraph(
-            _banner,
-            ParagraphStyle(
-                'SubBanner', fontSize=11, textColor=NAVY,
-                alignment=TA_CENTER, fontName='Helvetica-Bold'
-            )
-        )]],
+        [[Paragraph(_banner, _ps(
+            'SubBanner2', fontSize=11, textColor=NAVY,
+            alignment=TA_CENTER, fontName='Inter-Bold'
+        ))]],
         colWidths=[CONTENT_WIDTH]
     )
     sub_tbl.setStyle(TableStyle([
@@ -87,68 +154,21 @@ def _build_brand_header(portfolio_name, portfolio_type=''):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
         ('LINEBELOW',     (0, 0), (-1, -1), 2, GOLD),
     ]))
-    elements.append(sub_tbl)
-    return elements
+    return [brand_row, HRFlowable(width=CONTENT_WIDTH, thickness=4, color=GOLD,
+                                   spaceAfter=0, spaceBefore=0), sub_tbl]
 
 
 def build_cover_page(styles, portfolio_type, portfolio_name,
                      run_date, total_stocks, eligible_stocks):
     elements = []
 
-    elements += _build_brand_header(portfolio_name, portfolio_type)
-    elements.append(Spacer(1, 8 * mm))
+    # ── Hero panel ──────────────────────────────────────────
+    elements.append(_build_cover_hero(portfolio_name, run_date))
+    elements.append(HRFlowable(width=CONTENT_WIDTH, thickness=3,
+                                color=GOLD, spaceAfter=0, spaceBefore=0))
+    elements.append(Spacer(1, 7 * mm))
 
-    p_title, p_desc = PORTFOLIO_EXPLAIN.get(
-        portfolio_type,
-        ('About This Report', 'Quantitative stock analysis report.')
-    )
-
-    title_style = ParagraphStyle(
-        'DT', fontSize=13, textColor=NAVY,
-        fontName='Helvetica-Bold', spaceAfter=6
-    )
-    body_style = ParagraphStyle(
-        'DB', fontSize=10, textColor=BLACK,
-        fontName='Helvetica', leading=16, spaceAfter=6
-    )
-    bold_style = ParagraphStyle(
-        'DBB', fontSize=10, textColor=NAVY,
-        fontName='Helvetica-Bold', leading=16, spaceAfter=2
-    )
-
-    # Split on <br/> and render each chunk as its own Paragraph
-    desc_rows = [[Paragraph(p_title, title_style)]]
-    for chunk in p_desc.split('<br/>'):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        # Detect pillar lines (bold tag present) vs normal body text
-        if chunk.startswith('<b>'):
-            desc_rows.append([Paragraph(chunk, bold_style)])
-        else:
-            desc_rows.append([Paragraph(chunk, body_style)])
-
-    desc_tbl = Table(desc_rows, colWidths=[CONTENT_WIDTH])
-    desc_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), GOLD_LIGHT),
-        ('TOPPADDING',    (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 14),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
-        ('TOPPADDING',    (0, 0), (0, 0),   10),   # extra top for title row
-        ('BOTTOMPADDING', (0, -1), (0, -1), 10),   # extra bottom for last row
-        ('LINEBEFORE',    (0, 0), (0, -1),  4, GOLD),
-        ('BOX',           (0, 0), (-1, -1), 0.5, MID_GREY),
-    ]))
-    elements.append(desc_tbl)
-    elements.append(Spacer(1, 8 * mm))
-
-    elements.append(Paragraph('REPORT SUMMARY', styles['SectionHeader']))
-    elements.append(HRFlowable(
-        width=CONTENT_WIDTH, thickness=2,
-        color=GOLD, spaceAfter=6
-    ))
-
+    # ── Stats row ───────────────────────────────────────────
     stats = Table(
         [
             [
@@ -157,24 +177,22 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
                 Paragraph('REPORT DATE',     styles['SmallMuted']),
             ],
             [
-                Paragraph(str(total_stocks), ParagraphStyle(
+                Paragraph(str(total_stocks), _ps(
                     'SN1', fontSize=32, textColor=NAVY,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=36
+                    alignment=TA_CENTER, fontName='Inter-Bold', leading=36
                 )),
-                Paragraph(str(eligible_stocks), ParagraphStyle(
+                Paragraph(str(eligible_stocks), _ps(
                     'SN2', fontSize=32, textColor=GREEN,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=36
+                    alignment=TA_CENTER, fontName='Inter-Bold', leading=36
                 )),
-                Paragraph(run_date, ParagraphStyle(
+                Paragraph(run_date, _ps(
                     'SN3', fontSize=10, textColor=NAVY,
-                    alignment=TA_CENTER, fontName='Helvetica-Bold', leading=14
+                    alignment=TA_CENTER, fontName='Inter-Bold', leading=14
                 )),
             ],
             [
                 Paragraph('Total PSE stocks analyzed', styles['SmallMuted']),
-                Paragraph('Met health filter criteria'
-                          if portfolio_type == 'unified'
-                          else 'Met all portfolio criteria', styles['SmallMuted']),
+                Paragraph('Met all portfolio criteria', styles['SmallMuted']),
                 Paragraph('Data as of this date',       styles['SmallMuted']),
             ],
         ],
@@ -188,19 +206,86 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         ('BOX',           (0, 0), (-1, -1), 1,   NAVY),
         ('LINEABOVE',     (0, 0), (-1, 0),  2,   GOLD),
         ('LINEAFTER',     (0, 0), (1, -1),  0.5, MID_GREY),
-        ('TOPPADDING',    (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING',    (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
     ]))
     elements.append(stats)
+    elements.append(Spacer(1, 7 * mm))
+
+    # ── Table of contents ────────────────────────────────────
+    if portfolio_type == 'unified':
+        toc_keys = ['dividend', 'value']
+    else:
+        toc_keys = [portfolio_type]
+    elements.append(_build_toc(toc_keys))
+    elements.append(Spacer(1, 7 * mm))
+
+    # ── Portfolio description ────────────────────────────────
+    p_title, p_desc = PORTFOLIO_EXPLAIN.get(
+        portfolio_type,
+        ('About This Report', 'Quantitative stock analysis report.')
+    )
+
+    title_style = _ps('DT2', fontSize=13, textColor=NAVY,
+                       fontName='Inter-Bold', spaceAfter=6)
+    body_style  = _ps('DB2', fontSize=10, textColor=BLACK,
+                       fontName='Inter-Regular', leading=16, spaceAfter=6)
+    bold_style  = _ps('DBB2', fontSize=10, textColor=NAVY,
+                       fontName='Inter-Bold', leading=16, spaceAfter=2)
+
+    desc_rows = [[Paragraph(p_title, title_style)]]
+    for chunk in p_desc.split('<br/>'):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if chunk.startswith('<b>'):
+            desc_rows.append([Paragraph(chunk, bold_style)])
+        else:
+            desc_rows.append([Paragraph(chunk, body_style)])
+
+    desc_tbl = Table(desc_rows, colWidths=[CONTENT_WIDTH])
+    desc_tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), GOLD_LIGHT),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 14),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
+        ('TOPPADDING',    (0, 0), (0, 0),   10),
+        ('BOTTOMPADDING', (0, -1), (0, -1), 10),
+        ('LINEBEFORE',    (0, 0), (0, -1),  4, GOLD),
+        ('BOX',           (0, 0), (-1, -1), 0.5, MID_GREY),
+    ]))
+    elements.append(desc_tbl)
+    elements.append(Spacer(1, 7 * mm))
+
+    # ── Disclaimer box ───────────────────────────────────────
+    disc = Table(
+        [[Paragraph(
+            'FOR RESEARCH AND EDUCATIONAL PURPOSES ONLY. '
+            'NOT INVESTMENT ADVICE. All scores and Margin of Safety '
+            'prices are mathematical computations based on historical '
+            'data. Past performance does not guarantee future results. '
+            'Always conduct your own due diligence and consult a '
+            'licensed financial adviser before making any investment.',
+            styles['Disclaimer']
+        )]],
+        colWidths=[CONTENT_WIDTH]
+    )
+    disc.setStyle(TableStyle([
+        ('BOX',           (0, 0), (-1, -1), 1,  RED),
+        ('BACKGROUND',    (0, 0), (-1, -1), RED_LIGHT),
+        ('TOPPADDING',    (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(disc)
     elements.append(PageBreak())
 
-    elements.append(Paragraph(
-        'HOW TO READ THIS REPORT', styles['SectionHeader']
-    ))
-    elements.append(HRFlowable(
-        width=CONTENT_WIDTH, thickness=2,
-        color=GOLD, spaceAfter=6
-    ))
+    # ── How-to-read page ────────────────────────────────────
+    elements.append(Paragraph('HOW TO READ THIS REPORT', styles['SectionHeader']))
+    elements.append(HRFlowable(width=CONTENT_WIDTH, thickness=2,
+                                color=GOLD, spaceAfter=6))
 
     how_to = [
         ('SCORE (0-100)',
@@ -237,16 +322,16 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
     for title, desc in how_to:
         row = Table(
             [[
-                Paragraph(title, ParagraphStyle(
-                    'HT', fontSize=8.5, textColor=WHITE,
-                    fontName='Helvetica-Bold', alignment=TA_CENTER
+                Paragraph(title, _ps(
+                    'HT2', fontSize=8.5, textColor=WHITE,
+                    fontName='Inter-Bold', alignment=TA_CENTER
                 )),
-                Paragraph(desc, ParagraphStyle(
-                    'HD', fontSize=8.5, textColor=BLACK,
-                    fontName='Helvetica', leading=13
+                Paragraph(desc, _ps(
+                    'HD2', fontSize=8.5, textColor=BLACK,
+                    fontName='Inter-Regular', leading=13
                 )),
             ]],
-            colWidths=[38*mm, CONTENT_WIDTH - 38*mm]
+            colWidths=[38 * mm, CONTENT_WIDTH - 38 * mm]
         )
         row.setStyle(TableStyle([
             ('BACKGROUND',    (0, 0), (0, 0),   NAVY),
@@ -260,8 +345,7 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         elements.append(row)
 
     elements.append(Spacer(1, 8 * mm))
-
-    disc = Table(
+    disc2 = Table(
         [[Paragraph(
             'FOR RESEARCH AND EDUCATIONAL PURPOSES ONLY. '
             'NOT INVESTMENT ADVICE. All scores and Margin of Safety '
@@ -273,7 +357,7 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         )]],
         colWidths=[CONTENT_WIDTH]
     )
-    disc.setStyle(TableStyle([
+    disc2.setStyle(TableStyle([
         ('BOX',           (0, 0), (-1, -1), 1,  RED),
         ('BACKGROUND',    (0, 0), (-1, -1), RED_LIGHT),
         ('TOPPADDING',    (0, 0), (-1, -1), 8),
@@ -281,7 +365,7 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
         ('LEFTPADDING',   (0, 0), (-1, -1), 10),
         ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
     ]))
-    elements.append(disc)
+    elements.append(disc2)
     elements.append(PageBreak())
     return elements
 
@@ -289,13 +373,9 @@ def build_cover_page(styles, portfolio_type, portfolio_name,
 def build_disclaimer_page(styles):
     elements = []
     elements.append(PageBreak())
-    elements.append(Paragraph(
-        'METHODOLOGY & DISCLAIMER', styles['SectionHeader']
-    ))
-    elements.append(HRFlowable(
-        width=CONTENT_WIDTH, thickness=2,
-        color=GOLD, spaceAfter=8
-    ))
+    elements.append(Paragraph('METHODOLOGY & DISCLAIMER', styles['SectionHeader']))
+    elements.append(HRFlowable(width=CONTENT_WIDTH, thickness=2,
+                                color=GOLD, spaceAfter=8))
 
     blocks = [
         ('How Scores Are Calculated',

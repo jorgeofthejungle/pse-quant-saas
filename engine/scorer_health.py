@@ -59,7 +59,8 @@ _EPS_CV = [             # Lower CV = more stable (inverted scale)
     (0.05, 100), (0.10, 90), (0.20, 75), (0.35, 58),
     (0.50,  42), (0.70, 25), (1.00, 12),
 ]
-_EPS_CV_FLOOR = 5.0     # Score floor when mean EPS <= 0
+_EPS_CV_FLOOR          = 5.0   # Score floor when mean EPS <= 0 (erratic losses)
+_EPS_CV_SHRINKING_FLOOR = 15.0  # Higher floor when losses are consistently shrinking
 
 _PB = [                 # Lower P/B preferred for banks/holdings (NAV discount)
     (0.5, 100), (0.8, 90), (1.0, 80), (1.3, 70),
@@ -122,7 +123,9 @@ def _score_eps_stability(stock: dict, _group: str) -> float | None:
         return None
     mean_eps = sum(valid) / len(valid)
     if mean_eps <= 0:
-        return _EPS_CV_FLOOR
+        # Losses shrinking consistently (newest-first: each value > next) → partial credit
+        shrinking = all(valid[i] > valid[i + 1] for i in range(len(valid) - 1))
+        return _EPS_CV_SHRINKING_FLOOR if shrinking else _EPS_CV_FLOOR
     cv = _stats.pstdev(valid) / mean_eps
     return _normalise(cv, _EPS_CV)
 

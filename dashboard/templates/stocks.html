@@ -2,112 +2,120 @@
 {% block title %}Stock Lookup{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Stock Lookup</h1>
-  <span class="timestamp">Analyse any PSE-listed stock</span>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold" style="color:#0D1F3C;">Stock Lookup</h1>
+    <p class="text-sm text-gray-500 mt-0.5">Analyse any PSE-listed stock</p>
+  </div>
 </div>
 
 <!-- Search bar with autocomplete -->
-<form method="GET" action="{{ url_for('stocks.index') }}" class="inline-form full-width"
-      style="margin-bottom:1.25rem;" autocomplete="off" onsubmit="return true;">
+<form method="GET" action="{{ url_for('stocks.index') }}" class="flex gap-2 items-center mb-6"
+      autocomplete="off" onsubmit="return true;">
   <div style="position:relative;display:inline-block;">
     <input type="text" id="stock-search" name="ticker"
            value="{{ query if query else ticker }}"
-           class="form-input" placeholder="Ticker or company name e.g. DMC, Jollibee"
-           style="width:300px;" autocomplete="off" autofocus
+           class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+           style="width:300px;" placeholder="Ticker or company name e.g. DMC, Jollibee"
+           autocomplete="off" autofocus
            oninput="onSearchInput(this.value)"
            onkeydown="onSearchKey(event)">
     <div id="search-dropdown" style="
       display:none; position:absolute; top:100%; left:0; width:100%;
-      background:var(--white); border:1px solid var(--border); border-top:none;
+      background:#fff; border:1px solid #E5E7EB; border-top:none;
       border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
-      z-index:100; max-height:260px; overflow-y:auto;">
-    </div>
+      z-index:100; max-height:260px; overflow-y:auto;"></div>
   </div>
-  <button type="submit" class="btn btn-primary">Analyse</button>
+  <button type="submit"
+          class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+          style="background:#F0A500;"
+          onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+    Analyse
+  </button>
   {% if ticker or query %}
-    <a href="{{ url_for('stocks.index') }}" class="btn btn-secondary">Clear</a>
+  <a href="{{ url_for('stocks.index') }}"
+     class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+    Clear
+  </a>
   {% endif %}
 </form>
 
 {% if ticker and result %}
   {% if result.error %}
-    <div class="banner banner-error">{{ result.error }}</div>
+  <div class="px-4 py-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-800">{{ result.error }}</div>
   {% else %}
     {% set stock = result.stock %}
     {% set bd    = result.breakdown %}
 
-    <!-- ── Header card ── -->
-    <div class="card full-width" style="margin-bottom:1.25rem;border-top:4px solid var(--navy);">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+    <!-- Header card -->
+    <div class="bg-white rounded-xl border-t-4 border-gray-200 shadow-sm p-5 mb-4" style="border-top-color:#0D1F3C;">
+      <div class="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-            <span style="font-size:1.6rem;font-weight:700;color:var(--navy);">{{ stock.ticker }}</span>
-            <span style="font-size:1rem;color:var(--text-muted);">{{ stock.name }}</span>
-            <span class="badge badge-pipeline">{{ stock.sector }}</span>
-            {% if stock.is_reit %}<span class="badge badge-member">REIT</span>{% endif %}
-            {% if stock.is_bank %}<span class="badge badge-system">BANK</span>{% endif %}
+          <div class="flex items-center gap-3 flex-wrap">
+            <span class="text-2xl font-bold" style="color:#0D1F3C;">{{ stock.ticker }}</span>
+            <span class="text-gray-500">{{ stock.name }}</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{{ stock.sector }}</span>
+            {% if stock.is_reit %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">REIT</span>{% endif %}
+            {% if stock.is_bank %}<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" style="background:#e8eaf6;color:#3949ab;">BANK</span>{% endif %}
           </div>
-          <div style="margin-top:0.5rem;color:var(--text-muted);font-size:0.85rem;">
-            Price as of {{ stock.price_date if stock.price_date else '—' }}
-          </div>
+          <div class="text-xs text-gray-400 mt-1">Price as of {{ stock.price_date if stock.price_date else '—' }}</div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:2rem;font-weight:700;color:var(--navy);">₱{{ '%.2f'|format(stock.current_price) }}</div>
-          <div style="font-size:0.8rem;color:var(--text-muted);">Current Price</div>
+        <div class="text-right">
+          <div class="text-3xl font-bold" style="color:#0D1F3C;">₱{{ '%.2f'|format(stock.current_price) }}</div>
+          <div class="text-xs text-gray-400 mt-0.5">Current Price</div>
         </div>
       </div>
     </div>
 
-    <!-- ── Score + MoS + Filter row ── -->
-    <div class="stats-row" style="margin-bottom:1.25rem;">
-      <!-- Score -->
-      {% set score = result.score %}
-      {% if score >= 80 %}{% set score_col = '#27AE60' %}{% set grade = 'A' %}
-      {% elif score >= 65 %}{% set score_col = '#2563A0' %}{% set grade = 'B' %}
-      {% elif score >= 50 %}{% set score_col = '#F39C12' %}{% set grade = 'C' %}
-      {% else %}{% set score_col = '#E74C3C' %}{% set grade = 'D' %}{% endif %}
-      <div class="stat-card" style="border-top-color:{{ score_col }};">
-        <div class="stat-value" style="color:{{ score_col }};">{{ score }}<span style="font-size:1rem;color:var(--text-muted);">/100</span></div>
-        <div class="stat-label">Score — Grade {{ grade }}</div>
-        <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;">{{ bd.category }}</div>
+    <!-- Score + MoS + IV + Filter cards -->
+    {% set score = result.score %}
+    {% if score >= 80 %}{% set score_col = '#27AE60' %}{% set grade = 'A' %}
+    {% elif score >= 65 %}{% set score_col = '#2471A3' %}{% set grade = 'B' %}
+    {% elif score >= 50 %}{% set score_col = '#F39C12' %}{% set grade = 'C' %}
+    {% else %}{% set score_col = '#E74C3C' %}{% set grade = 'D' %}{% endif %}
+
+    {% set mc = result.mos_color %}
+    {% if mc == 'green' %}{% set mos_css = '#27AE60' %}
+    {% elif mc == 'blue' %}{% set mos_css = '#2471A3' %}
+    {% elif mc == 'orange' %}{% set mos_css = '#F39C12' %}
+    {% elif mc == 'red' %}{% set mos_css = '#E74C3C' %}
+    {% else %}{% set mos_css = '#9CA3AF' %}{% endif %}
+
+    <div class="grid grid-cols-4 gap-4 mb-4">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid {{ score_col }};">
+        <div class="text-3xl font-bold" style="color:{{ score_col }};">{{ score }}<span class="text-base text-gray-400 font-normal">/100</span></div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Score — Grade {{ grade }}</div>
+        <div class="text-xs text-gray-400 mt-1">{{ bd.category }}</div>
       </div>
-      <!-- MoS -->
-      {% set mc = result.mos_color %}
-      {% if mc == 'green' %}{% set mos_css = '#27AE60' %}
-      {% elif mc == 'blue' %}{% set mos_css = '#2563A0' %}
-      {% elif mc == 'orange' %}{% set mos_css = '#F39C12' %}
-      {% elif mc == 'red' %}{% set mos_css = '#E74C3C' %}
-      {% else %}{% set mos_css = 'var(--text-muted)' %}{% endif %}
-      <div class="stat-card" style="border-top-color:{{ mos_css }};">
-        <div class="stat-value" style="color:{{ mos_css }};">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid {{ mos_css }};">
+        <div class="text-3xl font-bold" style="color:{{ mos_css }};">
           {% if result.mos_pct is not none %}{{ result.mos_pct }}%{% else %}N/A{% endif %}
         </div>
-        <div class="stat-label">Margin of Safety</div>
-        <div style="font-size:0.8rem;color:{{ mos_css }};margin-top:0.25rem;font-weight:600;">{{ result.mos_signal }}</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Margin of Safety</div>
+        <div class="text-xs font-semibold mt-1" style="color:{{ mos_css }};">{{ result.mos_signal }}</div>
       </div>
-      <!-- Intrinsic Value -->
-      <div class="stat-card">
-        <div class="stat-value" style="font-size:1.4rem;">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div class="text-2xl font-bold" style="color:#0D1F3C;">
           {% if result.iv %}₱{{ '%.2f'|format(result.iv) }}{% else %}N/A{% endif %}
         </div>
-        <div class="stat-label">Intrinsic Value (est.)</div>
-        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">
-          MoS Buy Price: {% if result.mos_price %}₱{{ '%.2f'|format(result.mos_price) }}{% else %}N/A{% endif %}
+        <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Intrinsic Value (est.)</div>
+        <div class="text-xs text-gray-400 mt-1">
+          MoS Buy: {% if result.mos_price %}₱{{ '%.2f'|format(result.mos_price) }}{% else %}N/A{% endif %}
         </div>
       </div>
-      <!-- Filter -->
-      <div class="stat-card" style="border-top-color:{% if result.eligible %}var(--green){% else %}var(--red){% endif %};">
-        <div style="font-size:1.5rem;">{% if result.eligible %}✅{% else %}❌{% endif %}</div>
-        <div class="stat-label">Health Filter</div>
-        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">{{ result.filter_reason }}</div>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid {% if result.eligible %}#27AE60{% else %}#E74C3C{% endif %};">
+        <div class="text-2xl">{% if result.eligible %}✅{% else %}❌{% endif %}</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Health Filter</div>
+        <div class="text-xs text-gray-400 mt-1">{{ result.filter_reason }}</div>
       </div>
     </div>
 
-    <div class="card-row" style="margin-bottom:1.25rem;">
-      <!-- ── 3-Layer score breakdown ── -->
-      <div class="card" style="flex:2;">
-        <h2>3-Layer Score Breakdown</h2>
+    <!-- Score breakdown + Key metrics -->
+    <div class="grid grid-cols-3 gap-4 mb-4">
+      <!-- 3-layer breakdown -->
+      <div class="col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">3-Layer Score Breakdown</h2>
         {% set layers = [
           ('health',       'Financial Health',    '30%', 'Is the company financially healthy today?'),
           ('improvement',  'Business Improvement','25%', 'Are fundamentals improving over 3+ years?'),
@@ -125,125 +133,129 @@
           {% else %}
             {% set bar_pct = ls %}{% set bar_col = '#E74C3C' %}
           {% endif %}
-          <div style="margin-bottom:1rem;">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+          <div class="mb-4">
+            <div class="flex justify-between items-baseline mb-1">
               <div>
-                <span style="font-weight:600;color:var(--navy);font-size:0.9rem;">{{ label }}</span>
-                <span style="color:var(--text-muted);font-size:0.78rem;margin-left:0.4rem;">{{ weight }} weight — {{ desc }}</span>
+                <span class="font-semibold text-sm" style="color:#0D1F3C;">{{ label }}</span>
+                <span class="text-xs text-gray-400 ml-1">{{ weight }} weight — {{ desc }}</span>
               </div>
-              <span style="font-weight:700;color:{{ bar_col }};font-size:0.95rem;">
+              <span class="font-bold text-sm" style="color:{{ bar_col }};">
                 {% if ls is not none %}{{ '%.0f'|format(ls) }}/100{% else %}N/A{% endif %}
               </span>
             </div>
-            <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden;">
-              <div style="height:8px;width:{{ bar_pct|int }}%;background:{{ bar_col }};border-radius:4px;transition:width 0.4s;"></div>
+            <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div class="h-2 rounded-full transition-all" style="width:{{ bar_pct|int }}%;background:{{ bar_col }};"></div>
             </div>
-            <!-- Factor sub-scores -->
             {% if layer.factors %}
-              <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
-                {% for fname, fdata in layer.factors.items() %}
-                  {% set fs = fdata.score %}
-                  {% if fs is not none %}
-                    {% if fs >= 70 %}{% set fc = '#27AE60' %}{% elif fs >= 50 %}{% set fc = '#F39C12' %}{% else %}{% set fc = '#E74C3C' %}{% endif %}
-                    <span style="font-size:0.72rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.5rem;color:{{ fc }};">
-                      {{ fname.replace('_',' ').title() }}: {{ '%.0f'|format(fs) }}
-                    </span>
-                  {% endif %}
-                {% endfor %}
-              </div>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              {% for fname, fdata in layer.factors.items() %}
+                {% set fs = fdata %}
+                {% if fs is not none %}
+                  {% if fs >= 70 %}{% set fc = '#27AE60' %}{% elif fs >= 50 %}{% set fc = '#F39C12' %}{% else %}{% set fc = '#E74C3C' %}{% endif %}
+                  <span class="text-xs bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5" style="color:{{ fc }};">
+                    {{ fname.replace('_',' ').title() }}: {{ '%.0f'|format(fs) }}
+                  </span>
+                {% endif %}
+              {% endfor %}
+            </div>
             {% endif %}
           </div>
         {% endfor %}
       </div>
 
-      <!-- ── Key metrics ── -->
-      <div class="card" style="flex:1;">
-        <h2>Key Metrics</h2>
-        <table class="info-table">
-          <tr><td>P/E Ratio</td><td><strong>{% if stock.pe %}{{ '%.1f'|format(stock.pe) }}x{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>P/B Ratio</td><td><strong>{% if stock.pb %}{{ '%.2f'|format(stock.pb) }}x{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>ROE</td><td><strong>{% if stock.roe %}{{ '%.1f'|format(stock.roe) }}%{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>Debt / Equity</td><td><strong>{% if stock.de_ratio is not none %}{{ '%.2f'|format(stock.de_ratio) }}x{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>Dividend Yield</td><td><strong>{% if stock.dividend_yield %}{{ '%.2f'|format(stock.dividend_yield) }}%{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>Div CAGR (5Y)</td><td><strong>{% if stock.dividend_cagr_5y %}{{ '%.1f'|format(stock.dividend_cagr_5y) }}%{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>Payout Ratio</td><td><strong>{% if stock.payout_ratio %}{{ '%.1f'|format(stock.payout_ratio) }}%{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>FCF Yield</td><td><strong>{% if stock.fcf_yield %}{{ '%.1f'|format(stock.fcf_yield) }}%{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>EV/EBITDA</td><td><strong>{% if stock.ev_ebitda %}{{ '%.1f'|format(stock.ev_ebitda) }}x{% else %}N/A{% endif %}</strong></td></tr>
-          <tr><td>Revenue CAGR</td><td><strong>{% if stock.revenue_cagr %}{{ '%.1f'|format(stock.revenue_cagr) }}%{% else %}N/A{% endif %}</strong></td></tr>
-        </table>
+      <!-- Key metrics -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Key Metrics</h2>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between"><span class="text-gray-500">P/E Ratio</span><strong style="color:#0D1F3C;">{% if stock.pe %}{{ '%.1f'|format(stock.pe) }}x{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">P/B Ratio</span><strong style="color:#0D1F3C;">{% if stock.pb %}{{ '%.2f'|format(stock.pb) }}x{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">ROE</span><strong style="color:#0D1F3C;">{% if stock.roe %}{{ '%.1f'|format(stock.roe) }}%{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">Debt / Equity</span><strong style="color:#0D1F3C;">{% if stock.de_ratio is not none %}{{ '%.2f'|format(stock.de_ratio) }}x{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">Dividend Yield</span><strong style="color:#0D1F3C;">{% if stock.dividend_yield %}{{ '%.2f'|format(stock.dividend_yield) }}%{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">Div CAGR (5Y)</span><strong style="color:#0D1F3C;">{% if stock.dividend_cagr_5y %}{{ '%.1f'|format(stock.dividend_cagr_5y) }}%{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">Payout Ratio</span><strong style="color:#0D1F3C;">{% if stock.payout_ratio %}{{ '%.1f'|format(stock.payout_ratio) }}%{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">FCF Yield</span><strong style="color:#0D1F3C;">{% if stock.fcf_yield %}{{ '%.1f'|format(stock.fcf_yield) }}%{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">EV/EBITDA</span><strong style="color:#0D1F3C;">{% if stock.ev_ebitda %}{{ '%.1f'|format(stock.ev_ebitda) }}x{% else %}N/A{% endif %}</strong></div>
+          <div class="flex justify-between"><span class="text-gray-500">Revenue CAGR</span><strong style="color:#0D1F3C;">{% if stock.revenue_cagr %}{{ '%.1f'|format(stock.revenue_cagr) }}%{% else %}N/A{% endif %}</strong></div>
+        </div>
       </div>
     </div>
 
-    <!-- ── Financial history table ── -->
+    <!-- Financial history -->
     {% if result.financials %}
-    <div class="card full-width" style="margin-bottom:1.25rem;">
-      <h2>Financial History</h2>
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Year</th>
-              <th>Revenue (M)</th>
-              <th>Net Income (M)</th>
-              <th>EPS</th>
-              <th>DPS</th>
-              <th>ROE</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for f in result.financials %}
-            <tr>
-              <td><strong>{{ f.year }}</strong></td>
-              <td>{% if f.revenue %}₱{{ '{:,.0f}'.format(f.revenue) }}{% else %}—{% endif %}</td>
-              <td>{% if f.net_income %}₱{{ '{:,.0f}'.format(f.net_income) }}{% else %}—{% endif %}</td>
-              <td>{% if f.eps %}{{ '%.2f'|format(f.eps) }}{% else %}—{% endif %}</td>
-              <td>{% if f.dps %}{{ '%.2f'|format(f.dps) }}{% else %}—{% endif %}</td>
-              <td>{% if f.roe %}{{ f.roe }}%{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
+      <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Financial History</h2>
+      <div class="overflow-x-auto">
+        <div class="overflow-hidden rounded-lg border border-gray-200">
+          <table class="w-full text-sm">
+            <thead>
+              <tr style="background:#0D1F3C;">
+                <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Year</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">Revenue (M)</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">Net Income (M)</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">EPS</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">DPS</th>
+                <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">ROE</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              {% for f in result.financials %}
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-3 py-2.5 font-bold" style="color:#0D1F3C;">{{ f.year }}</td>
+                <td class="px-3 py-2.5 text-right text-gray-600">{% if f.revenue %}₱{{ '{:,.0f}'.format(f.revenue) }}{% else %}—{% endif %}</td>
+                <td class="px-3 py-2.5 text-right text-gray-600">{% if f.net_income %}₱{{ '{:,.0f}'.format(f.net_income) }}{% else %}—{% endif %}</td>
+                <td class="px-3 py-2.5 text-right text-gray-600">{% if f.eps %}{{ '%.2f'|format(f.eps) }}{% else %}—{% endif %}</td>
+                <td class="px-3 py-2.5 text-right text-gray-600">{% if f.dps %}{{ '%.2f'|format(f.dps) }}{% else %}—{% endif %}</td>
+                <td class="px-3 py-2.5 text-right text-gray-600">{% if f.roe %}{{ f.roe }}%{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
     {% endif %}
 
-    <!-- ── News Sentiment ── -->
+    <!-- News Sentiment -->
     {% if result.sentiment %}
       {% set snt = result.sentiment %}
       {% if snt.score >= 0.3 %}{% set snt_col = '#27AE60' %}{% set snt_bg = '#F0FBF4' %}
       {% elif snt.score <= -0.3 %}{% set snt_col = '#E74C3C' %}{% set snt_bg = '#FEF0EE' %}
       {% else %}{% set snt_col = '#F39C12' %}{% set snt_bg = '#FFFBF0' %}{% endif %}
-      <div class="card full-width" style="margin-bottom:1.25rem;border-left:4px solid {{ snt_col }};">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:0.75rem;">
-          <h2 style="margin:0;">News Sentiment</h2>
-          <div style="display:flex;align-items:center;gap:0.6rem;">
-            <span style="background:{{ snt_bg }};color:{{ snt_col }};border:1px solid {{ snt_col }};
-                         border-radius:12px;padding:0.2rem 0.7rem;font-size:0.8rem;font-weight:700;">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4" style="border-left:4px solid {{ snt_col }};">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-widest" style="color:#0D1F3C;">News Sentiment</h2>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2 py-0.5 rounded-full text-xs font-bold border"
+                  style="background:{{ snt_bg }};color:{{ snt_col }};border-color:{{ snt_col }};">
               {{ snt.category | upper }}
             </span>
-            <span style="font-size:0.78rem;color:var(--text-muted);">Score: {{ '%.2f'|format(snt.score) }}</span>
-            {% if snt.opportunistic_flag %}<span class="badge badge-active" style="font-size:0.72rem;">OPPORTUNITY FLAG</span>{% endif %}
-            {% if snt.risk_flag %}<span class="badge badge-expired" style="font-size:0.72rem;">RISK FLAG</span>{% endif %}
-            <span style="font-size:0.75rem;color:var(--text-muted);">as of {{ snt.date }}</span>
+            <span class="text-xs text-gray-400">Score: {{ '%.2f'|format(snt.score) }}</span>
+            {% if snt.opportunistic_flag %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">OPPORTUNITY FLAG</span>
+            {% endif %}
+            {% if snt.risk_flag %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">RISK FLAG</span>
+            {% endif %}
+            <span class="text-xs text-gray-400">as of {{ snt.date }}</span>
           </div>
         </div>
         {% if snt.summary %}
-          <p style="margin:0 0 0.6rem;color:var(--text-dark);font-size:0.88rem;line-height:1.5;">{{ snt.summary }}</p>
+          <p class="text-sm text-gray-700 leading-relaxed mb-2">{{ snt.summary }}</p>
         {% endif %}
         {% if snt.key_events %}
-          <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;">
+          <div class="flex flex-wrap gap-1 mb-2">
             {% for ev in snt.key_events %}
-              <span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;
-                           padding:0.2rem 0.6rem;font-size:0.78rem;color:var(--text-dark);">{{ ev }}</span>
+              <span class="text-xs bg-gray-50 border border-gray-200 rounded px-2 py-0.5 text-gray-700">{{ ev }}</span>
             {% endfor %}
           </div>
         {% endif %}
         {% if snt.headlines %}
-          <details style="margin-top:0.25rem;">
-            <summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted);">
+          <details class="mt-1">
+            <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-600">
               {{ snt.headlines|length }} headline(s) analysed
             </summary>
-            <ul style="margin:0.4rem 0 0 1rem;padding:0;font-size:0.78rem;color:var(--text-muted);line-height:1.7;">
+            <ul class="mt-1 ml-4 text-xs text-gray-400 leading-relaxed list-disc">
               {% for h in snt.headlines %}<li>{{ h }}</li>{% endfor %}
             </ul>
           </details>
@@ -251,14 +263,15 @@
       </div>
     {% endif %}
 
-    <!-- ── Disclaimer ── -->
-    <div class="banner banner-info" style="font-size:0.8rem;">
+    <!-- Disclaimer -->
+    <div class="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-700">
       For research purposes only. Scores are mathematical outputs from historical data — not investment advice.
       Intrinsic value is an estimate, not a price target.
     </div>
 
   {% endif %}
 {% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -287,8 +300,8 @@ function fetchSuggestions(q) {
                      display:flex;gap:0.6rem;align-items:baseline;"
               onmousedown="selectItem('${it.ticker}')"
               onmouseenter="highlightItem(${i})">
-          <span style="font-weight:700;color:var(--navy);min-width:52px;">${it.ticker}</span>
-          <span style="color:var(--text-muted);font-size:0.82rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${it.name}</span>
+          <span style="font-weight:700;color:#0D1F3C;min-width:52px;">${it.ticker}</span>
+          <span style="color:#6B7280;font-size:0.82rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${it.name}</span>
         </div>`
       ).join('');
       dd.style.display = 'block';
@@ -298,7 +311,7 @@ function fetchSuggestions(q) {
 function highlightItem(i) {
   _acIndex = i;
   document.querySelectorAll('.ac-item').forEach((el, j) => {
-    el.style.background = j === i ? 'var(--bg)' : '';
+    el.style.background = j === i ? '#F9FAFB' : '';
   });
 }
 
@@ -330,7 +343,6 @@ function onSearchKey(e) {
   }
 }
 
-// Hide dropdown when clicking elsewhere
 document.addEventListener('click', e => {
   if (!e.target.closest('#stock-search') && !e.target.closest('#search-dropdown'))
     hideDropdown();

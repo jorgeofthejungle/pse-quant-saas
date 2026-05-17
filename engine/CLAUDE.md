@@ -73,8 +73,23 @@ Returns `None` silently if `ANTHROPIC_API_KEY` is missing.
 ## engine/validator.py — check_price_staleness()
 - `check_price_staleness(stock)` → `{price_date, days_stale, is_stale, is_critical, warning}`
 - Warn threshold: `PRICE_STALENESS_WARN_DAYS = 5` days; critical: `PRICE_STALENESS_ERROR_DAYS = 30` days
-- DB fallback: queries `SELECT MAX(date) FROM prices WHERE ticker = ?` if `price_date` not in stock dict
+- DB fallback: queries `SELECT MAX(date) FROM prices WHERE ticker = %s` if `price_date` not in stock dict
 - Integrated into `validate_stock()` return dict as `'price_staleness'` key
+
+## engine/conglomerate_scorer.py
+Replaces flat 20% conglomerate IV discount with a calculated discount (5–25%) based on segment quality, diversity, and transparency. Blends per-segment health scores with parent v2 score for a more accurate overall rating.
+
+## engine/conglomerate_autofill.py / engine/conglomerate_map.py
+Maintain the holding-company segment data store used by `conglomerate_scorer.py`.
+
+## engine/feedback_corrections.py
+Called by the scorer at runtime to apply feedback weight overrides from the `settings` table.
+
+## engine/scorer_explanations.py (facade)
+Re-exports all `explain_*()` functions from `scorer_explanations_dividend.py` and `scorer_explanations_value.py`. Used by PDF generation to produce plain-English score breakdowns.
+
+## engine/sector_stats.py
+Computes dynamic sector median PE, PB, and EV/EBITDA from all stocks. Passed as `sector_medians` to `score_health()`.
 
 ## engine/validator.py — hard-block thresholds
 - `BLOCK_THRESHOLDS`: `'roe': ('<', -50.0, ...)` — ROE < -50% is a hard block (not warn)

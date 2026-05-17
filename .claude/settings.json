@@ -3,7 +3,12 @@
     "allow": [
       "Bash(py -c \":*)",
       "Bash(py -u -c \":*)",
-      "Bash(npx tsc --noEmit *)"
+      "Bash(npx tsc --noEmit *)",
+      "Bash(.venv/bin/python tests/test_weekly_scrape_alert.py *)",
+      "Bash(.venv/bin/python tests/test_ops_alert.py *)",
+      "Bash(.venv/bin/python tests/test_pipeline_checkpoints.py *)",
+      "Bash(.venv/bin/python tests/test_daily_score_alerts.py *)",
+      "Bash(.venv/bin/python tests/test_scheduler.py *)"
     ]
   },
   "sandbox": {

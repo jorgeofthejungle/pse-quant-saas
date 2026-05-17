@@ -27,6 +27,7 @@ from config import (
     PH_RISK_FREE_RATE, EQUITY_RISK_PREMIUM, DDM_MAX_GROWTH_RATE,
     DEFAULT_TARGET_PE, CONGLOMERATE_DISCOUNT,
     MOS_SIZE_PREMIUM, MOS_SECTOR_PREMIUM, MOS_SECTOR_PREMIUM_DEFAULT,
+    IV_WEIGHTS, IV_WEIGHTS_DIVIDEND, IV_WEIGHTS_VALUE,
 )
 
 # Default required rate of return (derived from config constants)
@@ -318,23 +319,30 @@ def calc_two_stage_ddm(
     )
 
 
+_IV_WEIGHTS_BY_PORTFOLIO = {
+    'dividend': IV_WEIGHTS_DIVIDEND,
+    'value':    IV_WEIGHTS_VALUE,
+}
+
+
 def calc_hybrid_intrinsic(
     ddm_value: float,
     eps_pe_value: float,
     dcf_value: float,
-    weights: tuple = (0.40, 0.40, 0.20),
+    portfolio_type: str = 'unified',
 ):
     """
     Hybrid Intrinsic Value — weighted blend of all three methods.
 
-    Default weights: DDM 40%, EPS-PE 40%, DCF 20%.
-    Pass custom weights tuple (ddm_w, eps_w, dcf_w) per portfolio:
-      dividend: (0.50, 0.25, 0.25) — income focus
-      value:    (0.20, 0.40, 0.40) — fundamentals focus
+    Weights are selected from config.py by portfolio_type:
+      'dividend' → IV_WEIGHTS_DIVIDEND (0.50, 0.25, 0.25) — DDM dominates
+      'value'    → IV_WEIGHTS_VALUE    (0.20, 0.40, 0.40) — EPS-PE + DCF dominate
+      'unified'  → IV_WEIGHTS          (0.30, 0.35, 0.35) — balanced default
 
     If a method returns None (not applicable),
-    the weight is redistributed to available methods.
+    its weight is redistributed to available methods.
     """
+    weights = _IV_WEIGHTS_BY_PORTFOLIO.get(portfolio_type, IV_WEIGHTS)
     ddm_w, eps_w, dcf_w = weights
     values  = []
     blend_w = []
@@ -363,6 +371,17 @@ def calc_hybrid_intrinsic(
     return round(intrinsic_value, 2), f"Hybrid blend of {len(values)} method(s)"
 
 
+def _get_base_rate() -> float:
+    """Risk-free + equity premium from DB settings, falling back to config."""
+    try:
+        from db.db_settings import get_setting
+        rfr = float(get_setting('ph_risk_free_rate',  PH_RISK_FREE_RATE))
+        erp = float(get_setting('equity_risk_premium', EQUITY_RISK_PREMIUM))
+        return rfr + erp
+    except Exception:
+        return PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM
+
+
 def calc_required_return(market_cap: float | None, sector: str | None) -> float:
     """
     Computes the risk-adjusted required return for DCF/DDM valuation.
@@ -377,7 +396,7 @@ def calc_required_return(market_cap: float | None, sector: str | None) -> float:
     Sector premiums range 0% (Banking/Utilities) to 2% (Mining and Oil).
     Unrecognised sectors use MOS_SECTOR_PREMIUM_DEFAULT (1.0%).
     """
-    base = PH_RISK_FREE_RATE + EQUITY_RISK_PREMIUM  # 11.5%
+    base = _get_base_rate()
 
     # Size premium
     if market_cap is None or market_cap <= 0:
@@ -442,13 +461,16 @@ def enrich_mos(stocks: list) -> list:
     return stocks
 
 
-def calc_mos_price_v2(stock: dict) -> dict:
+def calc_mos_price_v2(stock: dict, portfolio_type: str = 'unified') -> dict:
     """
     Compute intrinsic value and MoS using risk-adjusted discount rate.
 
     Unlike calc_mos_price() which takes an already-computed intrinsic value,
     this function runs all three valuation methods (DDM, EPS-PE, DCF) using
     a discount rate that reflects the stock's size and sector risk.
+
+    Args:
+        portfolio_type: 'dividend' | 'value' | 'unified' — selects IV blend weights
 
     Returns:
         {
@@ -481,7 +503,7 @@ def calc_mos_price_v2(stock: dict) -> dict:
     )
     dcf = dcf_result[0] if isinstance(dcf_result, tuple) else dcf_result
 
-    intrinsic_result = calc_hybrid_intrinsic(ddm, eps_pe, dcf)
+    intrinsic_result = calc_hybrid_intrinsic(ddm, eps_pe, dcf, portfolio_type=portfolio_type)
     intrinsic = intrinsic_result[0] if isinstance(intrinsic_result, tuple) else intrinsic_result
 
     if intrinsic and stock.get('current_price'):

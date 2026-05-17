@@ -2,9 +2,15 @@
 > See root CLAUDE.md for system rules, stock data format, DB schema, and architecture.
 > This file covers reports-specific implementation details only.
 
-All PDF generation uses ReportLab. PDFs save to Desktop (`C:\Users\Josh\Desktop\`) because Python cannot write to Documents/ — see root CLAUDE.md Section 15.
+All PDF generation uses ReportLab. PDFs save to `~/Desktop/` (resolved via `os.path.expanduser`; in WSL2 this is `/home/jorgeofthejungle/Desktop/`).
 
 ---
+
+## reports/pdf_portfolio_sections.py
+Renders the per-portfolio (Dividend / Value) ranked stock sections within the PDF.
+
+## reports/pdf_sentiment.py
+Renders the sentiment panel when `sentiment` data is present on ranked stocks.
 
 ## reports/pdf_generator.py (facade)
 Function: `generate_report(portfolio_type, ranked_stocks, output_path, total_stocks_screened)`

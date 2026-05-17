@@ -100,8 +100,8 @@ def _score_dps(stock: dict, _group: str) -> float | None:
 
 def _score_direction(stock: dict, _group: str) -> float | None:
     """
-    % of years where all available metrics improved together.
-    Uses Revenue and EPS as the two core universal signals.
+    Directional alignment score across Revenue and EPS.
+    1.0 credit when both improve, 0.5 when one improves, 0.0 when neither.
     Returns None if insufficient data.
     """
     rev_series = stock.get('revenue_5y') or []
@@ -114,19 +114,21 @@ def _score_direction(stock: dict, _group: str) -> float | None:
     if years < 3:
         return None
 
-    # How many years did both rev AND eps improve?
-    both_pos = 0
-    total    = 0
+    # Credit: 1.0 if both metrics up, 0.5 if one metric up, 0.0 if neither
+    credit = 0.0
+    total  = 0
     for i in range(min(years - 1, 4)):
         rev_up = (rev_valid[i] - rev_valid[i + 1]) / abs(rev_valid[i + 1]) > 0 if rev_valid[i + 1] else False
         eps_up = (eps_valid[i] - eps_valid[i + 1]) / abs(eps_valid[i + 1]) > 0 if eps_valid[i + 1] else False
         total += 1
         if rev_up and eps_up:
-            both_pos += 1
+            credit += 1.0
+        elif rev_up or eps_up:
+            credit += 0.5
 
     if total == 0:
         return None
-    return (both_pos / total) * 100
+    return (credit / total) * 100
 
 
 # ── Sub-score dispatcher ──────────────────────────────────

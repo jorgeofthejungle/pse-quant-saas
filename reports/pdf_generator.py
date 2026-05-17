@@ -52,17 +52,17 @@ def _draw_page_frame(canv, doc):
 
     # "Stockpilot" white text
     canv.setFillColor(WHITE)
-    canv.setFont('Helvetica-Bold', 8)
+    canv.setFont('Inter-Bold', 8)
     canv.drawString(text_x, PAGE_H - bar_h + 2.2 * mm, 'Stockpilot')
     # "PHILIPPINES" gold text
-    name_w = canv.stringWidth('Stockpilot', 'Helvetica-Bold', 8)
+    name_w = canv.stringWidth('Stockpilot', 'Inter-Bold', 8)
     canv.setFillColor(GOLD)
-    canv.setFont('Helvetica-Bold', 6)
+    canv.setFont('Inter-Bold', 6)
     canv.drawString(text_x + name_w + 2 * mm, PAGE_H - bar_h + 2.8 * mm, 'PHILIPPINES')
 
     # Page number on the right
     canv.setFillColor(WHITE)
-    canv.setFont('Helvetica', 7)
+    canv.setFont('Inter-Regular', 7)
     page_str = f'Page {doc.page}'
     canv.drawRightString(PAGE_W - RIGHT_MARGIN, PAGE_H - bar_h + 2.5 * mm, page_str)
 
@@ -78,7 +78,7 @@ def _draw_page_frame(canv, doc):
     canv.line(LEFT_MARGIN, footer_y, PAGE_W - RIGHT_MARGIN, footer_y)
 
     canv.setFillColor(DARK_GREY)
-    canv.setFont('Helvetica-Oblique', 6.5)
+    canv.setFont('Inter-Italic', 6.5)
     canv.drawCentredString(
         PAGE_W / 2, footer_y - 3.5 * mm,
         'For Research and Educational Purposes Only. Not Investment Advice. '
@@ -200,15 +200,16 @@ def generate_report(
             elements.append(PageBreak())
         first_detail = False
         elements += build_section_header(pt)
+        detail_stocks = stocks[:10]
         elements.append(Paragraph(
-            f'DETAILED STOCK ANALYSIS — ALL {len(stocks)} QUALIFYING STOCKS',
+            f'DETAILED STOCK ANALYSIS — TOP {len(detail_stocks)} STOCKS',
             styles['SectionHeader']
         ))
         elements.append(HRFlowable(
             width=CONTENT_WIDTH, thickness=2,
             color=GOLD, spaceAfter=8,
         ))
-        for i, stock in enumerate(stocks):
+        for i, stock in enumerate(detail_stocks):
             if i > 0:
                 elements.append(CondPageBreak(180 * mm))
             elements += build_stock_detail(styles, stock, i + 1, pt)

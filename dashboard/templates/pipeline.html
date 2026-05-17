@@ -2,180 +2,232 @@
 {% block title %}Pipeline{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Pipeline</h1>
-  <span class="timestamp">{{ now }}</span>
+
+<!-- Page header -->
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold" style="color:#0D1F3C;">Pipeline Control</h1>
+  <span class="text-sm text-gray-500">{{ now }}</span>
 </div>
 
-<!-- Job Status Banner -->
-<div id="job-banner" class="banner {{ 'banner-info' if job.running else 'banner-hidden' }}">
+<!-- Job running banner -->
+<div id="job-banner" class="banner {{ 'banner-info' if job.running else 'banner-hidden' }}" style="margin-bottom:1rem;">
   <span id="job-spinner" class="spinner"></span>
   <span id="job-msg">
-    {% if job.running %}
-      Running {{ job.type }} job (started {{ job.started }})...
-    {% endif %}
+    {% if job.running %}Running {{ job.type }} job (started {{ job.started }})...{% endif %}
   </span>
 </div>
 
-<!-- Scheduler Control -->
-<div class="card full-width" style="margin-bottom:1.25rem;border-top:3px solid {% if scheduler.running %}var(--green){% else %}var(--text-muted){% endif %};">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
-    <div>
-      <h2 style="margin-bottom:0.25rem;">Scheduler</h2>
-      <div style="font-size:0.85rem;color:var(--text-muted);">
-        Runs all jobs automatically on schedule — daily scoring, alerts, disclosure monitor, and weekly scrape.
-      </div>
+<!-- ── Status cards row ───────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem;">
+
+  <!-- Scheduler -->
+  <div style="background:#fff;border-radius:8px;padding:1rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border-top:3px solid {% if scheduler.running %}#27AE60{% else %}#E74C3C{% endif %};">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:#7F8C8D;margin-bottom:0.5rem;">Scheduler</div>
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+      <span class="status-dot {% if not scheduler.running %}status-error{% endif %}" id="sched-dot"></span>
+      <span style="font-weight:600;font-size:0.9rem;" id="sched-status-text">
+        {% if scheduler.running %}Running (PID {{ scheduler.pid }}){% else %}Stopped{% endif %}
+      </span>
     </div>
-    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;">
-        <span class="status-dot {% if not scheduler.running %}status-error{% endif %}" id="sched-dot"></span>
-        <span id="sched-status-text">{% if scheduler.running %}Running (PID {{ scheduler.pid }}){% else %}Stopped{% endif %}</span>
-      </div>
-      <div id="sched-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
-      <button class="btn {% if scheduler.running %}btn-danger{% else %}btn-primary{% endif %}"
-              id="btn-sched"
-              onclick="controlScheduler('{% if scheduler.running %}stop{% else %}start{% endif %}')">
-        {% if scheduler.running %}Stop Scheduler{% else %}Start Scheduler{% endif %}
-      </button>
+  </div>
+
+  <!-- Discord Bot -->
+  <div style="background:#fff;border-radius:8px;padding:1rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border-top:3px solid {% if bot.running %}#7289DA{% else %}#BDC3C7{% endif %};">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:#7F8C8D;margin-bottom:0.5rem;">Discord Bot</div>
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+      <span class="status-dot {% if not bot.running %}status-error{% endif %}" id="bot-dot"></span>
+      <span style="font-weight:600;font-size:0.9rem;" id="bot-status-text">
+        {% if bot.running %}Running (PID {{ bot.pid }}){% else %}Stopped{% endif %}
+      </span>
     </div>
+  </div>
+
+  <!-- Last run -->
+  <div style="background:#fff;border-radius:8px;padding:1rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border-top:3px solid #0D1F3C;">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:#7F8C8D;margin-bottom:0.5rem;">Last Run</div>
+    <div style="font-weight:600;font-size:0.9rem;" id="last-run-display">—</div>
+  </div>
+
+  <!-- Held PDF -->
+  <div style="background:#fff;border-radius:8px;padding:1rem 1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);border-top:3px solid #F0A500;">
+    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:#7F8C8D;margin-bottom:0.5rem;">Held PDF</div>
+    <div style="font-weight:600;font-size:0.9rem;">
+      {% if held_pdf %}
+        <span style="color:#E67E22;">&#9679; Held</span>
+      {% else %}
+        <span style="color:#27AE60;">&#9679; Clear</span>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Primary actions ────────────────────────────────────────── -->
+<div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1.5rem;">
+  <h2 style="font-size:0.9rem;font-weight:700;color:#0D1F3C;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:1rem;padding-bottom:0.5rem;border-bottom:2px solid #F4F6F9;">Actions</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+
+    <!-- Scheduler toggle -->
+    <div id="sched-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
+    <button class="btn {% if scheduler.running %}btn-danger{% else %}btn-primary{% endif %}"
+            id="btn-sched"
+            onclick="controlScheduler('{% if scheduler.running %}stop{% else %}start{% endif %}')">
+      {% if scheduler.running %}Stop Scheduler{% else %}Start Scheduler{% endif %}
+    </button>
+
+    <!-- Bot toggle -->
+    <div id="bot-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
+    <button class="btn {% if bot.running %}btn-danger{% else %}btn-secondary{% endif %}"
+            id="btn-bot"
+            onclick="controlBot('{% if bot.running %}stop{% else %}start{% endif %}')">
+      {% if bot.running %}Stop Bot{% else %}Start Bot{% endif %}
+    </button>
+
+    <!-- Approve PDF (only shown when held) -->
+    {% if held_pdf %}
+    <a href="{{ url_for('pipeline.approve_pdf') }}"
+       style="display:inline-block;padding:0.45rem 1rem;border-radius:6px;background:#F0A500;color:#0D1F3C;font-weight:700;font-size:0.875rem;text-decoration:none;">
+      Approve &amp; Send PDF
+    </a>
+    {% endif %}
+
+    <div style="flex:1;"></div><!-- spacer -->
+
+    <!-- Run scoring -->
+    <div id="scoring-result" class="result-box" style="display:none;margin:0;"></div>
+    <button class="btn btn-primary" id="btn-scoring" onclick="triggerJob('scoring')">Run Scoring Now</button>
+
+    <!-- Run alerts -->
+    <div id="alerts-result" class="result-box" style="display:none;margin:0;"></div>
+    <button class="btn btn-secondary" id="btn-alerts" onclick="triggerJob('alerts')">Run Alert Check</button>
+
   </div>
 </div>
 
-<!-- Discord Bot Control -->
-<div class="card full-width" style="margin-bottom:1.25rem;border-top:3px solid {% if bot.running %}#7289DA{% else %}var(--text-muted){% endif %};">
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
-    <div>
-      <h2 style="margin-bottom:0.25rem;">Discord Bot</h2>
-      <div style="font-size:0.85rem;color:var(--text-muted);">
-        Slash commands for members: <code>/stock &lt;ticker&gt;</code> · <code>/top10</code> · <code>/help</code>
-        <span style="margin-left:0.75rem;">Requires <code>DISCORD_BOT_TOKEN</code> in .env</span>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.9rem;">
-        <span class="status-dot {% if not bot.running %}status-error{% endif %}" id="bot-dot"></span>
-        <span id="bot-status-text">{% if bot.running %}Running (PID {{ bot.pid }}){% else %}Stopped{% endif %}</span>
-      </div>
-      <div id="bot-result" class="result-box" style="display:none;margin:0;padding:0.3rem 0.75rem;"></div>
-      <button class="btn {% if bot.running %}btn-danger{% else %}btn-primary{% endif %}"
-              id="btn-bot"
-              onclick="controlBot('{% if bot.running %}stop{% else %}start{% endif %}')">
-        {% if bot.running %}Stop Bot{% else %}Start Bot{% endif %}
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Scheduler Health -->
-<div class="card full-width" id="sched-health-card" style="margin-bottom:1.25rem;">
+<!-- ── Scheduler health ───────────────────────────────────────── -->
+<div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1.5rem;" id="sched-health-card">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
-    <h2 style="margin-bottom:0;">Scheduler Health</h2>
-    <span style="font-size:0.8rem;color:var(--text-muted);" id="sched-health-updated">Loading...</span>
+    <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin:0;">Scheduler Health</h2>
+    <span style="font-size:0.8rem;color:#7F8C8D;" id="sched-health-updated">Loading...</span>
   </div>
-  <table class="data-table" id="sched-health-table">
-    <thead>
-      <tr>
-        <th>Job</th>
-        <th>Last Run</th>
-        <th>Hours Ago</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody id="sched-health-body">
-      <tr><td colspan="4" style="color:var(--text-muted);text-align:center;">Loading...</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- Run Controls -->
-<div class="card-row">
-  <div class="card">
-    <h2>Scoring Pipeline</h2>
-    <p>Filters and scores all stocks. Generates PDF report and sends to Discord if rankings changed.</p>
-    <div id="scoring-result" class="result-box" style="display:none"></div>
-    <button class="btn btn-primary" id="btn-scoring" onclick="triggerJob('scoring')">
-      Run Scoring Now
-    </button>
-    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 17:30 PHT</span>
-  </div>
-
-  <div class="card">
-    <h2>Alert Check</h2>
-    <p>Checks for new dividend declarations, earnings filings, and
-       stocks trading at or below their Margin of Safety price.</p>
-    <div id="alerts-result" class="result-box" style="display:none"></div>
-    <button class="btn btn-secondary" id="btn-alerts" onclick="triggerJob('alerts')">
-      Run Alert Check Now
-    </button>
-    <span class="text-muted" style="margin-left:1rem">Scheduled: Weekdays 09:00 PHT</span>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm" id="sched-health-table">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Job</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Last Run</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Hours Ago</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Status</th>
+        </tr>
+      </thead>
+      <tbody id="sched-health-body" class="divide-y divide-gray-100">
+        <tr><td colspan="4" class="px-3 py-8 text-center text-gray-400">Loading...</td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
 
-<!-- Full Scrape -->
-<div class="card full-width">
-  <h2>Full Data Scrape</h2>
-  <p>Scrapes all financial data from PSE Edge. Run this to populate the database on a fresh deployment. Takes 30-90 minutes.</p>
-  <div id="scrape-result" class="result-box" style="display:none"></div>
-  <div id="scrape-progress" style="display:none; margin-top:0.5rem; font-family:monospace; color:#aaa;"></div>
-  <button class="btn btn-warning" id="btn-scrape" onclick="triggerScrape()">
-    Run Full Scrape Now
-  </button>
-  <span class="text-muted" style="margin-left:1rem">Scheduled: Sundays 22:00 PHT</span>
+<!-- ── Maintenance actions ────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-bottom:1.5rem;">
+
+  <!-- Full scrape -->
+  <div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);">
+    <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:0.5rem;">Full Data Scrape</h2>
+    <p style="font-size:0.85rem;color:#7F8C8D;margin-bottom:1rem;">Scrapes all financial data from PSE Edge. Takes 30–90 minutes.</p>
+    <div id="scrape-result" class="result-box" style="display:none;"></div>
+    <div id="scrape-progress" style="display:none;margin-top:0.5rem;font-family:monospace;color:#aaa;font-size:0.8rem;"></div>
+    <button class="btn btn-warning" id="btn-scrape" onclick="triggerScrape()">Run Full Scrape</button>
+    <span style="margin-left:0.75rem;font-size:0.8rem;color:#7F8C8D;">Sundays 22:00 PHT</span>
+  </div>
+
+  <!-- Historical backfill -->
+  <div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);">
+    <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:0.5rem;">Historical Backfill</h2>
+    <p style="font-size:0.85rem;color:#7F8C8D;margin-bottom:1rem;">Fetches 2018–2023 history from PSE Edge. Takes 2–4 hours.</p>
+    <div id="backfill-result" class="result-box" style="display:none;"></div>
+    <div id="backfill-progress" style="display:none;margin-top:0.5rem;font-family:monospace;color:#aaa;font-size:0.8rem;"></div>
+    <button class="btn btn-secondary" id="btn-backfill" onclick="triggerBackfill()">Run Backfill</button>
+  </div>
+
+  <!-- Clean bad DPS -->
+  <div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);">
+    <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:0.5rem;">Clean Bad DPS</h2>
+    <p style="font-size:0.85rem;color:#7F8C8D;margin-bottom:1rem;">NULLs implausibly high dividend yields (&gt;20% non-REIT, &gt;30% REIT).</p>
+    <div id="clean-dps-result" class="result-box" style="display:none;"></div>
+    <button class="btn btn-secondary" id="btn-clean-dps" onclick="triggerCleanDps()">Clean Bad DPS</button>
+  </div>
+
+  <!-- Data Quality Audit -->
+  <div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);">
+    <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:0.5rem;">Data Quality Audit</h2>
+    <p style="font-size:0.85rem;color:#7F8C8D;margin-bottom:1rem;">Checks all financials for implausible values, unit errors, and missing data.</p>
+    <div id="audit-result" class="result-box" style="display:none;"></div>
+    <button class="btn btn-secondary" id="btn-audit" onclick="triggerAudit()">Run Audit</button>
+  </div>
+
 </div>
 
-<!-- Clean Bad DPS -->
-<div class="card full-width">
-  <h2>Clean Bad DPS</h2>
-  <p>NULLs out DPS values that imply implausibly high dividend yields (&gt;20% non-REIT, &gt;30% REIT). Run this after a scrape or DB sync.</p>
-  <div id="clean-dps-result" class="result-box" style="display:none"></div>
-  <button class="btn btn-secondary" id="btn-clean-dps" onclick="triggerCleanDps()">
-    Clean Bad DPS
-  </button>
+<!-- Audit issues table (hidden until audit runs) -->
+<div id="audit-issues-card" style="display:none;background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1.5rem;">
+  <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:1rem;padding-bottom:0.5rem;border-bottom:2px solid #F4F6F9;">Audit Issues</h2>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Ticker</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Year</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Severity</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Check</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Detail</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Suggested Action</th>
+        </tr>
+      </thead>
+      <tbody id="audit-issues-body" class="divide-y divide-gray-100"></tbody>
+    </table>
+  </div>
 </div>
 
-<!-- Historical Backfill -->
-<div class="card full-width">
-  <h2>Historical Backfill (2018–2023)</h2>
-  <p>Fetches multi-year financial history from PSE Edge. Run this once on a fresh deployment so stocks have enough data to pass the 2-year minimum filter. Takes 2-4 hours.</p>
-  <div id="backfill-result" class="result-box" style="display:none"></div>
-  <div id="backfill-progress" style="display:none; margin-top:0.5rem; font-family:monospace; color:#aaa;"></div>
-  <button class="btn btn-secondary" id="btn-backfill" onclick="triggerBackfill()">
-    Run Historical Backfill
-  </button>
-</div>
-
-<!-- Latest Rankings -->
-<div class="card full-width">
-  <h2>Latest Rankings</h2>
+<!-- ── Latest rankings snapshot ──────────────────────────────── -->
+<div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1.5rem;">
+  <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:1rem;padding-bottom:0.5rem;border-bottom:2px solid #F4F6F9;">Latest Rankings</h2>
   {% if rankings.get('unified') %}
-  <table class="data-table">
-    <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
-    <tbody>
-      {% for s in rankings['unified'] %}
-      <tr>
-        <td>{{ loop.index }}</td>
-        <td><strong>{{ s.ticker }}</strong></td>
-        <td>{{ s.score }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">#</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Ticker</th>
+          <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">Score</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for s in rankings['unified'] %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-3 py-2.5 text-gray-400">{{ loop.index }}</td>
+          <td class="px-3 py-2.5 font-bold" style="color:#0D1F3C;">{{ s.ticker }}</td>
+          <td class="px-3 py-2.5 text-right text-gray-600">{{ s.score }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-  <p class="text-muted">No data — run pipeline first.</p>
+  <p style="color:#7F8C8D;font-size:0.875rem;">No data — run pipeline first.</p>
   {% endif %}
 </div>
 
-<!-- Recent Run Dates -->
+<!-- ── Recent runs ────────────────────────────────────────────── -->
 {% if recent_runs %}
-<div class="card full-width">
-  <h2>Recent Runs</h2>
-  <div style="display:flex; gap:0.75rem; flex-wrap:wrap">
+<div style="background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1.5rem;">
+  <h2 style="font-size:1rem;font-weight:600;color:#0D1F3C;margin-bottom:0.75rem;">Recent Runs</h2>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
     {% for d in recent_runs %}
     <span class="ticker-badge">{{ d }}</span>
     {% endfor %}
   </div>
 </div>
 {% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -199,7 +251,7 @@ function triggerBackfill() {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
         btn.disabled = false;
-        btn.textContent = 'Run Historical Backfill';
+        btn.textContent = 'Run Backfill';
       }
     });
 }
@@ -215,7 +267,7 @@ function pollBackfillProgress() {
         if (d.progress && d.progress.startsWith('Done')) {
           clearInterval(interval);
           btn.disabled = false;
-          btn.textContent = 'Run Historical Backfill';
+          btn.textContent = 'Run Backfill';
         }
       });
   }, 5000);
@@ -240,7 +292,7 @@ function triggerScrape() {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
         btn.disabled = false;
-        btn.textContent = 'Run Full Scrape Now';
+        btn.textContent = 'Run Full Scrape';
       }
     });
 }
@@ -278,7 +330,7 @@ function triggerJob(type) {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = d.message;
         btn.disabled = false;
-        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check Now';
+        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check';
       }
     });
 }
@@ -290,7 +342,7 @@ function pollJobStatus(type, btn, resultEl) {
         clearInterval(interval);
         showJobBanner(false, '');
         btn.disabled = false;
-        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check Now';
+        btn.textContent = type === 'scoring' ? 'Run Scoring Now' : 'Run Alert Check';
         resultEl.style.display = 'block';
         if (d.error) {
           resultEl.className = 'result-box result-error';
@@ -299,6 +351,8 @@ function pollJobStatus(type, btn, resultEl) {
           resultEl.className = 'result-box result-success';
           resultEl.textContent = d.result + ' (finished ' + d.finished + ')';
         }
+        // Update last run display
+        if (d.finished) document.getElementById('last-run-display').textContent = d.finished;
       }
     });
   }, 3000);
@@ -315,17 +369,55 @@ function triggerCleanDps() {
       resultEl.style.display = 'block';
       if (d.ok) {
         resultEl.className = 'result-box result-success';
-        if (d.nulled > 0) {
-          resultEl.textContent = 'Cleaned ' + d.nulled + ' bad DPS row(s): ' + d.tickers_affected.join(', ');
-        } else {
-          resultEl.textContent = 'No bad DPS values found. Data is clean.';
-        }
+        resultEl.textContent = d.nulled > 0
+          ? 'Cleaned ' + d.nulled + ' bad DPS row(s): ' + d.tickers_affected.join(', ')
+          : 'No bad DPS values found. Data is clean.';
       } else {
         resultEl.className = 'result-box result-error';
         resultEl.textContent = 'Error: ' + d.error;
       }
       btn.disabled = false;
       btn.textContent = 'Clean Bad DPS';
+    });
+}
+
+function triggerAudit() {
+  const btn      = document.getElementById('btn-audit');
+  const resultEl = document.getElementById('audit-result');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  fetch('/pipeline/audit', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      resultEl.style.display = 'block';
+      if (d.ok) {
+        const count = d.count;
+        if (count === 0) {
+          resultEl.className = 'result-box result-success';
+          resultEl.textContent = 'No issues found — data looks clean.';
+          document.getElementById('audit-issues-card').style.display = 'none';
+        } else {
+          resultEl.className = 'result-box result-error';
+          resultEl.textContent = count + ' issue(s) found.';
+          const severityColor = {'ERROR': '#E74C3C', 'WARN': '#F0A500', 'INFO': '#7F8C8D'};
+          const rows = d.issues.map(i => `
+            <tr class="hover:bg-gray-50">
+              <td class="px-3 py-2.5 font-bold" style="color:#0D1F3C;">${i.ticker}</td>
+              <td class="px-3 py-2.5">${i.year || '—'}</td>
+              <td class="px-3 py-2.5"><span style="background:${severityColor[i.severity]||'#7F8C8D'};color:#fff;padding:0.15rem 0.5rem;border-radius:3px;font-size:0.75rem;">${i.severity}</span></td>
+              <td class="px-3 py-2.5 font-mono text-xs">${i.check}</td>
+              <td class="px-3 py-2.5 text-gray-600">${i.detail}</td>
+              <td class="px-3 py-2.5 text-gray-500 text-xs">${i.suggested_action || '—'}</td>
+            </tr>`).join('');
+          document.getElementById('audit-issues-body').innerHTML = rows;
+          document.getElementById('audit-issues-card').style.display = 'block';
+        }
+      } else {
+        resultEl.className = 'result-box result-error';
+        resultEl.textContent = 'Error: ' + d.error;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Run Audit';
     });
 }
 
@@ -386,7 +478,7 @@ function controlBot(action) {
         resultEl.textContent = d.message;
         dot.className = 'status-dot' + (running ? '' : ' status-error');
         statusTx.textContent = d.message;
-        btn.className = 'btn ' + (running ? 'btn-danger' : 'btn-primary');
+        btn.className = 'btn ' + (running ? 'btn-danger' : 'btn-secondary');
         btn.textContent = running ? 'Stop Bot' : 'Start Bot';
         btn.onclick = function() { controlBot(running ? 'stop' : 'start'); };
       } else {
@@ -398,7 +490,7 @@ function controlBot(action) {
     });
 }
 
-// ── Scheduler Health Panel ─────────────────────────────────
+// ── Scheduler Health Panel ────────────────────────────────────
 const JOB_LABELS = {
   daily_score:   'Daily Score',
   weekly_scrape: 'Weekly Scrape',
@@ -416,11 +508,11 @@ function renderHealthRow(jobKey, data) {
 
   let badgeHtml;
   if (data.last_run === null || data.last_run === undefined) {
-    badgeHtml = '<span style="background:var(--text-muted);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">No data</span>';
+    badgeHtml = '<span style="background:#BDC3C7;color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">No data</span>';
   } else if (data.ok) {
-    badgeHtml = '<span style="background:var(--green);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">OK</span>';
+    badgeHtml = '<span style="background:#27AE60;color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">OK</span>';
   } else {
-    badgeHtml = '<span style="background:var(--orange);color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">Late</span>';
+    badgeHtml = '<span style="background:#F39C12;color:#fff;padding:0.2rem 0.6rem;border-radius:3px;font-size:0.8rem;">Late</span>';
   }
 
   return `<tr>
@@ -439,7 +531,7 @@ function loadSchedulerHealth() {
       const updEl = document.getElementById('sched-health-updated');
 
       if (d.error) {
-        tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red);">Error: ${d.error}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="color:#E74C3C;">Error: ${d.error}</td></tr>`;
         return;
       }
 
@@ -449,14 +541,24 @@ function loadSchedulerHealth() {
         .map(k => renderHealthRow(k, d[k]))
         .join('');
 
-      tbody.innerHTML = rows || '<tr><td colspan="4" style="color:var(--text-muted);">No data yet.</td></tr>';
+      tbody.innerHTML = rows || '<tr><td colspan="4" style="color:#7F8C8D;">No data yet.</td></tr>';
 
-      const now = new Date();
-      updEl.textContent = 'Updated ' + now.toLocaleTimeString();
+      // Populate last-run card from most recent job
+      const latestRun = order
+        .filter(k => d[k] && d[k].last_run)
+        .map(k => d[k].last_run)
+        .sort()
+        .reverse()[0];
+      if (latestRun) {
+        document.getElementById('last-run-display').textContent =
+          latestRun.replace('T', ' ').substring(0, 16);
+      }
+
+      updEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
     })
     .catch(() => {
       document.getElementById('sched-health-body').innerHTML =
-        '<tr><td colspan="4" style="color:var(--text-muted);">Could not reach endpoint.</td></tr>';
+        '<tr><td colspan="4" style="color:#7F8C8D;">Could not reach endpoint.</td></tr>';
     });
 }
 

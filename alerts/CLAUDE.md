@@ -9,8 +9,8 @@ Both alert files import from `scraper/pse_session.py` and `discord/publisher.py`
 ## alerts/alert_engine.py
 Three checks: price (DB-only), dividend (PSE Edge), earnings (PSE Edge).
 First-run baseline: records existing disclosures without alerting.
-Atomic dedup: `_claim_disclosure()` uses `INSERT OR IGNORE` + `rowcount`.
-Only checks top-15 ranked tickers. CLI: `py alerts/alert_engine.py --dry-run`
+Atomic dedup: `_claim_disclosure()` uses `ON CONFLICT(ticker, date, url) DO NOTHING` + `rowcount`.
+Only checks top-15 ranked tickers. CLI: `.venv/bin/python alerts/alert_engine.py --dry-run`
 
 ## alerts/disclosure_monitor.py
 15-minute polling of PSE Edge disclosure feed.

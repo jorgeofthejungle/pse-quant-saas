@@ -52,8 +52,8 @@ SELF_REPAIR_MODEL   = "claude-sonnet-4-6"            # error diagnosis, code rep
 
 # ── Financial Model Settings ───────────────────────────────
 # These match the values in mos.py — update both if you change them
-PH_RISK_FREE_RATE   = 0.065   # PH 10-year T-bond rate (~6.5%)
-EQUITY_RISK_PREMIUM = 0.050   # PSE equity risk premium (~5.0%)
+PH_RISK_FREE_RATE   = 0.065   # PH 10-year T-bond rate (~6.5%) — last updated: 2026-05-16
+EQUITY_RISK_PREMIUM = 0.050   # Damodaran implied ERP for Philippines (forward-looking). Update annually from pages.stern.nyu.edu/~adamodar/ → Country Risk Premium spreadsheet.
 DEFAULT_TARGET_PE   = 15.0    # Fair PE multiple for Philippine market
 DDM_MAX_GROWTH_RATE = 0.07    # Cap on DDM dividend growth rate
 
@@ -62,8 +62,10 @@ YEARS_PREFERRED = 5   # Use 5 years of data when available
 YEARS_MINIMUM   = 3   # Require at least 3 years; flag stocks with less
 
 # ── Intrinsic Value Blend Weights ────────────────────────
-# Weights for calc_hybrid_intrinsic(): DDM, EPS-PE, DCF
-IV_WEIGHTS = (0.30, 0.35, 0.35)
+# Weights for calc_hybrid_intrinsic(): (DDM, EPS-PE, DCF)
+IV_WEIGHTS          = (0.30, 0.35, 0.35)  # unified / default
+IV_WEIGHTS_DIVIDEND = (0.50, 0.25, 0.25)  # income focus — DDM dominates
+IV_WEIGHTS_VALUE    = (0.20, 0.40, 0.40)  # fundamentals focus — EPS-PE + DCF dominate
 
 # ── Conglomerate IV Discount ───────────────────────────────
 # Applied to intrinsic value for stocks in the 'Holding Firms' sector.
@@ -146,7 +148,7 @@ CONFIDENCE_TIERS = {
     5: 1.00,  # 5+ years
     4: 0.90,
     3: 0.80,
-    2: 0.65,
+    2: 0.60,  # heavier penalty — 2yr is minimum viable, model uncertainty is high
     1: 0.00,  # not scored
 }
 

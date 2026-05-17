@@ -13,7 +13,7 @@
 #   roe_delta     — absolute change in ROE vs 3 years ago (pp)
 #   dps_delta     — smoothed YoY DPS growth (%) — REITs only
 #
-# Momentum bonus: stocks with 5yr+ data get a ±5pt adjustment based on
+# Momentum bonus: stocks with 5yr+ data get a ±8pt adjustment based on
 # whether recent growth (last 2Y) exceeds prior growth (prior 2Y).
 #
 # Entry: score_improvement(stock, financials_history, scoring_group)
@@ -89,7 +89,7 @@ def _smoothed_delta(series: list) -> float | None:
 def _momentum_bonus(series: list) -> float:
     """
     Compare recent 2Y avg change vs prior 2Y avg change.
-    Returns +5 if accelerating, -5 if decelerating, 0 if insufficient data.
+    Returns +8 if accelerating, -8 if decelerating, 0 if insufficient data.
     Requires 5+ data points.
     """
     changes = _yoy_changes(series)
@@ -98,9 +98,9 @@ def _momentum_bonus(series: list) -> float:
     recent_avg = sum(changes[:2]) / 2
     prior_avg  = sum(changes[2:4]) / 2
     if recent_avg > prior_avg + 1:
-        return 5.0
+        return 8.0
     if recent_avg < prior_avg - 1:
-        return -5.0
+        return -8.0
     return 0.0
 
 

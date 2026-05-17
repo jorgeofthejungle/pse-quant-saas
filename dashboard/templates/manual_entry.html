@@ -2,92 +2,98 @@
 {% block title %}Manual Data Entry{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Manual Financial Entry</h1>
-  <span class="timestamp">Admin — correct or fill missing PSE Edge data</span>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold" style="color:#0D1F3C;">Manual Financial Entry</h1>
+  <p class="text-sm text-gray-500 mt-0.5">Admin — correct or fill missing PSE Edge data</p>
 </div>
 
-<!-- ── Search bar ── -->
+<!-- Search bar -->
 <form method="GET" action="{{ url_for('manual_entry.index') }}"
-      class="inline-form full-width" style="margin-bottom:1.5rem;"
-      autocomplete="off">
+      class="flex gap-2 items-center mb-6" autocomplete="off">
   <div style="position:relative;display:inline-block;">
     <input type="text" id="me-search" name="ticker"
            value="{{ ticker or '' }}"
-           class="form-input" placeholder="Enter ticker e.g. GSMI, GLO"
+           class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
            style="width:260px;text-transform:uppercase;"
+           placeholder="Enter ticker e.g. GSMI, GLO"
            autocomplete="off" autofocus>
     <div id="me-dropdown" style="
       display:none; position:absolute; top:100%; left:0; width:100%;
-      background:var(--white); border:1px solid var(--border); border-top:none;
+      background:#fff; border:1px solid #E5E7EB; border-top:none;
       border-radius:0 0 6px 6px; box-shadow:0 4px 12px rgba(0,0,0,0.1);
-      z-index:100; max-height:240px; overflow-y:auto;">
-    </div>
+      z-index:100; max-height:240px; overflow-y:auto;"></div>
   </div>
-  <button type="submit" class="btn btn-primary">Go</button>
+  <button type="submit"
+          class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+          style="background:#F0A500;"
+          onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+    Go
+  </button>
   {% if ticker %}
-    <a href="{{ url_for('manual_entry.index') }}" class="btn btn-secondary">Clear</a>
+  <a href="{{ url_for('manual_entry.index') }}"
+     class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+    Clear
+  </a>
   {% endif %}
 </form>
 
-<!-- ── Note ── -->
-<div class="banner banner-info" style="margin-bottom:1.5rem;font-size:0.82rem;">
+<!-- Info banner -->
+<div class="mb-5 px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-800">
   Values in <strong>PHP millions</strong> except EPS and DPS (per share in PHP).
-  All saves use <code>force=True</code> — existing data will be overwritten.
+  All saves use <code class="bg-blue-100 px-1 rounded">force=True</code> — existing data will be overwritten.
   Leave a field blank to keep its current value unchanged.
 </div>
 
 {% if ticker %}
-<!-- ── Ticker header ── -->
-<div class="card full-width" style="margin-bottom:1.25rem;border-top:4px solid var(--navy);">
-  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-    <span style="font-size:1.5rem;font-weight:700;color:var(--navy);">{{ ticker }}</span>
+
+<!-- Ticker header -->
+<div class="bg-white rounded-xl border-t-4 border-gray-200 shadow-sm p-5 mb-4" style="border-top-color:#0D1F3C;">
+  <div class="flex items-center gap-3 flex-wrap">
+    <span class="text-2xl font-bold" style="color:#0D1F3C;">{{ ticker }}</span>
     {% if stock_name %}
-      <span style="color:var(--text-muted);">{{ stock_name }}</span>
+      <span class="text-gray-500">{{ stock_name }}</span>
     {% else %}
-      <span class="badge badge-expired">Not in stocks table — financials only</span>
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Not in stocks table — financials only</span>
     {% endif %}
   </div>
 </div>
 
-<!-- ── Existing financials table + inline edit forms ── -->
+<!-- Existing financials -->
 {% if financials %}
-<div class="card full-width" style="margin-bottom:1.25rem;">
-  <h2 style="margin-bottom:1rem;">Existing Data ({{ financials|length }} year(s))</h2>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Existing Data ({{ financials|length }} year(s))</h2>
   {% for row in financials %}
-  <details style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:6px;">
-    <summary style="
-      padding:0.6rem 0.9rem; cursor:pointer; background:var(--bg);
-      border-radius:6px; font-size:0.9rem; font-weight:600;
-      display:flex; align-items:center; gap:0.75rem; list-style:none;">
-      <span style="color:var(--navy);">{{ row.year }}</span>
-      <span style="color:var(--text-muted);font-weight:400;font-size:0.82rem;">
+  <details class="mb-3 border border-gray-200 rounded-lg">
+    <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer bg-gray-50 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors list-none">
+      <span class="font-bold" style="color:#0D1F3C;">{{ row.year }}</span>
+      <span class="text-gray-400 font-normal text-xs">
         Rev: {% if row.revenue %}₱{{ '{:,.0f}'.format(row.revenue) }}M{% else %}—{% endif %} &nbsp;|&nbsp;
         NI: {% if row.net_income %}₱{{ '{:,.0f}'.format(row.net_income) }}M{% else %}—{% endif %} &nbsp;|&nbsp;
         EPS: {% if row.eps %}{{ '%.2f'|format(row.eps) }}{% else %}—{% endif %} &nbsp;|&nbsp;
         DPS: {% if row.dps %}{{ '%.4f'|format(row.dps) }}{% else %}—{% endif %}
       </span>
-      <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted);font-weight:400;">
-        Updated: {{ row.updated_at[:10] if row.updated_at else 'unknown' }} &mdash; click to edit
-      </span>
+      <span class="ml-auto text-xs text-gray-400">Updated: {{ row.updated_at[:10] if row.updated_at else 'unknown' }} — click to edit</span>
     </summary>
-    <div style="padding:1rem;">
-      <form method="POST"
-            action="{{ url_for('manual_entry.save_financials', ticker=ticker, year=row.year) }}">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1rem;">
+    <div class="p-4">
+      <form method="POST" action="{{ url_for('manual_entry.save_financials', ticker=ticker, year=row.year) }}">
+        <div class="grid gap-3 mb-4" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
           {% for field, label, unit in fields %}
           <div>
-            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
-              {{ label }} <span style="color:var(--text-muted);font-size:0.75rem;">({{ unit }})</span>
+            <label class="block text-xs text-gray-500 mb-1">
+              {{ label }} <span class="text-gray-400">({{ unit }})</span>
             </label>
             <input type="number" step="any" name="{{ field }}"
                    value="{{ row[field] if row[field] is not none else '' }}"
-                   class="form-input" style="width:100%;"
+                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                    placeholder="blank = keep current">
           </div>
           {% endfor %}
         </div>
-        <button type="submit" class="btn btn-primary" style="font-size:0.85rem;">
+        <button type="submit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+                style="background:#0D1F3C;"
+                onmouseover="this.style.background='#1a3564'" onmouseout="this.style.background='#0D1F3C'">
           Save {{ ticker }} {{ row.year }}
         </button>
       </form>
@@ -96,69 +102,69 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="banner banner-info" style="margin-bottom:1.25rem;">
+<div class="mb-4 px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-800">
   No existing financial data for <strong>{{ ticker }}</strong>. Use the form below to add the first year.
 </div>
 {% endif %}
 
-<!-- ── Add new year form ── -->
-<div class="card full-width" style="margin-bottom:1.5rem;">
-  <h2 style="margin-bottom:1rem;">Add New Year</h2>
+<!-- Add new year -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Add New Year</h2>
   <form method="POST"
         action="{{ url_for('manual_entry.save_financials', ticker=ticker, year=0) }}"
         id="new-year-form">
-    <!-- Intercept to inject actual year before submit -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-bottom:1rem;">
+    <div class="grid gap-3 mb-4" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
       <div>
-        <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
-          Year <span style="color:var(--red);font-size:0.75rem;">*required</span>
+        <label class="block text-xs text-gray-500 mb-1">
+          Year <span class="text-red-500">*required</span>
         </label>
         <input type="number" id="new-year-input" name="_year_input"
                min="2010" max="2035" step="1"
-               class="form-input" style="width:100%;"
+               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                placeholder="e.g. 2022" required>
       </div>
       {% for field, label, unit in fields %}
       <div>
-        <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.2rem;">
-          {{ label }} <span style="color:var(--text-muted);font-size:0.75rem;">({{ unit }})</span>
+        <label class="block text-xs text-gray-500 mb-1">
+          {{ label }} <span class="text-gray-400">({{ unit }})</span>
         </label>
         <input type="number" step="any" name="{{ field }}"
-               class="form-input" style="width:100%;"
+               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
                placeholder="leave blank to skip">
       </div>
       {% endfor %}
     </div>
-    <button type="button" class="btn btn-primary" onclick="submitNewYear()" style="font-size:0.85rem;">
+    <button type="button" onclick="submitNewYear()"
+            class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+            style="background:#F0A500;"
+            onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
       Save New Year for {{ ticker }}
     </button>
   </form>
 </div>
 
 {% else %}
-<!-- No ticker selected yet -->
-<div class="card full-width" style="margin-bottom:1.25rem;">
-  <h2>Select a Stock</h2>
-  <p style="color:var(--text-muted);margin-bottom:1rem;font-size:0.88rem;">
-    Enter a ticker above or choose from stocks with existing financials:
-  </p>
+<!-- No ticker selected -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-3" style="color:#0D1F3C;">Select a Stock</h2>
+  <p class="text-sm text-gray-500 mb-4">Enter a ticker above or choose from stocks with existing financials:</p>
   {% if tickers %}
-  <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+  <div class="flex flex-wrap gap-2">
     {% for t in tickers %}
     <a href="{{ url_for('manual_entry.entry_form', ticker=t) }}"
-       class="btn btn-secondary" style="font-size:0.82rem;padding:0.3rem 0.7rem;">
+       class="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
       {{ t }}
     </a>
     {% endfor %}
   </div>
   {% else %}
-  <p style="color:var(--text-muted);font-size:0.85rem;">No financial data in database yet.</p>
+  <p class="text-sm text-gray-400">No financial data in database yet.</p>
   {% endif %}
 </div>
 {% endif %}
 
-<!-- ── Disclaimer ── -->
-<div class="banner banner-info" style="font-size:0.8rem;">
+<!-- Disclaimer -->
+<div class="px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 text-xs text-blue-700">
   Manual entries are for correcting data not available on PSE Edge (e.g. missing fiscal years).
   All changes are logged in the activity log. Re-run the scoring pipeline after edits to update rankings.
 </div>
@@ -167,9 +173,8 @@
 
 {% block scripts %}
 <script>
-// Autocomplete for ticker search using existing /api/stocks/search endpoint
 let _meTimer = null;
-const meInput  = document.getElementById('me-search');
+const meInput    = document.getElementById('me-search');
 const meDropdown = document.getElementById('me-dropdown');
 
 if (meInput) {
@@ -186,24 +191,22 @@ if (meInput) {
             `<div style="padding:0.5rem 0.75rem;cursor:pointer;font-size:0.875rem;
                          display:flex;gap:0.6rem;align-items:baseline;"
                  onmousedown="document.getElementById('me-search').value='${it.ticker}';meDropdown.style.display='none';"
-                 onmouseenter="this.style.background='var(--bg)'"
+                 onmouseenter="this.style.background='#F9FAFB'"
                  onmouseleave="this.style.background=''">
-              <span style="font-weight:700;color:var(--navy);min-width:52px;">${it.ticker}</span>
-              <span style="color:var(--text-muted);font-size:0.82rem;">${it.name}</span>
+              <span style="font-weight:700;color:#0D1F3C;min-width:52px;">${it.ticker}</span>
+              <span style="color:#6B7280;font-size:0.82rem;">${it.name}</span>
             </div>`
           ).join('');
           meDropdown.style.display = 'block';
         });
     }, 160);
   });
-
   document.addEventListener('click', function (e) {
     if (!meInput.contains(e.target) && !meDropdown.contains(e.target))
       meDropdown.style.display = 'none';
   });
 }
 
-// New year form — redirect to correct URL with the entered year
 function submitNewYear() {
   const yearInput = document.getElementById('new-year-input');
   if (!yearInput) return;
@@ -214,10 +217,8 @@ function submitNewYear() {
     return;
   }
   const form = document.getElementById('new-year-form');
-  // Update action URL with the real year
   const action = form.action.replace('/0', '/' + year);
   form.action = action;
-  // Remove the helper _year_input field so it is not sent as a form field
   yearInput.removeAttribute('name');
   form.submit();
 }

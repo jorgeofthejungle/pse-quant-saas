@@ -2,7 +2,7 @@
 > See root CLAUDE.md for system rules, stock data format, DB schema, and architecture.
 > This file covers db-specific implementation details only.
 
-Schema migrations run on every startup via `db/db_schema.py`. REIT whitelist, BANK_TICKERS, and SECTOR_MANUAL_MAP migrations are documented in root CLAUDE.md Section 4. See root CLAUDE.md Section 6 for the full table schema.
+Schema migrations run on every startup via `db/db_schema.py`. REIT whitelist, BANK_TICKERS, and SECTOR_MANUAL_MAP are defined in `config.py` and applied idempotently at startup.
 
 ---
 

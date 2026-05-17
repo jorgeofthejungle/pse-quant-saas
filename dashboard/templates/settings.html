@@ -2,133 +2,196 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Settings</h1>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold" style="color:#0D1F3C;">Settings</h1>
+  <p class="text-sm text-gray-500 mt-0.5">Webhooks, pricing, scheduler, and database</p>
 </div>
 
 <!-- Discord Webhooks -->
-<div class="card full-width">
-  <h2>Discord Webhooks</h2>
-  <table class="data-table">
-    <thead>
-      <tr><th>Channel</th><th>Env Variable</th><th>Status</th><th>URL (masked)</th><th>Test</th></tr>
-    </thead>
-    <tbody>
-      {% for name, info in webhooks.items() %}
-      <tr>
-        <td><strong>{{ name }}</strong></td>
-        <td class="text-mono">{{ info.env_key }}</td>
-        <td>
-          {% if info.set %}
-            <span class="badge badge-active">Set</span>
-          {% else %}
-            <span class="badge badge-expired">Not Set</span>
-          {% endif %}
-        </td>
-        <td class="text-mono text-muted">{{ info.masked }}</td>
-        <td>
-          {% if info.set %}
-          <button class="btn btn-sm" onclick="testWebhook('{{ name }}', this)">Test</button>
-          {% else %}
-          <span class="text-muted">—</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="text-muted" style="margin-top:0.75rem; font-size:0.85rem">
-    Edit webhook URLs in the <code>.env</code> file at the project root, then restart the dashboard.
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Discord Webhooks</h2>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-white tracking-wide">Channel</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-white tracking-wide">Env Variable</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-white tracking-wide">Status</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-white tracking-wide">URL (masked)</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-white tracking-wide">Test</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for name, info in webhooks.items() %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-4 py-3 font-medium" style="color:#0D1F3C;">{{ name }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-gray-500">{{ info.env_key }}</td>
+          <td class="px-4 py-3">
+            {% if info.set %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Set</span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Not Set</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 font-mono text-xs text-gray-400">{{ info.masked }}</td>
+          <td class="px-4 py-3">
+            {% if info.set %}
+            <button class="px-2.5 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                    onclick="testWebhook('{{ name }}', this)">Test</button>
+            {% else %}
+            <span class="text-gray-300">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-3 text-xs text-gray-400">
+    Edit webhook URLs in the <code class="bg-gray-100 px-1 rounded">.env</code> file at the project root, then restart the dashboard.
   </p>
 </div>
 
 <!-- PayMongo + Pricing -->
-<div class="card">
-  <h2>PayMongo &amp; Pricing</h2>
-  <table class="info-table" style="margin-bottom:1rem">
-    <tr>
-      <td>Secret Key</td>
-      <td>
-        {% if pm_key_set %}
-          <span class="badge badge-active">Configured</span>
-        {% else %}
-          <span class="badge badge-expired">Not Set</span>
-          <span class="text-muted"> — Add PAYMONGO_SECRET_KEY to .env</span>
-        {% endif %}
-      </td>
-    </tr>
-  </table>
-  <h4 style="margin-bottom:0.5rem">Subscription Pricing</h4>
-  <div style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap">
-    <div>
-      <label class="form-label">Monthly (PHP)</label>
-      <input type="number" id="inp-monthly" class="form-input" style="width:130px"
-             value="{{ '%.2f'|format(pm_monthly) }}" step="0.01" min="1">
+<div class="grid grid-cols-2 gap-4 mb-5">
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">PayMongo &amp; Pricing</h2>
+    <div class="mb-4">
+      <span class="text-sm text-gray-600 mr-2">Secret Key:</span>
+      {% if pm_key_set %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Configured</span>
+      {% else %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Not Set</span>
+        <span class="text-xs text-gray-400 ml-1">— Add PAYMONGO_SECRET_KEY to .env</span>
+      {% endif %}
     </div>
-    <div>
-      <label class="form-label">Annual (PHP)</label>
-      <input type="number" id="inp-annual" class="form-input" style="width:130px"
-             value="{{ '%.2f'|format(pm_annual) }}" step="0.01" min="1">
+    <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Subscription Pricing</h3>
+    <div class="flex gap-3 items-end flex-wrap">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Monthly (PHP)</label>
+        <input type="number" id="inp-monthly" style="width:130px;"
+               class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+               value="{{ '%.2f'|format(pm_monthly) }}" step="0.01" min="1">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Annual (PHP)</label>
+        <input type="number" id="inp-annual" style="width:130px;"
+               class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+               value="{{ '%.2f'|format(pm_annual) }}" step="0.01" min="1">
+      </div>
+      <button class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+              style="background:#F0A500;" onclick="savePricing(this)"
+              onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+        Save Prices
+      </button>
     </div>
-    <button class="btn btn-primary" onclick="savePricing(this)">Save Prices</button>
+    <p class="mt-2 text-xs text-gray-400">Prices are saved to DB and used immediately for new payment links.</p>
   </div>
-  <p class="text-muted" style="margin-top:0.5rem; font-size:0.82rem">
-    Prices are saved to DB and used immediately for new payment links. No restart needed.
-  </p>
+
+  <!-- Scheduler -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Scheduler</h2>
+    <div class="flex gap-4 flex-wrap items-end mb-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Alert Check time (PHT)</label>
+        <div class="flex gap-1 items-center">
+          <input type="number" id="inp-alert-h"
+                 class="px-2 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 w-16"
+                 value="{{ '%02d'|format(alert_hour) }}" min="0" max="23"> :
+          <input type="number" id="inp-alert-m"
+                 class="px-2 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 w-16"
+                 value="{{ '%02d'|format(alert_minute) }}" min="0" max="59">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Score &amp; Report time (PHT)</label>
+        <div class="flex gap-1 items-center">
+          <input type="number" id="inp-score-h"
+                 class="px-2 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 w-16"
+                 value="{{ '%02d'|format(score_hour) }}" min="0" max="23"> :
+          <input type="number" id="inp-score-m"
+                 class="px-2 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 w-16"
+                 value="{{ '%02d'|format(score_minute) }}" min="0" max="59">
+        </div>
+      </div>
+      <button class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+              style="background:#F0A500;" onclick="saveSchedule(this)"
+              onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+        Save Schedule
+      </button>
+    </div>
+    <p class="text-xs text-gray-400 mb-3">Both jobs run weekdays only. Changes take effect on next scheduler restart.</p>
+    <div class="border-t border-gray-100 pt-3 space-y-1 text-xs text-gray-500">
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-32">PSE Edge URL</span><span class="font-mono">{{ pse_base_url }}</span></div>
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-32">Scrape Delay</span><span>{{ scrape_delay }}s between requests</span></div>
+    </div>
+  </div>
 </div>
 
-<!-- Scheduler -->
-<div class="card">
-  <h2>Scheduler</h2>
-  <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:0.75rem">
+<!-- Financial Model -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-1" style="color:#0D1F3C;">Financial Model</h2>
+  <p class="text-xs text-gray-400 mb-4">Sets the base discount rate used in DCF, DDM, and intrinsic value calculations. Update whenever PH 10-year T-bond rates change.</p>
+  <div class="flex gap-4 items-end flex-wrap">
     <div>
-      <label class="form-label">Alert Check time (PHT)</label>
-      <div style="display:flex; gap:0.4rem; align-items:center">
-        <input type="number" id="inp-alert-h" class="form-input" style="width:70px"
-               value="{{ '%02d'|format(alert_hour) }}" min="0" max="23"> :
-        <input type="number" id="inp-alert-m" class="form-input" style="width:70px"
-               value="{{ '%02d'|format(alert_minute) }}" min="0" max="59">
-      </div>
+      <label class="block text-xs text-gray-500 mb-1">PH Risk-Free Rate (%)</label>
+      <input type="number" id="inp-rfr" step="0.01" min="0.01" max="29.99" style="width:130px;"
+             class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+             value="{{ risk_free_rate_pct }}">
+      <p class="text-xs text-gray-400 mt-1">PH 10-yr T-bond yield (BSP)</p>
     </div>
     <div>
-      <label class="form-label">Score &amp; Report time (PHT)</label>
-      <div style="display:flex; gap:0.4rem; align-items:center">
-        <input type="number" id="inp-score-h" class="form-input" style="width:70px"
-               value="{{ '%02d'|format(score_hour) }}" min="0" max="23"> :
-        <input type="number" id="inp-score-m" class="form-input" style="width:70px"
-               value="{{ '%02d'|format(score_minute) }}" min="0" max="59">
-      </div>
+      <label class="block text-xs text-gray-500 mb-1">Equity Risk Premium (%)</label>
+      <input type="number" id="inp-erp" step="0.01" min="0.01" max="29.99" style="width:130px;"
+             class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+             value="{{ equity_risk_pct }}">
+      <p class="text-xs text-gray-400 mt-1">Damodaran implied ERP (Philippines)</p>
     </div>
-    <button class="btn btn-primary" onclick="saveSchedule(this)">Save Schedule</button>
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Base Required Return</label>
+      <div id="required-return-display" class="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 bg-gray-50" style="width:130px;color:#0D1F3C;">
+        {{ required_return_pct }}%
+      </div>
+      <p class="text-xs text-gray-400 mt-1">= Risk-free + ERP</p>
+    </div>
+    <div>
+      <button class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+              style="background:#F0A500;" onclick="saveModel(this)"
+              onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+        Save Rates
+      </button>
+    </div>
   </div>
-  <p class="text-muted" style="font-size:0.82rem">
-    Both jobs run weekdays only. Changes take effect the next time <code>py scheduler.py</code> is started.
-  </p>
-  <table class="info-table" style="margin-top:0.75rem">
-    <tr><td>PSE Edge Base URL</td><td class="text-mono">{{ pse_base_url }}</td></tr>
-    <tr><td>Scrape Delay</td><td>{{ scrape_delay }}s between requests</td></tr>
-  </table>
+  <div id="model-result" class="mt-3 text-sm" style="display:none;"></div>
+  <div class="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 space-y-1">
+    <div><span class="font-medium text-gray-500">Risk-free rate source:</span> BSP benchmark rate for 10-year Treasury bonds. Check <span class="font-mono">tradingeconomics.com/philippines/government-bond-yield</span> for current yield.</div>
+    <div><span class="font-medium text-gray-500">ERP source:</span> Use Damodaran's implied ERP for the Philippines, published each January at <span class="font-mono">pages.stern.nyu.edu/~adamodar/</span> → "Country Risk Premium" spreadsheet. This is a forward-looking estimate derived from current PSEi prices and consensus earnings — not a historical average.</div>
+    <div><span class="font-medium text-gray-500">Why it matters:</span> A higher ERP raises the discount rate, which lowers every intrinsic value estimate and tightens the MoS threshold. Damodaran's January 2026 implied ERP for the Philippines is approximately <span class="font-medium text-gray-600">7.6%</span> (standalone) or <span class="font-medium text-gray-600">5.5–6%</span> as a mature-market add-on. The current setting of {{ equity_risk_pct }}% should reflect whichever methodology you choose to apply consistently.</div>
+  </div>
 </div>
 
 <!-- Database -->
-<div class="card full-width">
-  <h2>Database</h2>
-  <table class="info-table">
-    <tr><td>Location</td><td class="text-mono">{{ db_path }}</td></tr>
-    <tr><td>Size</td><td>{{ db_size_kb }} KB</td></tr>
-  </table>
-  <h4 style="margin-top:1rem">Table Row Counts</h4>
-  <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem">
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Database</h2>
+  <div class="space-y-1 text-sm text-gray-600 mb-4">
+    <div class="flex gap-2"><span class="font-medium text-gray-700 w-24">Location</span><span class="font-mono text-xs">{{ db_path }}</span></div>
+    <div class="flex gap-2"><span class="font-medium text-gray-700 w-24">Size</span><span>{{ db_size_kb }} KB</span></div>
+  </div>
+  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Table Row Counts</h3>
+  <div class="flex gap-3 flex-wrap">
     {% for table, count in table_counts.items() %}
-    <div class="stat-mini">
-      <div class="stat-mini-value">{{ count }}</div>
-      <div class="stat-mini-label">{{ table }}</div>
+    <div class="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-center min-w-[80px]">
+      <div class="text-lg font-bold" style="color:#0D1F3C;">{{ count }}</div>
+      <div class="text-xs text-gray-500 mt-0.5">{{ table }}</div>
     </div>
     {% endfor %}
   </div>
 </div>
 
-<div id="webhook-toast" class="toast" style="display:none"></div>
+<div id="webhook-toast" style="display:none;"
+     class="fixed bottom-6 right-6 px-4 py-3 rounded-lg text-sm font-medium shadow-lg z-50"></div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -136,7 +199,6 @@
 function testWebhook(channel, btn) {
   btn.disabled = true;
   btn.textContent = 'Testing...';
-
   fetch('/settings/test-webhook', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -153,8 +215,9 @@ function testWebhook(channel, btn) {
 function showToast(msg, type) {
   const t = document.getElementById('webhook-toast');
   t.textContent = msg;
-  t.className = 'toast toast-' + type;
   t.style.display = 'block';
+  t.style.background = type === 'success' ? '#27AE60' : '#E74C3C';
+  t.style.color = '#fff';
   setTimeout(() => { t.style.display = 'none'; }, 4000);
 }
 
@@ -172,6 +235,25 @@ function savePricing(btn) {
   })
   .then(r => r.json())
   .then(d => { showToast(d.message, d.ok ? 'success' : 'error'); btn.disabled = false; btn.textContent = 'Save Prices'; });
+}
+
+function saveModel(btn) {
+  const rfr = parseFloat(document.getElementById('inp-rfr').value);
+  const erp = parseFloat(document.getElementById('inp-erp').value);
+  btn.disabled = true; btn.textContent = 'Saving...';
+  fetch('/settings/save-model', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({risk_free_rate_pct: rfr, equity_risk_pct: erp}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    showToast(d.message, d.ok ? 'success' : 'error');
+    if (d.ok) {
+      document.getElementById('required-return-display').textContent = d.required_return_pct + '%';
+    }
+    btn.disabled = false; btn.textContent = 'Save Rates';
+  });
 }
 
 function saveSchedule(btn) {

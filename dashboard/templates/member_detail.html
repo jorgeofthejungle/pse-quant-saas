@@ -2,140 +2,200 @@
 {% block title %}{{ member.discord_name }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>{{ member.discord_name }}</h1>
-  <span class="badge badge-{{ member.status }} badge-lg">{{ member.status }}</span>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <div class="flex items-center gap-3 flex-wrap">
+      <h1 class="text-2xl font-bold" style="color:#0D1F3C;">{{ member.discord_name }}</h1>
+      {% if member.status == 'active' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Active</span>
+      {% elif member.status == 'expired' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Expired</span>
+      {% else %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{{ member.status | title }}</span>
+      {% endif %}
+    </div>
+    <a href="{{ url_for('members.index') }}" class="text-sm text-gray-400 hover:text-gray-600 mt-0.5 inline-block">← Back to Members</a>
+  </div>
 </div>
 
-<div class="card-row">
+<div class="grid grid-cols-2 gap-4 mb-4">
   <!-- Member Info -->
-  <div class="card">
-    <h2>Member Info</h2>
-    <form method="POST" action="{{ url_for('members.edit', member_id=member.id) }}">
-      <table class="info-table">
-        <tr>
-          <td>Discord Name</td>
-          <td><input name="discord_name" value="{{ member.discord_name }}" class="form-input-sm"></td>
-        </tr>
-        <tr>
-          <td>Discord ID</td>
-          <td><input name="discord_id" value="{{ member.discord_id or '' }}" class="form-input-sm" placeholder="optional"></td>
-        </tr>
-        <tr>
-          <td>Email</td>
-          <td><input name="email" value="{{ member.email or '' }}" class="form-input-sm" placeholder="optional"></td>
-        </tr>
-        <tr>
-          <td>Plan</td>
-          <td>
-            <select name="plan" class="form-select-sm">
-              <option value="monthly" {{ 'selected' if member.plan == 'monthly' }}>Monthly</option>
-              <option value="annual"  {{ 'selected' if member.plan == 'annual' }}>Annual</option>
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <td>Expiry</td>
-          <td>
-            <strong>{{ member.expiry_date or 'N/A' }}</strong>
-            {% if days_left is not none %}
-              {% if days_left > 0 %}
-                <span class="text-muted">({{ days_left }} days left)</span>
-              {% else %}
-                <span class="text-error">({{ days_left|abs }} days ago)</span>
-              {% endif %}
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Member Info</h2>
+    <form method="POST" action="{{ url_for('members.edit', member_id=member.id) }}" class="space-y-3">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Discord Name</label>
+        <input name="discord_name" value="{{ member.discord_name }}"
+               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Discord ID</label>
+        <input name="discord_id" value="{{ member.discord_id or '' }}"
+               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+               placeholder="optional">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Email</label>
+        <input name="email" value="{{ member.email or '' }}"
+               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+               placeholder="optional">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Plan</label>
+        <select name="plan" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
+          <option value="monthly" {{ 'selected' if member.plan == 'monthly' }}>Monthly</option>
+          <option value="annual"  {{ 'selected' if member.plan == 'annual' }}>Annual</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Expiry</label>
+        <div class="text-sm font-semibold" style="color:#0D1F3C;">{{ member.expiry_date or 'N/A' }}
+          {% if days_left is not none %}
+            {% if days_left > 0 %}
+              <span class="text-xs text-gray-400 font-normal ml-1">({{ days_left }} days left)</span>
+            {% else %}
+              <span class="text-xs text-red-500 font-normal ml-1">({{ days_left|abs }} days ago)</span>
             {% endif %}
-          </td>
-        </tr>
-        <tr>
-          <td>Joined</td>
-          <td class="text-muted">{{ member.joined_date }}</td>
-        </tr>
-        <tr>
-          <td>Notes</td>
-          <td><textarea name="notes" class="form-input-sm">{{ member.notes or '' }}</textarea></td>
-        </tr>
-      </table>
-      <button type="submit" class="btn btn-secondary" style="margin-top:0.75rem">Save Changes</button>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Joined</label>
+        <div class="text-sm text-gray-500">{{ member.joined_date }}</div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Notes</label>
+        <textarea name="notes" rows="2"
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400">{{ member.notes or '' }}</textarea>
+      </div>
+      <button type="submit"
+              class="w-full px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+              style="background:#0D1F3C;"
+              onmouseover="this.style.background='#1a3564'" onmouseout="this.style.background='#0D1F3C'">
+        Save Changes
+      </button>
     </form>
   </div>
 
-  <!-- Quick Actions -->
-  <div class="card">
-    <h2>Actions</h2>
+  <!-- Actions -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Actions</h2>
 
-    <h4 style="margin-top:1rem">Extend Subscription</h4>
-    <form method="POST" action="{{ url_for('members.extend', member_id=member.id) }}" style="display:flex; gap:0.5rem; align-items:center">
-      <select name="plan" class="form-select-sm">
-        <option value="monthly">+30 days (Monthly)</option>
-        <option value="annual">+365 days (Annual)</option>
-      </select>
-      <button type="submit" class="btn btn-primary">Extend</button>
-    </form>
-
-    <h4 style="margin-top:1.25rem">Record Manual Payment</h4>
-    <form method="POST" action="{{ url_for('members.mark_paid', member_id=member.id) }}" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
-      <input name="amount" type="number" step="0.01" placeholder="Amount (PHP)" class="form-input-sm" style="width:140px" required>
-      <select name="plan" class="form-select-sm">
-        <option value="monthly">Monthly</option>
-        <option value="annual">Annual</option>
-      </select>
-      <select name="method" class="form-select-sm">
-        <option value="gcash">GCash</option>
-        <option value="maya">Maya</option>
-        <option value="bank">Bank Transfer</option>
-        <option value="manual">Manual</option>
-      </select>
-      <button type="submit" class="btn btn-primary">Mark as Paid</button>
-    </form>
-
-    <h4 style="margin-top:1.25rem">PayMongo Payment Link</h4>
-    <p class="text-muted" style="font-size:0.85rem">Generates a link to send to the member via Discord DM.</p>
-    <div style="display:flex; gap:0.5rem; align-items:center">
-      <select id="pm-plan" class="form-select-sm">
-        <option value="monthly">Monthly</option>
-        <option value="annual">Annual</option>
-      </select>
-      <button class="btn btn-secondary" onclick="generatePayMongoLink()">Generate Link</button>
+    <div class="mb-5">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Extend Subscription</div>
+      <form method="POST" action="{{ url_for('members.extend', member_id=member.id) }}" class="flex gap-2 items-center">
+        <select name="plan" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
+          <option value="monthly">+30 days (Monthly)</option>
+          <option value="annual">+365 days (Annual)</option>
+        </select>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+                style="background:#F0A500;"
+                onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+          Extend
+        </button>
+      </form>
     </div>
-    <div id="pm-result" style="margin-top:0.75rem; display:none"></div>
 
-    <hr style="margin:1.5rem 0">
+    <div class="mb-5">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Record Manual Payment</div>
+      <form method="POST" action="{{ url_for('members.mark_paid', member_id=member.id) }}" class="space-y-2">
+        <div class="flex gap-2">
+          <input name="amount" type="number" step="0.01" placeholder="Amount (PHP)"
+                 class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                 required>
+          <select name="plan" class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
+            <option value="monthly">Monthly</option>
+            <option value="annual">Annual</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <select name="method" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
+            <option value="gcash">GCash</option>
+            <option value="maya">Maya</option>
+            <option value="bank">Bank Transfer</option>
+            <option value="manual">Manual</option>
+          </select>
+          <button type="submit"
+                  class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+                  style="background:#F0A500;"
+                  onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+            Mark Paid
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="mb-5 pb-5 border-b border-gray-100">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">PayMongo Payment Link</div>
+      <p class="text-xs text-gray-400 mb-2">Generates a link to send to the member via Discord DM.</p>
+      <div class="flex gap-2 items-center">
+        <select id="pm-plan" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
+          <option value="monthly">Monthly</option>
+          <option value="annual">Annual</option>
+        </select>
+        <button onclick="generatePayMongoLink()"
+                class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+                style="background:#0D1F3C;"
+                onmouseover="this.style.background='#1a3564'" onmouseout="this.style.background='#0D1F3C'">
+          Generate
+        </button>
+      </div>
+      <div id="pm-result" class="mt-2 p-3 rounded-lg bg-gray-50 text-sm text-gray-700" style="display:none"></div>
+    </div>
 
     <form method="POST" action="{{ url_for('members.cancel', member_id=member.id) }}"
           onsubmit="return confirm('Cancel {{ member.discord_name }}? This cannot be undone.')">
-      <button type="submit" class="btn btn-danger">Cancel Member</button>
+      <button type="submit"
+              class="w-full px-4 py-2 text-sm font-semibold rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors">
+        Cancel Member
+      </button>
     </form>
   </div>
 </div>
 
 <!-- Payment History -->
-<div class="card full-width">
-  <h2>Payment History</h2>
-  <table class="data-table">
-    <thead>
-      <tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Period</th><th>Status</th></tr>
-    </thead>
-    <tbody>
-      {% for s in subscriptions %}
-      <tr>
-        <td class="text-mono">{{ s.paid_date }}</td>
-        <td>{{ s.plan }}</td>
-        <td><strong>PHP {{ "%.2f"|format(s.amount) }}</strong></td>
-        <td>{{ s.payment_method or '—' }}</td>
-        <td class="text-muted">{{ s.period_start }} → {{ s.period_end }}</td>
-        <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="text-muted text-center">No payments recorded yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Payment History</h2>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Date</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Plan</th>
+          <th class="px-3 py-3 text-right text-xs font-semibold text-white tracking-wide">Amount</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Method</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Period</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for s in subscriptions %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-3 py-2.5 font-mono text-xs text-gray-500">{{ s.paid_date }}</td>
+          <td class="px-3 py-2.5 text-gray-600">{{ s.plan }}</td>
+          <td class="px-3 py-2.5 text-right font-semibold" style="color:#0D1F3C;">PHP {{ "%.2f"|format(s.amount) }}</td>
+          <td class="px-3 py-2.5 text-gray-500">{{ s.payment_method or '—' }}</td>
+          <td class="px-3 py-2.5 text-xs text-gray-400">{{ s.period_start }} → {{ s.period_end }}</td>
+          <td class="px-3 py-2.5">
+            {% if s.status == 'active' %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">{{ s.status }}</span>
+            {% elif s.status == 'expired' %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">{{ s.status }}</span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{{ s.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-400">No payments recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<div style="margin-top:1rem">
-  <a href="{{ url_for('members.index') }}" class="btn btn-secondary">Back to Members</a>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -158,10 +218,10 @@ function generatePayMongoLink() {
   .then(r => r.json())
   .then(d => {
     if (d.ok) {
-      res.innerHTML = '<strong>Payment Link:</strong> <a href="' + d.url + '" target="_blank">' + d.url + '</a>'
-        + ' <button onclick="navigator.clipboard.writeText(\'' + d.url + '\')" class="btn btn-sm" style="margin-left:0.5rem">Copy</button>';
+      res.innerHTML = '<strong>Payment Link:</strong> <a href="' + d.url + '" target="_blank" style="color:#2471A3;text-decoration:underline;">' + d.url + '</a>'
+        + ' <button onclick="navigator.clipboard.writeText(\'' + d.url + '\')" style="margin-left:0.5rem;padding:0.2rem 0.5rem;font-size:0.75rem;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;">Copy</button>';
     } else {
-      res.innerHTML = '<span style="color:var(--red)">Error: ' + d.error + '</span>';
+      res.innerHTML = '<span style="color:#E74C3C">Error: ' + d.error + '</span>';
     }
   });
 }

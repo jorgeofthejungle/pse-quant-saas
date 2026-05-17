@@ -33,7 +33,7 @@ def clean_bad_dps(max_yield_non_reit: float = 20.0,
     # Join financials with latest price and REIT flag
     rows = conn.execute("""
         SELECT f.ticker, f.year, f.dps, p.close, s.is_reit,
-               round(f.dps / p.close * 100.0, 1) AS yield_pct
+               round((f.dps / p.close * 100.0)::numeric, 1) AS yield_pct
         FROM financials f
         JOIN stocks s ON f.ticker = s.ticker
         JOIN (

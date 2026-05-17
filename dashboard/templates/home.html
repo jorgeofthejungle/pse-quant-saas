@@ -2,179 +2,221 @@
 {% block title %}Overview{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Overview</h1>
-  <span class="timestamp">{{ now }}</span>
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold" style="color:#0D1F3C;">Overview</h1>
+    <p class="text-sm text-gray-500 mt-0.5">{{ now }}</p>
+  </div>
 </div>
 
 {% if expiring_soon %}
-<div class="banner banner-warning">
+<div class="mb-4 px-4 py-3 rounded-lg border border-yellow-200 bg-yellow-50 text-sm text-yellow-800">
   <strong>{{ expiring_soon|length }} member(s) expiring within 7 days</strong> —
-  <a href="{{ url_for('members.index') }}?status=active">Review Members</a>
+  <a href="{{ url_for('members.index') }}?status=active" class="underline font-medium">Review Members</a>
 </div>
 {% endif %}
 
 {% if member_stats.expired > 0 %}
-<div class="banner banner-error">
+<div class="mb-4 px-4 py-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-800">
   <strong>{{ member_stats.expired }} member(s) expired</strong> —
   Remember to remove them from Discord, then mark as cancelled.
-  <a href="{{ url_for('members.index') }}?status=expired">View Expired</a>
+  <a href="{{ url_for('members.index') }}?status=expired" class="underline font-medium">View Expired</a>
 </div>
 {% endif %}
 
-<!-- Quick Stats -->
-<div class="stats-row">
-  <div class="stat-card">
-    <div class="stat-value" id="stat-active">{{ member_stats.active }}</div>
-    <div class="stat-label">Active Members</div>
+<!-- Stat cards -->
+<div class="grid grid-cols-4 gap-4 mb-4">
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid #27AE60;">
+    <div class="text-3xl font-bold" style="color:#0D1F3C;" id="stat-active">{{ member_stats.active }}</div>
+    <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Active Members</div>
   </div>
-  <div class="stat-card stat-card-warning">
-    <div class="stat-value">{{ expiring_soon|length }}</div>
-    <div class="stat-label">Expiring This Week</div>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid #F0A500;">
+    <div class="text-3xl font-bold text-yellow-500">{{ expiring_soon|length }}</div>
+    <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Expiring This Week</div>
   </div>
-  <div class="stat-card stat-card-error">
-    <div class="stat-value">{{ member_stats.expired }}</div>
-    <div class="stat-label">Expired</div>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid #E74C3C;">
+    <div class="text-3xl font-bold text-red-500">{{ member_stats.expired }}</div>
+    <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Expired</div>
   </div>
-  <div class="stat-card stat-card-info">
-    <div class="stat-value" id="stat-stocks">--</div>
-    <div class="stat-label">Stocks Tracked</div>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5" style="border-top:3px solid #2471A3;">
+    <div class="text-3xl font-bold" style="color:#0D1F3C;" id="stat-stocks">--</div>
+    <div class="text-xs text-gray-500 uppercase tracking-wide mt-1">Stocks Tracked</div>
   </div>
 </div>
 
-<!-- System Status -->
-<div class="card-row">
-  <div class="card">
-    <h2>System Status</h2>
-    <table class="info-table">
-      <tr><td>Last Score Run</td><td id="sys-last-run">Loading...</td></tr>
-      <tr><td>DB Size</td><td id="sys-db-size">Loading...</td></tr>
-      <tr><td>Next Alert Check</td><td>Weekdays 09:00 PHT</td></tr>
-      <tr><td>Next Score Run</td><td>Weekdays 17:30 PHT</td></tr>
-    </table>
-    <div style="margin-top:1rem">
-      <a href="{{ url_for('pipeline.index') }}" class="btn btn-primary">Go to Pipeline</a>
+<!-- System Status + Rankings -->
+<div class="grid grid-cols-2 gap-4 mb-4">
+  <!-- System Status -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">System Status</h2>
+    <div class="space-y-2 text-sm mb-4">
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-36">Last Score Run</span><span class="text-gray-500" id="sys-last-run">Loading...</span></div>
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-36">DB Size</span><span class="text-gray-500" id="sys-db-size">Loading...</span></div>
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-36">Next Alert Check</span><span class="text-gray-500">Weekdays 09:00 PHT</span></div>
+      <div class="flex gap-2"><span class="font-medium text-gray-700 w-36">Next Score Run</span><span class="text-gray-500">Weekdays 17:30 PHT</span></div>
     </div>
+    <a href="{{ url_for('pipeline.index') }}"
+       class="inline-block px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+       style="background:#F0A500;"
+       onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+      Go to Pipeline
+    </a>
   </div>
 
-  <!-- Unified Top Rankings -->
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
-      <h2 style="margin:0;">Stockpilot PH Rankings</h2>
-      <div style="display:flex; gap:0.5rem;">
-        <a href="/export/rankings.csv" class="btn btn-sm">Export CSV</a>
-        <a href="/export/rankings.xlsx" class="btn btn-sm">Export Excel</a>
+  <!-- Rankings -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xs font-semibold uppercase tracking-widest" style="color:#0D1F3C;">StockPilot PH Rankings</h2>
+      <div class="flex gap-2">
+        <a href="/export/rankings.csv" class="px-3 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">CSV</a>
+        <a href="/export/rankings.xlsx" class="px-3 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">Excel</a>
       </div>
     </div>
     {% if unified_rankings %}
-    <table class="data-table">
-      <thead><tr><th>#</th><th>Ticker</th><th>Score</th></tr></thead>
-      <tbody>
-        {% for s in unified_rankings %}
-        <tr>
-          <td style="color:var(--text-muted);">{{ loop.index }}</td>
-          <td>
-            <a href="{{ url_for('stocks.index') }}?ticker={{ s.ticker }}"
-               style="font-weight:700;color:var(--navy);text-decoration:none;">
-              {{ s.ticker }}
-            </a>
-          </td>
-          <td>
-            {% if s.score >= 80 %}
-              <span style="color:#27AE60;font-weight:600;">{{ s.score }}</span>
-            {% elif s.score >= 65 %}
-              <span style="color:#2563A0;font-weight:600;">{{ s.score }}</span>
-            {% elif s.score >= 50 %}
-              <span style="color:#F39C12;font-weight:600;">{{ s.score }}</span>
-            {% else %}
-              <span style="color:#E74C3C;font-weight:600;">{{ s.score }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="text-muted">No data — run pipeline first.</p>
-    {% endif %}
-    <div style="margin-top:0.75rem;">
-      <a href="{{ url_for('stocks.index') }}" class="btn btn-sm btn-secondary">Stock Lookup →</a>
+    <div class="overflow-hidden rounded-lg border border-gray-200 mb-3">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="background:#0D1F3C;">
+            <th class="px-3 py-2 text-left text-xs font-semibold text-white tracking-wide">#</th>
+            <th class="px-3 py-2 text-left text-xs font-semibold text-white tracking-wide">Ticker</th>
+            <th class="px-3 py-2 text-right text-xs font-semibold text-white tracking-wide">Score</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for s in unified_rankings %}
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-3 py-2 text-gray-400 text-xs">{{ loop.index }}</td>
+            <td class="px-3 py-2">
+              <a href="{{ url_for('stocks.index') }}?ticker={{ s.ticker }}"
+                 class="font-bold hover:underline" style="color:#0D1F3C;">{{ s.ticker }}</a>
+            </td>
+            <td class="px-3 py-2 text-right font-semibold">
+              {% if s.score >= 80 %}<span style="color:#27AE60;">{{ s.score }}</span>
+              {% elif s.score >= 65 %}<span style="color:#2471A3;">{{ s.score }}</span>
+              {% elif s.score >= 50 %}<span style="color:#F39C12;">{{ s.score }}</span>
+              {% else %}<span style="color:#E74C3C;">{{ s.score }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+    {% else %}
+    <p class="text-sm text-gray-400 mb-3">No data — run pipeline first.</p>
+    {% endif %}
+    <a href="{{ url_for('stocks.index') }}" class="text-sm font-medium hover:underline" style="color:#0D1F3C;">Stock Lookup →</a>
   </div>
 </div>
 
-<!-- Quick Payment Link -->
-<div class="card full-width">
-  <h2>Generate Payment Link</h2>
-  <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap">
+<!-- Payment Link Generator -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Generate Payment Link</h2>
+  <div class="flex gap-3 items-end flex-wrap">
     <div>
-      <label class="form-label">Member name / note</label>
-      <input type="text" id="pay-member" class="form-input" placeholder="e.g. Juan#1234" style="width:200px">
+      <label class="block text-xs text-gray-500 mb-1">Member name / note</label>
+      <input type="text" id="pay-member"
+             class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+             placeholder="e.g. Juan#1234" style="width:200px">
     </div>
     <div>
-      <label class="form-label">Plan</label>
-      <select id="pay-plan" class="form-select">
+      <label class="block text-xs text-gray-500 mb-1">Plan</label>
+      <select id="pay-plan"
+              class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white">
         <option value="monthly">Monthly — PHP {{ '%.2f'|format(pm_monthly) }}</option>
         <option value="annual">Annual — PHP {{ '%.2f'|format(pm_annual) }}</option>
       </select>
     </div>
     {% if pm_configured %}
-    <button class="btn btn-primary" onclick="generateLink(this)">Generate Link</button>
+    <button onclick="generateLink(this)"
+            class="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors"
+            style="background:#F0A500;"
+            onmouseover="this.style.background='#d4920a'" onmouseout="this.style.background='#F0A500'">
+      Generate Link
+    </button>
     {% else %}
-    <button class="btn" disabled title="Add PAYMONGO_SECRET_KEY to .env to enable">Generate Link</button>
-    <span class="text-muted" style="font-size:0.82rem">PayMongo not configured</span>
+    <button disabled title="Add PAYMONGO_SECRET_KEY to .env to enable"
+            class="px-4 py-2 text-sm font-semibold rounded-lg text-gray-400 bg-gray-100 cursor-not-allowed">
+      Generate Link
+    </button>
+    <span class="text-xs text-gray-400">PayMongo not configured</span>
     {% endif %}
   </div>
 
-  <div id="pay-result" style="display:none; margin-top:1rem">
-    <div style="display:flex; gap:1.5rem; align-items:flex-start; flex-wrap:wrap">
-      <div style="flex:1; min-width:260px">
-        <label class="form-label">Payment Link</label>
-        <div style="display:flex; gap:0.5rem">
-          <input type="text" id="pay-link-url" class="form-input" readonly style="flex:1; font-size:0.82rem">
-          <button class="btn btn-sm" onclick="copyLink()">Copy</button>
+  <div id="pay-result" class="mt-4" style="display:none">
+    <div class="flex gap-6 items-start flex-wrap">
+      <div style="flex:1;min-width:260px">
+        <label class="block text-xs text-gray-500 mb-1">Payment Link</label>
+        <div class="flex gap-2">
+          <input type="text" id="pay-link-url" readonly
+                 class="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg bg-gray-50 focus:outline-none">
+          <button onclick="copyLink()"
+                  class="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+            Copy
+          </button>
         </div>
-        <p class="text-muted" style="font-size:0.80rem; margin-top:0.4rem">
-          Send this link to the member via Discord DM. After they pay, click <strong>Mark as Paid</strong> on their member page.
+        <p class="text-xs text-gray-400 mt-1">
+          Send this link to the member via Discord DM. After they pay, click Mark as Paid on their member page.
         </p>
       </div>
       <div>
-        <label class="form-label">QR Code</label>
-        <canvas id="pay-qr" width="140" height="140" style="border:1px solid #ddd; border-radius:4px; display:block"></canvas>
-        <button class="btn btn-sm" onclick="downloadQR()" style="margin-top:0.4rem; width:100%">Download QR</button>
+        <label class="block text-xs text-gray-500 mb-1">QR Code</label>
+        <canvas id="pay-qr" width="140" height="140" class="border border-gray-200 rounded-lg block"></canvas>
+        <button onclick="downloadQR()"
+                class="mt-1 w-full px-3 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors">
+          Download QR
+        </button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- Recent Activity -->
-<div class="card full-width">
-  <h2>Recent Activity</h2>
-  <table class="data-table">
-    <thead>
-      <tr><th>Time</th><th>Category</th><th>Action</th><th>Detail</th><th>Status</th></tr>
-    </thead>
-    <tbody>
-      {% for item in activity %}
-      <tr>
-        <td class="text-mono">{{ item.timestamp }}</td>
-        <td><span class="badge badge-{{ item.category }}">{{ item.category }}</span></td>
-        <td>{{ item.action }}</td>
-        <td class="text-muted">{{ item.detail or '' }}</td>
-        <td><span class="status-dot status-{{ item.status }}"></span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="text-muted text-center">No activity yet</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+  <h2 class="text-xs font-semibold uppercase tracking-widest mb-4" style="color:#0D1F3C;">Recent Activity</h2>
+  <div class="overflow-hidden rounded-lg border border-gray-200">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:#0D1F3C;">
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Time</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Category</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Action</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Detail</th>
+          <th class="px-3 py-3 text-left text-xs font-semibold text-white tracking-wide">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for item in activity %}
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-3 py-2.5 font-mono text-xs text-gray-400">{{ item.timestamp }}</td>
+          <td class="px-3 py-2.5">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">{{ item.category }}</span>
+          </td>
+          <td class="px-3 py-2.5 text-sm" style="color:#0D1F3C;">{{ item.action }}</td>
+          <td class="px-3 py-2.5 text-xs text-gray-400">{{ item.detail or '' }}</td>
+          <td class="px-3 py-2.5">
+            {% if item.status in ('ok', 'success') %}
+              <span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+            {% elif item.status == 'error' %}
+              <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+            {% else %}
+              <span class="w-2 h-2 rounded-full bg-gray-400 inline-block"></span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-3 py-8 text-center text-gray-400">No activity yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
-// Load system status via API
 fetch('/api/status').then(r => r.json()).then(d => {
   document.getElementById('stat-stocks').textContent  = d.stocks_tracked;
   document.getElementById('sys-last-run').textContent = d.last_score_run;

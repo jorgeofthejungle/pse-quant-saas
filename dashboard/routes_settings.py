@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT))
 import database as db
 from db.db_settings import get_setting, set_setting
 from config import (DAILY_ALERT_HOUR, DAILY_ALERT_MINUTE,
-                    PSE_EDGE_BASE_URL, SCRAPE_DELAY_SECS)
+                    PSE_EDGE_BASE_URL, SCRAPE_DELAY_SECS,
+                    PH_RISK_FREE_RATE, EQUITY_RISK_PREMIUM)
 
 settings_bp = Blueprint('settings', __name__)
 
@@ -56,6 +57,10 @@ def index():
     pm_annual  = int(get_setting('annual_price_centavos',
                                   os.getenv('ANNUAL_PRICE_CENTAVOS', 299900))) / 100
 
+    # Financial model rates — read from DB first, fallback to config
+    rfr = float(get_setting('ph_risk_free_rate',  PH_RISK_FREE_RATE))
+    erp = float(get_setting('equity_risk_premium', EQUITY_RISK_PREMIUM))
+
     # Scheduler times — read from DB first, fallback to config
     alert_h = int(get_setting('alert_hour',   DAILY_ALERT_HOUR))
     alert_m = int(get_setting('alert_minute', DAILY_ALERT_MINUTE))
@@ -84,19 +89,22 @@ def index():
 
     return render_template(
         'settings.html',
-        webhooks       = webhooks,
-        pm_key_set     = bool(pm_key),
-        pm_monthly     = pm_monthly,
-        pm_annual      = pm_annual,
-        alert_hour     = alert_h,
-        alert_minute   = alert_m,
-        score_hour     = score_h,
-        score_minute   = score_m,
-        pse_base_url   = PSE_EDGE_BASE_URL,
-        scrape_delay   = SCRAPE_DELAY_SECS,
-        db_path        = str(db_path),
-        db_size_kb     = db_size_kb,
-        table_counts   = table_counts,
+        webhooks           = webhooks,
+        pm_key_set         = bool(pm_key),
+        pm_monthly         = pm_monthly,
+        pm_annual          = pm_annual,
+        alert_hour         = alert_h,
+        alert_minute       = alert_m,
+        score_hour         = score_h,
+        score_minute       = score_m,
+        pse_base_url       = PSE_EDGE_BASE_URL,
+        scrape_delay       = SCRAPE_DELAY_SECS,
+        db_path            = str(db_path),
+        db_size_kb         = db_size_kb,
+        table_counts       = table_counts,
+        risk_free_rate_pct = round(rfr * 100, 2),
+        equity_risk_pct    = round(erp * 100, 2),
+        required_return_pct= round((rfr + erp) * 100, 2),
     )
 
 
@@ -112,6 +120,27 @@ def save_pricing():
         set_setting('annual_price_centavos',  int(annual_php  * 100))
         return jsonify({'ok': True,
                         'message': f'Prices saved: Monthly PHP {monthly_php:.2f} / Annual PHP {annual_php:.2f}'})
+    except Exception as e:
+        return jsonify({'ok': False, 'message': str(e)})
+
+
+@settings_bp.route('/save-model', methods=['POST'])
+def save_model():
+    """Saves risk-free rate and equity risk premium to DB."""
+    try:
+        data = request.json or {}
+        rfr_pct = float(data.get('risk_free_rate_pct', 0))
+        erp_pct = float(data.get('equity_risk_pct', 0))
+        if not (0 < rfr_pct < 30):
+            return jsonify({'ok': False, 'message': 'Risk-free rate must be between 0% and 30%.'})
+        if not (0 < erp_pct < 30):
+            return jsonify({'ok': False, 'message': 'Equity risk premium must be between 0% and 30%.'})
+        set_setting('ph_risk_free_rate',  rfr_pct / 100)
+        set_setting('equity_risk_premium', erp_pct / 100)
+        total = round(rfr_pct + erp_pct, 2)
+        return jsonify({'ok': True,
+                        'message': f'Saved — Risk-free: {rfr_pct:.2f}%, ERP: {erp_pct:.2f}%, Required return: {total:.2f}%',
+                        'required_return_pct': total})
     except Exception as e:
         return jsonify({'ok': False, 'message': str(e)})
 

@@ -10,3 +10,5 @@ build/
 .worktrees/
 data/raw/
 data/parsed/
+data/pse_quant/.flask_secret
+.claude/worktrees/

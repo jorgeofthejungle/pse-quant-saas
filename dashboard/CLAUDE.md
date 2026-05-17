@@ -15,7 +15,7 @@ Features: `'discord_bot'`, `'stock_lookup'`, `'watchlist'`, `'pdf_reports'`
 
 ## dashboard/app.py
 Flask app — run with `py dashboard/app.py`, open `http://localhost:8080`.
-Pages: Overview, Pipeline, Stock Lookup, Members, Analytics, Settings, Portal, Conglomerates.
+Pages: Overview, Pipeline, Stocks (search + detail), Members, Analytics, Settings, Portal, Conglomerates, Feedback, Manual Entry.
 
 ## dashboard/background.py
 `start_scheduler()` — launches `py scheduler.py` via subprocess.Popen.
@@ -23,6 +23,13 @@ Pages: Overview, Pipeline, Stock Lookup, Members, Analytics, Settings, Portal, C
 
 ## Other dashboard files
 - `routes_home.py`, `routes_pipeline.py`, `routes_members.py`, `routes_analytics.py`, `routes_settings.py`, `routes_portal.py` — Flask route handlers (one file per page)
+- `routes_conglomerates.py` — Conglomerate CRUD and segment preview API
+- `routes_feedback.py` — Monthly/quarterly scorecard and weight corrections API
+- `routes_manual_entry.py` — Manual financial data entry per ticker/year
+- `routes_paymongo.py` — PayMongo webhook and subscription payment handling
+- `routes_stocks.py` — Stock search and per-ticker detail API (rate-limited)
 - `db_members.py` — member and subscription DB operations
+- `paymongo_core.py` — PayMongo API client (payment intent creation, webhook verification)
+- `security.py` — Rate limiting and auth helpers
 - `templates/` — Jinja2 HTML templates (one per page)
 - `static/style.css`, `static/dashboard.js` — frontend assets

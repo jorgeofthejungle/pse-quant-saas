@@ -3,12 +3,25 @@
 # PSE Quant SaaS — reports sub-module
 # ============================================================
 
+import os as _os
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.platypus import Flowable
+from reportlab.pdfbase import pdfmetrics as _pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont as _TTFont
+
+_FONTS_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), 'assets', 'fonts')
+_pdfmetrics.registerFont(_TTFont('Inter-Regular', _os.path.join(_FONTS_DIR, 'Inter-Regular.ttf')))
+_pdfmetrics.registerFont(_TTFont('Inter-Bold',    _os.path.join(_FONTS_DIR, 'Inter-Bold.ttf')))
+_pdfmetrics.registerFont(_TTFont('Inter-Italic',  _os.path.join(_FONTS_DIR, 'Inter-Italic.ttf')))
+_pdfmetrics.registerFontFamily(
+    'Inter',
+    normal='Inter-Regular', bold='Inter-Bold',
+    italic='Inter-Italic', boldItalic='Inter-Bold',
+)
 
 # ── Stockpilot Brand Colours ─────────────────────────────────
 # Matched to the Stockpilot Philippines logo:
@@ -116,42 +129,42 @@ def build_styles():
     styles.add(ParagraphStyle(
         name='ReportTitle',
         fontSize=26, textColor=WHITE, alignment=TA_CENTER,
-        fontName='Helvetica-Bold', spaceAfter=2, leading=30
+        fontName='Inter-Bold', spaceAfter=2, leading=30
     ))
     styles.add(ParagraphStyle(
         name='ReportSubtitle',
         fontSize=11, textColor=DARK_GREY, alignment=TA_CENTER,
-        fontName='Helvetica', spaceAfter=2
+        fontName='Inter-Regular', spaceAfter=2
     ))
     styles.add(ParagraphStyle(
         name='SectionHeader',
         fontSize=13, textColor=NAVY, alignment=TA_LEFT,
-        fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=4
+        fontName='Inter-Bold', spaceBefore=10, spaceAfter=4
     ))
     styles.add(ParagraphStyle(
         name='BodyText2',
         fontSize=9, textColor=BLACK, alignment=TA_LEFT,
-        fontName='Helvetica', spaceAfter=4, leading=14
+        fontName='Inter-Regular', spaceAfter=4, leading=14
     ))
     styles.add(ParagraphStyle(
         name='SmallMuted',
         fontSize=8, textColor=DARK_GREY, alignment=TA_CENTER,
-        fontName='Helvetica', spaceAfter=2
+        fontName='Inter-Regular', spaceAfter=2
     ))
     styles.add(ParagraphStyle(
         name='Disclaimer',
         fontSize=7.5, textColor=DARK_GREY, alignment=TA_CENTER,
-        fontName='Helvetica-Oblique', spaceAfter=2, leading=11
+        fontName='Inter-Italic', spaceAfter=2, leading=11
     ))
     styles.add(ParagraphStyle(
         name='GoldLabel',
         fontSize=9, textColor=GOLD, alignment=TA_LEFT,
-        fontName='Helvetica-Bold', spaceAfter=3, spaceBefore=4
+        fontName='Inter-Bold', spaceAfter=3, spaceBefore=4
     ))
     styles.add(ParagraphStyle(
         name='ExplainText',
         fontSize=8.5, textColor=DARK_GREY, alignment=TA_LEFT,
-        fontName='Helvetica-Oblique', spaceAfter=2, leading=13
+        fontName='Inter-Italic', spaceAfter=2, leading=13
     ))
     return styles
 

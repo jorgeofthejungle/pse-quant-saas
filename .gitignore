@@ -23,6 +23,7 @@ data/parsed/
 data/reports/
 *.log
 
-# Claude Code worktrees
+# Claude Code local/machine-specific files
 .worktrees/
 .claude/worktrees/
+.claude/settings.local.json

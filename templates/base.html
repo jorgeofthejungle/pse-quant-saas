@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>{% block title %}StockPilot PH{% endblock %}</title>
+
+    <!-- Inter font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN (v3.4, no build step) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom CSS for brand overrides and layout refinements -->
+    <style>
+        /* StockPilot Design System 2.0 overrides */
+        :root {
+            --brand-primary: #1a2744;
+            --brand-accent: #d4a843;
+            --brand-bg: #ffffff;
+            --brand-text: #1a2744;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--brand-bg);
+            color: var(--brand-text);
+        }
+        .sidebar {
+            background-color: var(--brand-primary);
+            min-width: 260px;
+            width: 260px;
+            transition: width 0.2s ease;
+        }
+        .sidebar a.active {
+            border-left: 4px solid var(--brand-accent);
+            background-color: rgba(212, 168, 67, 0.1);
+        }
+        .sidebar a:hover {
+            background-color: rgba(212, 168, 67, 0.05);
+        }
+        .accent-gold {
+            color: var(--brand-accent);
+        }
+        .accent-gold-bg {
+            background-color: var(--brand-accent);
+        }
+        .card {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+            transition: box-shadow 0.15s ease;
+        }
+        .card:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+        }
+        /* Striped table rows */
+        table.striped tbody tr:nth-child(even) {
+            background-color: #f9fafb;
+        }
+        /* Button styles */
+        .btn-primary {
+            background-color: var(--brand-primary);
+            color: white;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: background-color 0.15s;
+        }
+        .btn-primary:hover {
+            background-color: #0f1a2e;
+        }
+        .btn-outline-accent {
+            border: 2px solid var(--brand-accent);
+            color: var(--brand-accent);
+            background: transparent;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            transition: background-color 0.15s, color 0.15s;
+        }
+        .btn-outline-accent:hover {
+            background-color: var(--brand-accent);
+            color: white;
+        }
+        /* Scrollbar styling (optional) */
+        .overflow-x-auto::-webkit-scrollbar {
+            height: 6px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        /* Ensure sidebar stays fixed on large screens, collapsible on mobile */
+        @media (max-width: 1023px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                z-index: 40;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .sidebar-overlay {
+                display: none;
+            }
+            .sidebar.open + .sidebar-overlay {
+                display: block;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.3);
+                z-index: 30;
+            }
+        }
+        @media (min-width: 1024px) {
+            .sidebar {
+                transform: translateX(0) !important;
+            }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="antialiased text-base">
+    <div class="flex min-h-screen">
+        <!-- Sidebar (mobile: hidden by default, toggled via hamburger) -->
+        <aside class="sidebar flex-shrink-0 overflow-y-auto py-6 px-4 space-y-6" id="sidebar">
+            <div class="flex items-center justify-between px-2">
+                <h1 class="text-lg font-bold text-white tracking-tight">
+                    StockPilot<span class="accent-gold">PH</span>
+                </h1>
+                <!-- Close button for mobile -->
+                <button id="sidebarClose" class="lg:hidden text-white hover:text-accent-gold focus:outline-none" aria-label="Close sidebar">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Navigation links (blocks for child templates) -->
+            <nav class="flex flex-col space-y-1">
+                {% block sidebar_nav %}
+                <a href="{{ url_for('dashboard.index') if url_for else '#' }}" class="flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-opacity-10 hover:text-white rounded-md transition-colors duration-150">
+                    <svg class="w-5 h-5 mr-3 accent-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    Dashboard
+                </a>
+                <a href="{{ url_for('pipeline.index') if url_for else '#' }}" class="flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-opacity-10 hover:text-white rounded-md transition-colors duration-150">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    Pipeline
+                </a>
+                <a href="{{ url_for('reports.index') if url_for else '#' }}" class="flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-opacity-10 hover:text-white rounded-md transition-colors duration-150">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    Reports
+                </a>
+                <a href="{{ url_for('settings.index') if url_for else '#' }}" class="flex items-center px-3 py-2 text-sm font-medium text-gray-300 hover:bg-opacity-10 hover:text-white rounded-md transition-colors duration-150">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Settings
+                </a>
+                {% endblock %}
+            </nav>
+        </aside>
+
+        <!-- Overlay for mobile sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <!-- Main content area -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Mobile top bar (hamburger + title) -->
+            <header class="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                <button id="sidebarToggle" class="text-gray-600 hover:text-gray-900 focus:outline-none" aria-label="Open sidebar">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                <h2 class="text-lg font-bold text-gray-900">StockPilot PH</h2>
+                <div class="w-6"></div> <!-- spacer -->
+            </header>
+
+            <!-- Main content wrapper with consistent padding -->
+            <main class="flex-1 overflow-y-auto p-6 lg:p-8 bg-gray-50">
+                {% block content %}
+                <!-- Default content if child doesn't provide -->
+                <div class="max-w-6xl mx-auto space-y-6">
+                    <h2 class="text-2xl font-semibold text-gray-900">Dashboard</h2>
+                    <p class="text-gray-600">Select a section from the sidebar.</p>
+                </div>
+                {% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Mobile sidebar toggle JavaScript -->
+    <script>
+        (function() {
+            'use strict';
+            var sidebar = document.getElementById('sidebar');
+            var sidebarToggle = document.getElementById('sidebarToggle');
+            var sidebarClose = document.getElementById('sidebarClose');
+            var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+            function toggleSidebar() {
+                if (sidebar) {
+                    sidebar.classList.toggle('open');
+                }
+            }
+
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', toggleSidebar);
+            }
+            if (sidebarClose) {
+                sidebarClose.addEventListener('click', toggleSidebar);
+            }
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', toggleSidebar);
+            }
+        })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

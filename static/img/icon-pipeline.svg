@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 96 24" width="96" height="24" role="img" aria-label="Pipeline status icons: green check, yellow warning, red error, gray idle">
+  <defs>
+    <!-- Green check (success) -->
+    <symbol id="icon-pipeline-ok" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#22c55e"/>
+      <path d="M7 12.5l3 3 7-7" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- Yellow warning -->
+    <symbol id="icon-pipeline-warning" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#eab308"/>
+      <path d="M12 7v6" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="12" cy="16.5" r="1.25" fill="#ffffff"/>
+    </symbol>
+
+    <!-- Red error -->
+    <symbol id="icon-pipeline-error" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#ef4444"/>
+      <path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- Gray idle -->
+    <symbol id="icon-pipeline-idle" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#9ca3af"/>
+      <rect x="8" y="10" width="8" height="4" rx="1" fill="#ffffff"/>
+    </symbol>
+  </defs>
+
+  <!-- Demo placement of all four icons (optional) -->
+  <use href="#icon-pipeline-ok" x="0" y="0" width="24" height="24"/>
+  <use href="#icon-pipeline-warning" x="24" y="0" width="24" height="24"/>
+  <use href="#icon-pipeline-error" x="48" y="0" width="24" height="24"/>
+  <use href="#icon-pipeline-idle" x="72" y="0" width="24" height="24"/>
+</svg>

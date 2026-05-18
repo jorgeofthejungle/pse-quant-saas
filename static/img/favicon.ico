@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Generate favicon.ico for StockPilot PH dashboard."""
+
+import logging
+import sys
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError as e:
+    logging.critical("Pillow is required. Install: pip install Pillow")
+    sys.exit(1)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+# Brand colors
+NAVY = (26, 39, 68)       # #1a2744
+GOLD = (212, 168, 67)    # #d4a843
+WHITE = (255, 255, 255)
+
+OUTPUT_PATH = Path("static/img/favicon.ico")
+SIZES = [16, 32, 48, 64]  # Standard favicon sizes
+
+def _load_font(size: int) -> ImageFont.ImageFont:
+    """Try to load Inter Bold; fallback to default."""
+    font_paths = [
+        Path("fonts/Inter/static/Inter-Bold.ttf"),
+        Path("Inter-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/inter/Inter-Bold.ttf"),
+    ]
+    for path in font_paths:
+        if path.exists():
+            try:
+                return ImageFont.truetype(str(path), size)
+            except (IOError, OSError):
+                continue
+    logger.warning("Inter font not found, using default bitmap font.")
+    return ImageFont.load_default()
+
+def _create_favicon_frame(size: int) -> Image.Image:
+    """Create a single favicon frame with navy background and gold 'SP'."""
+    img = Image.new("RGBA", (size, size), NAVY + (255,))
+    draw = ImageDraw.Draw(img)
+
+    # Use a font size proportional to image size (approx 60% of height)
+    font_size = max(8, int(size * 0.6))
+    font = _load_font(font_size)
+
+    # Draw 'SP' centered
+    text = "SP"
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (size - text_w) // 2 - bbox[0]
+    y = (size - text_h) // 2 - bbox[1]
+    draw.text((x, y), text, font=font, fill=GOLD + (255,))
+
+    return img
+
+def generate_favicon(output: Optional[Path] = None) -> Path:
+    """Generate multi-size favicon.ico file.
+
+    Args:
+        output: Output file path. Defaults to static/img/favicon.ico.
+
+    Returns:
+        Path to the generated .ico file.
+
+    Raises:
+        RuntimeError: If image creation fails.
+    """
+    output = output or OUTPUT_PATH
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        frames: List[Image.Image] = []
+        for size in SIZES:
+            frame = _create_favicon_frame(size)
+            frames.append(frame)
+            logger.debug("Created %dx%d frame", size, size)
+
+        frames[0].save(
+            output,
+            format="ICO",
+            sizes=[(s, s) for s in SIZES],
+            append_images=frames[1:],
+        )
+        logger.info("Favicon saved to %s", output.resolve())
+        return output
+    except Exception as e:
+        logger.error("Failed to generate favicon: %s", e)
+        raise RuntimeError(f"Favicon generation failed: {e}") from e
+
+if __name__ == "__main__":
+    try:
+        generate_favicon()
+    except RuntimeError as e:
+        sys.exit(1)

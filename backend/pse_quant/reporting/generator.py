@@ -44,13 +44,16 @@ from pse_quant.reporting.styles import (
 def generate_pdf_report(
     ranked_stocks: list[dict[str, Any]],
     output_path: str | Path,
-    run_date: str,
+    run_date: str | None = None,
     total_screened: int = 250,
 ) -> Path:
     """
     Generates the A4 research PDF report.
     Returns the Path to the generated PDF.
     """
+    from datetime import date
+    if run_date is None:
+        run_date = date.today().isoformat()
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 

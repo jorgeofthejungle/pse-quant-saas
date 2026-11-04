@@ -12,6 +12,7 @@ import {
   Info,
 } from 'lucide-react';
 import { MOCK_STOCK_DETAILS, MOCK_RANKINGS } from '@/lib/mockData';
+import { getStockDetail } from '@/lib/db';
 
 export function generateStaticParams() {
   return MOCK_RANKINGS.map((stock) => ({
@@ -27,32 +28,9 @@ export default async function StockDetailPage({ params }: StockDetailPageProps) 
   const { ticker } = await params;
   const upperTicker = ticker.toUpperCase();
 
-  // Look up detail, or fallback to ranking mock item
-  const stock = MOCK_STOCK_DETAILS[upperTicker] || {
-    ...MOCK_RANKINGS.find((s) => s.ticker === upperTicker),
-    marketCap: 150000000000,
-    dpsLast: 0.50,
-    dividendCagr5y: 5.0,
-    fcfPerShare: 1.00,
-    revenueCagr: 6.0,
-    requiredReturn: 0.125,
-    layers: {
-      health: { score: 80, weight: 0.30, factors: { roe: 75, de_ratio: 80, ni_margin: 70 } },
-      improvement: { score: 75, weight: 0.28, factors: { revenue_delta: 70, eps_delta: 75 } },
-      persistence: { score: 80, weight: 0.42, factors: { revenue: 80, eps: 80, direction: 85 } },
-    },
-    valuation: {
-      ddm: { value: 12.00, status: 'DDM applied' },
-      epsPe: { value: 15.00, status: 'EPS-PE applied' },
-      dcf: { value: 18.00, status: 'DCF applied' },
-      conglomerateDiscountApplied: false,
-    },
-    historicalFinancials: [
-      { year: 2025, revenue: 10000, netIncome: 2000, equity: 15000, eps: 2.0, dps: 0.5 },
-      { year: 2024, revenue: 9200, netIncome: 1800, equity: 14000, eps: 1.8, dps: 0.45 },
-      { year: 2023, revenue: 8500, netIncome: 1600, equity: 13000, eps: 1.6, dps: 0.4 },
-    ],
-  };
+  // Look up detail from database with fallback
+  const dbStock = await getStockDetail(upperTicker);
+  const stock = dbStock || MOCK_STOCK_DETAILS[upperTicker];
 
   if (!stock || !stock.ticker) {
     notFound();

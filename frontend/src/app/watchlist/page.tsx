@@ -12,14 +12,34 @@ export default function WatchlistPage() {
   ]);
   const [newTicker, setNewTicker] = useState('');
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTicker) return;
-    const found = MOCK_RANKINGS.find((s) => s.ticker.toLowerCase() === newTicker.toLowerCase());
-    if (found && !watchlist.some((s) => s.ticker === found.ticker)) {
+    if (!newTicker.trim()) return;
+    const sym = newTicker.trim().toUpperCase();
+    if (watchlist.some((s) => s.ticker === sym)) {
+      setNewTicker('');
+      return;
+    }
+    const found = MOCK_RANKINGS.find((s) => s.ticker.toLowerCase() === sym.toLowerCase());
+    if (found) {
       setWatchlist([...watchlist, { ...found, targetMos: 20.0 }]);
       setNewTicker('');
+      return;
     }
+    try {
+      const res = await fetch(`/api/stocks/${sym}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          setWatchlist([...watchlist, { ...json.data, targetMos: 20.0 }]);
+          setNewTicker('');
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setNewTicker('');
   };
 
   const handleRemove = (ticker: string) => {

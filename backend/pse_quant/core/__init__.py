@@ -41,7 +41,12 @@ from pse_quant.core.mos import (
     apply_conglomerate_discount,
     enrich_stock_valuation,
 )
-from pse_quant.core.validator import validate_stock, validate_all, detect_and_cap_special_dividend
+from pse_quant.core.validator import (
+    validate_stock,
+    validate_all,
+    detect_and_cap_special_dividend,
+    validate_financial_record,
+)
 
 __all__ = [
     "calculate_pe",
@@ -82,4 +87,5 @@ __all__ = [
     "validate_stock",
     "validate_all",
     "detect_and_cap_special_dividend",
+    "validate_financial_record",
 ]

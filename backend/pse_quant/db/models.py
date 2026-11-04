@@ -152,9 +152,7 @@ class Subscription(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    paymongo_customer_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    paymongo_subscription_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, unique=True)
-    plan: Mapped[str] = mapped_column(String(32), default="monthly")  # monthly, annual
+    plan: Mapped[str] = mapped_column(String(32), default="monthly")  # monthly, annual, lifetime
     status: Mapped[str] = mapped_column(String(32), default="active")  # active, past_due, cancelled
     amount_php: Mapped[float] = mapped_column(Float, default=499.0)
     current_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

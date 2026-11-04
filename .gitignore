@@ -27,3 +27,13 @@ data/reports/
 .worktrees/
 .claude/worktrees/
 .claude/settings.local.json
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / Next.js
+frontend/.next/
+frontend/out/
+node_modules/

@@ -55,6 +55,33 @@ WARN_LOW_THRESHOLDS: dict[str, tuple[str, float, str]] = {
 SPECIAL_DIVIDEND_YIELD_CAP: float = 20.0  # Capped for ongoing run-rate scoring
 
 
+def validate_financial_record(record: dict[str, Any]) -> dict[str, Any]:
+    """
+    Validates and cleans a scraped annual financial record.
+    Returns cleaned dictionary.
+    """
+    out = dict(record)
+    year = out.get("year")
+    if not year or not isinstance(year, int) or year < 1990 or year > 2100:
+        return {}
+
+    # Ensure numeric fields are clean floats
+    numeric_keys = [
+        "revenue", "net_income", "equity", "total_debt", "cash",
+        "operating_cash_flow", "capital_expenditures", "ebitda",
+        "eps", "dps", "depreciation", "amortization", "book_value_per_share",
+    ]
+    for k in numeric_keys:
+        v = out.get(k)
+        if v is not None:
+            try:
+                out[k] = float(v)
+            except (ValueError, TypeError):
+                out[k] = None
+
+    return out
+
+
 def detect_and_cap_special_dividend(stock: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """
     Detects one-time special dividends (yield > 20%) that distort baseline scoring.

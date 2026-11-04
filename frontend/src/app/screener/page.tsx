@@ -1,8 +1,10 @@
 import ScreenerTable from '@/components/ScreenerTable';
-import { MOCK_RANKINGS } from '@/lib/mockData';
-import { Compass, Sparkles } from 'lucide-react';
+import { getRankings } from '@/lib/db';
+import { Sparkles } from 'lucide-react';
 
-export default function ScreenerPage() {
+export default async function ScreenerPage() {
+  const stocks = await getRankings('unified');
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
       <div className="mb-8">
@@ -18,7 +20,7 @@ export default function ScreenerPage() {
         </p>
       </div>
 
-      <ScreenerTable initialStocks={MOCK_RANKINGS} />
+      <ScreenerTable initialStocks={stocks} />
     </div>
   );
 }

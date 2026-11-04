@@ -139,6 +139,9 @@ class User(Base):
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     tier: Mapped[str] = mapped_column(String(32), default="free")  # free, paid, admin
     status: Mapped[str] = mapped_column(String(32), default="active")
+    notification_prefs: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, default=lambda: {"weekly_report": True, "daily_brief": True, "price_alerts": True}
+    )
     email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -173,6 +176,7 @@ class Watchlist(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     ticker: Mapped[str] = mapped_column(String(16), ForeignKey("stocks.ticker", ondelete="CASCADE"), nullable=False)
     target_mos_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped[User] = relationship("User", back_populates="watchlists")

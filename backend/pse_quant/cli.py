@@ -214,9 +214,21 @@ def cmd_email_digest(args: argparse.Namespace) -> None:
         print(f"[+] Send status: {res.get('status')} (id: {res.get('id')})")
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    import uvicorn
+    print(f"[*] Starting StockPilot PH Quant Decision Server on http://{args.host}:{args.port}...")
+    uvicorn.run("pse_quant.api.main:app", host=args.host, port=args.port, reload=args.reload)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="PSE Quant SaaS Engine CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # serve
+    p_serve = subparsers.add_parser("serve", help="Start FastAPI REST server")
+    p_serve.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
+    p_serve.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    p_serve.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
 
     # init-db
     subparsers.add_parser("init-db", help="Create database tables")
@@ -241,7 +253,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "init-db":
+    if args.command == "serve":
+        cmd_serve(args)
+    elif args.command == "init-db":
         cmd_init_db(args)
     elif args.command == "seed-demo":
         cmd_seed_demo(args)

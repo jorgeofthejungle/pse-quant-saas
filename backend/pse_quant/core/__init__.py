@@ -1,0 +1,85 @@
+"""
+pse_quant.core — Core Mathematical Quantitative Package
+"""
+
+from pse_quant.core.metrics import (
+    calculate_pe,
+    calculate_pb,
+    calculate_roe,
+    calculate_de,
+    calculate_dividend_yield,
+    calculate_payout_ratio,
+    calculate_fcf,
+    calculate_fcf_yield,
+    calculate_fcf_coverage,
+    calculate_cagr,
+    calculate_ev_ebitda,
+    calc_ffo,
+    calc_ffo_yield,
+    calc_ffo_payout,
+)
+from pse_quant.core.sector_groups import get_scoring_group, describe_group
+from pse_quant.core.filters import filter_unified, filter_unified_batch
+from pse_quant.core.scoring import (
+    score_health,
+    score_improvement,
+    score_persistence,
+    score_unified,
+    rank_stocks,
+    calc_data_confidence,
+    get_category,
+)
+from pse_quant.core.mos import (
+    calc_required_return,
+    calc_ddm,
+    calc_two_stage_ddm,
+    calc_eps_pe,
+    calc_dcf,
+    calc_hybrid_intrinsic,
+    calc_mos_pct,
+    calc_mos_price,
+    apply_conglomerate_discount,
+    enrich_stock_valuation,
+)
+from pse_quant.core.validator import validate_stock, validate_all, detect_and_cap_special_dividend
+
+__all__ = [
+    "calculate_pe",
+    "calculate_pb",
+    "calculate_roe",
+    "calculate_de",
+    "calculate_dividend_yield",
+    "calculate_payout_ratio",
+    "calculate_fcf",
+    "calculate_fcf_yield",
+    "calculate_fcf_coverage",
+    "calculate_cagr",
+    "calculate_ev_ebitda",
+    "calc_ffo",
+    "calc_ffo_yield",
+    "calc_ffo_payout",
+    "get_scoring_group",
+    "describe_group",
+    "filter_unified",
+    "filter_unified_batch",
+    "score_health",
+    "score_improvement",
+    "score_persistence",
+    "score_unified",
+    "rank_stocks",
+    "calc_data_confidence",
+    "get_category",
+    "calc_required_return",
+    "calc_ddm",
+    "calc_two_stage_ddm",
+    "calc_eps_pe",
+    "calc_dcf",
+    "calc_hybrid_intrinsic",
+    "calc_mos_pct",
+    "calc_mos_price",
+    "apply_conglomerate_discount",
+    "enrich_stock_valuation",
+    "validate_stock",
+    "validate_all",
+    "detect_and_cap_special_dividend",
+]

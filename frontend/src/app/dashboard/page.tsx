@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { stockApi } from '@/lib/api';
 import ScreenerTable from '@/components/ScreenerTable';
+import MemberGreeting from '@/components/MemberGreeting';
 
 export const metadata = {
   title: 'Executive Dashboard | StockPilot PH',
@@ -35,8 +36,10 @@ export default async function DashboardPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* ── Top Header & Greeting ──────────────────────────── */}
+      <MemberGreeting />
+
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-0.5 text-xs font-semibold text-blue-400 mb-2">

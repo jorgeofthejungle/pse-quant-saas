@@ -257,6 +257,68 @@ export const customerApi = {
   },
 };
 
+function getAdminHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('stockpilot_admin_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
+// ── Authentication API ───────────────────────────────────────
+
+export const authApi = {
+  async loginMember(email: string, password: string) {
+    const res = await fetch(`${BASE_URL}/auth/member/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Login failed' }));
+      throw new Error(err.detail || 'Invalid member credentials');
+    }
+    return await res.json();
+  },
+
+  async registerMember(email: string, password: string, name?: string) {
+    const res = await fetch(`${BASE_URL}/auth/member/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+      throw new Error(err.detail || 'Registration failed');
+    }
+    return await res.json();
+  },
+
+  async loginAdmin(email: string, password: string) {
+    const res = await fetch(`${BASE_URL}/auth/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Admin login failed' }));
+      throw new Error(err.detail || 'Access denied: Invalid administrator credentials');
+    }
+    return await res.json();
+  },
+
+  async getMe(token: string) {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  },
+};
+
 // ── Admin API ────────────────────────────────────────────────
 
 export interface AdminMetrics {
@@ -281,7 +343,10 @@ export interface PipelineRunLog {
 export const adminApi = {
   async getMetrics(): Promise<AdminMetrics> {
     try {
-      const res = await fetch(`${BASE_URL}/admin/metrics`, { cache: 'no-store' });
+      const res = await fetch(`${BASE_URL}/admin/metrics`, {
+        cache: 'no-store',
+        headers: getAdminHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch (err) {
       console.error('[adminApi.getMetrics] Error:', err);
@@ -298,7 +363,10 @@ export const adminApi = {
 
   async listCustomers(skip = 0, limit = 50) {
     try {
-      const res = await fetch(`${BASE_URL}/admin/customers?skip=${skip}&limit=${limit}`, { cache: 'no-store' });
+      const res = await fetch(`${BASE_URL}/admin/customers?skip=${skip}&limit=${limit}`, {
+        cache: 'no-store',
+        headers: getAdminHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch (err) {
       console.error('[adminApi.listCustomers] Error:', err);
@@ -308,7 +376,10 @@ export const adminApi = {
 
   async getPipelineRuns(limit = 15): Promise<PipelineRunLog[]> {
     try {
-      const res = await fetch(`${BASE_URL}/admin/pipeline/runs?limit=${limit}`, { cache: 'no-store' });
+      const res = await fetch(`${BASE_URL}/admin/pipeline/runs?limit=${limit}`, {
+        cache: 'no-store',
+        headers: getAdminHeaders(),
+      });
       if (res.ok) return await res.json();
     } catch (err) {
       console.error('[adminApi.getPipelineRuns] Error:', err);
@@ -321,7 +392,10 @@ export const adminApi = {
     if (tickers && tickers.length > 0) {
       tickers.forEach((t) => url.searchParams.append('tickers', t));
     }
-    const res = await fetch(url.toString(), { method: 'POST' });
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: getAdminHeaders(),
+    });
     return await res.json();
   },
 
@@ -330,12 +404,18 @@ export const adminApi = {
     if (tickers && tickers.length > 0) {
       tickers.forEach((t) => url.searchParams.append('tickers', t));
     }
-    const res = await fetch(url.toString(), { method: 'POST' });
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: getAdminHeaders(),
+    });
     return await res.json();
   },
 
   async triggerRecomputeScores() {
-    const res = await fetch(`${BASE_URL}/admin/pipeline/score`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/admin/pipeline/score`, {
+      method: 'POST',
+      headers: getAdminHeaders(),
+    });
     return await res.json();
   },
 
@@ -344,19 +424,25 @@ export const adminApi = {
     if (recipients && recipients.length > 0) {
       recipients.forEach((r) => url.searchParams.append('recipients', r));
     }
-    const res = await fetch(url.toString(), { method: 'POST' });
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: getAdminHeaders(),
+    });
     return await res.json();
   },
 
   async triggerEvaluateAlerts() {
-    const res = await fetch(`${BASE_URL}/admin/pipeline/evaluate-alerts`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/admin/pipeline/evaluate-alerts`, {
+      method: 'POST',
+      headers: getAdminHeaders(),
+    });
     return await res.json();
   },
 
   async overrideFinancials(ticker: string, year: number, data: any) {
     const res = await fetch(`${BASE_URL}/admin/stocks/${ticker.toUpperCase()}/financials/${year}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify(data),
     });
     return await res.json();

@@ -1,8 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  // If inside the admin portal, do not render consumer footer
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <footer className="border-t border-slate-800 bg-slate-950 py-12 text-slate-400">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -18,6 +26,7 @@ export default function Footer() {
             <ul className="mt-3 space-y-2 text-sm">
               <li><Link href="/screener" className="hover:text-white">Rankings Screener</Link></li>
               <li><Link href="/watchlist" className="hover:text-white">Personal Watchlist</Link></li>
+              <li><Link href="/dashboard" className="hover:text-white">Command Dashboard</Link></li>
             </ul>
           </div>
           <div>

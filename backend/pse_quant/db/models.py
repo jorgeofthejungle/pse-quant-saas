@@ -137,8 +137,11 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    tier: Mapped[str] = mapped_column(String(32), default="free")  # free, paid, admin
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), default="member")  # member, admin
+    tier: Mapped[str] = mapped_column(String(32), default="free")    # free, paid, pro
     status: Mapped[str] = mapped_column(String(32), default="active")
+    api_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, unique=True)
     notification_prefs: Mapped[Optional[dict[str, Any]]] = mapped_column(
         JSON, default=lambda: {"weekly_report": True, "daily_brief": True, "price_alerts": True}
     )

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ShieldAlert,
   Play,
@@ -22,6 +23,7 @@ import {
 import { adminApi, AdminMetrics, PipelineRunLog } from '@/lib/api';
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   const [metrics, setMetrics] = useState<AdminMetrics>({
     total_customers: 1,
     paid_subscribers: 1,
@@ -45,14 +47,21 @@ export default function AdminDashboardPage() {
   const [overrideEps, setOverrideEps] = useState('');
 
   const loadData = async () => {
-    const [m, r, c] = await Promise.all([
-      adminApi.getMetrics(),
-      adminApi.getPipelineRuns(10),
-      adminApi.listCustomers(0, 20),
-    ]);
-    if (m) setMetrics(m);
-    if (r) setRuns(r);
-    if (c) setCustomers(c);
+    try {
+      const [m, r, c] = await Promise.all([
+        adminApi.getMetrics(),
+        adminApi.getPipelineRuns(10),
+        adminApi.listCustomers(0, 20),
+      ]);
+      if (m) setMetrics(m);
+      if (r) setRuns(r);
+      if (c) setCustomers(c);
+    } catch (err: any) {
+      if (err?.message?.includes('401') || err?.message?.includes('403')) {
+        localStorage.removeItem('stockpilot_admin_token');
+        router.push('/admin/login');
+      }
+    }
   };
 
   useEffect(() => {

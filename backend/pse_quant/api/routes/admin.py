@@ -12,13 +12,14 @@ from pse_quant.db.connection import get_db_session
 from pse_quant.services.stock_service import StockService
 from pse_quant.services.customer_service import CustomerService
 from pse_quant.db.models import PipelineRun
+from pse_quant.api.auth import require_admin
 from pse_quant.api.schemas import (
     FinancialOverrideRequest,
     AdminMetricsResponse,
     PipelineTriggerResponse,
 )
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 def get_db():

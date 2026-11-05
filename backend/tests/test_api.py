@@ -117,8 +117,9 @@ def test_customer_lifecycle_api(client_with_db: TestClient):
     assert items[0]["ticker"] == "AREIT"
     assert items[0]["is_triggered"] is True
 
-    # 4. Admin metrics
-    metrics_resp = client_with_db.get("/api/v1/admin/metrics")
+    # 4. Admin metrics (requires admin privileges)
+    from pse_quant.services.auth_service import ADMIN_MASTER_KEY
+    metrics_resp = client_with_db.get("/api/v1/admin/metrics", headers={"X-Admin-Key": ADMIN_MASTER_KEY})
     assert metrics_resp.status_code == 200
     m = metrics_resp.json()
     assert m["total_customers"] >= 1

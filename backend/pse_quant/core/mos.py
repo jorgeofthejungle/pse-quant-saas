@@ -87,11 +87,12 @@ def calc_ddm(
 
     # Cap terminal growth rate
     g = max(0.0, min(cagr, DDM_MAX_GROWTH_RATE))
-    if g >= required_return:
-        g = required_return - 0.02
+    denom = required_return - g
+    if denom <= 0.015:
+        g = max(0.0, required_return - 0.02)
+        denom = max(required_return - g, 0.015)
 
     dps1 = dps_last * (1.0 + g)
-    denom = required_return - g
     if denom <= 0:
         return None, "DDM invalid denominator"
 
@@ -188,8 +189,10 @@ def calc_dcf(
         fcf = fcf * (1.0 + g)
         pv_fcf += fcf / ((1.0 + required_return) ** y)
 
-    terminal_fcf = fcf * (1.0 + terminal_growth)
-    terminal_val = terminal_fcf / (required_return - terminal_growth)
+    t_growth = min(terminal_growth, max(0.0, required_return - 0.02))
+    t_denom = max(required_return - t_growth, 0.02)
+    terminal_fcf = fcf * (1.0 + t_growth)
+    terminal_val = terminal_fcf / t_denom
     pv_terminal = terminal_val / ((1.0 + required_return) ** years)
 
     iv = pv_fcf + pv_terminal

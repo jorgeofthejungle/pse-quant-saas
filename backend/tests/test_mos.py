@@ -91,3 +91,28 @@ def test_enrich_stock_valuation():
     assert enriched["intrinsic_value"] is not None
     assert enriched["mos_pct"] is not None
     assert enriched["valuation"]["conglomerate_discount_applied"] is True
+
+
+def test_mos_asymptotic_and_edge_case_boundaries():
+    # 1. Terminal growth rate equals or exceeds required return -> MUST NOT blow up or return negative
+    iv_ddm, status_ddm = calc_ddm(dps_last=2.0, dividend_cagr=25.0, required_return=0.08)
+    assert iv_ddm is not None
+    assert iv_ddm > 0
+
+    # 2. DCF with terminal growth higher than required return
+    iv_dcf, status_dcf = calc_dcf(fcf_per_share=1.5, growth_rate=0.20, terminal_growth=0.12, required_return=0.10)
+    assert iv_dcf is not None
+    assert iv_dcf > 0
+
+    # 3. Pathological stock with negative FCF and non-positive EPS -> must yield None cleanly
+    distressed = {
+        "ticker": "DISTRESSED",
+        "current_price": 5.0,
+        "market_cap": 1e9,
+        "fcf_per_share": -2.0,
+        "eps_3y": [-1.5, -0.8, -0.2],
+        "dps_last": None,
+    }
+    enriched = enrich_stock_valuation(distressed)
+    assert enriched["intrinsic_value"] is None
+    assert enriched["mos_pct"] is None

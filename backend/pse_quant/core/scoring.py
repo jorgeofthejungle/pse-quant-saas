@@ -119,7 +119,10 @@ def _yoy_changes(series: list[float | None]) -> list[float]:
     for i in range(len(valid) - 1):
         curr, prev = valid[i], valid[i + 1]
         if prev and prev != 0:
-            changes.append(((curr - prev) / abs(prev)) * 100.0)
+            raw_change = ((curr - prev) / abs(prev)) * 100.0
+            # Clamp percentage changes to [-100%, +300%] to prevent micro-base growth explosions
+            clamped = max(-100.0, min(raw_change, 300.0))
+            changes.append(clamped)
     return changes
 
 

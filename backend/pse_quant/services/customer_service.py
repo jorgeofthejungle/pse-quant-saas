@@ -326,6 +326,7 @@ class CustomerService:
             "status": "completed",
             "recipients_count": len(recipients),
             "results": results,
+            "pdf_path": str(pdf_path),
         }
 
     # ── Admin Intelligence Queries ────────────────────────────

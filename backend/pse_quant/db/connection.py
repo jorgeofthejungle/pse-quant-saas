@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from typing import Generator
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from pse_quant.config import DATABASE_URL
@@ -34,6 +34,14 @@ if not _IS_SQLITE:
     })
 
 engine = create_engine(_DB_URL, **engine_kwargs)
+
+if _IS_SQLITE:
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

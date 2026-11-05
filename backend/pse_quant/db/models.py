@@ -31,10 +31,10 @@ class Stock(Base):
 
     ticker: Mapped[str] = mapped_column(String(16), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    sector: Mapped[str] = mapped_column(String(64), nullable=False, default="Unknown")
+    sector: Mapped[str] = mapped_column(String(64), nullable=False, default="Unknown", index=True)
     is_reit: Mapped[bool] = mapped_column(Boolean, default=False)
     is_bank: Mapped[bool] = mapped_column(Boolean, default=False)
-    status: Mapped[str] = mapped_column(String(32), default="active")  # active, suspended, delisted
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)  # active, suspended, delisted
     cmpy_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     fiscal_year_end_month: Mapped[int] = mapped_column(Integer, default=12)
     last_scraped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -101,6 +101,7 @@ class Score(Base):
     __table_args__ = (
         UniqueConstraint("ticker", "run_date", "portfolio_type", name="uq_scores_ticker_date_portfolio"),
         Index("idx_scores_run_date_portfolio", "run_date", "portfolio_type"),
+        Index("idx_scores_portfolio_rank", "portfolio_type", "rank"),
         Index("idx_scores_ticker", "ticker"),
     )
 
@@ -121,6 +122,9 @@ class Score(Base):
 
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        Index("idx_pipeline_runs_started", "started_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_type: Mapped[str] = mapped_column(String(64), nullable=False)  # daily_score, weekly_scrape, email_digest
@@ -188,6 +192,10 @@ class Watchlist(Base):
 
 class EmailLog(Base):
     __tablename__ = "email_logs"
+    __table_args__ = (
+        Index("idx_email_logs_sent", "sent_at"),
+        Index("idx_email_logs_recipient", "recipient_email"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)

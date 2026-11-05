@@ -151,3 +151,12 @@ def test_customer_watchlist_alerts(session: Session):
     assert len(alerts) == 1
     assert alerts[0]["ticker"] == "AREIT"
     assert alerts[0]["user_email"] == "alert@example.com"
+
+
+def test_customer_dispatch_weekly_digest(session: Session, tmp_path, monkeypatch):
+    user, _ = CustomerService.register_or_get_customer(session, email="weekly@example.com", name="Maria Santos")
+    res = CustomerService.dispatch_weekly_digest(session, target_emails=["weekly@example.com"])
+    assert res["status"] == "completed"
+    assert res["recipients_count"] == 1
+    assert res["results"][0]["email"] == "weekly@example.com"
+    assert res["results"][0]["status"] == "mock_sent"

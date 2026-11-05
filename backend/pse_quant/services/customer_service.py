@@ -301,10 +301,14 @@ class CustomerService:
 
         results = []
         for email in recipients:
+            user_obj = session.scalar(select(User).where(User.email == email))
+            name = (user_obj.name if user_obj and user_obj.name else None) or "Investor"
             res = send_weekly_report(
-                to_email=email,
+                to=email,
+                member_name=name,
+                run_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                pdf_path=pdf_path,
                 top_stocks=top_stocks,
-                pdf_attachment_path=pdf_path,
             )
             log = EmailLog(
                 recipient_email=email,

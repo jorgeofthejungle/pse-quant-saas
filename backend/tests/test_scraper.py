@@ -69,6 +69,23 @@ def test_detect_financial_unit_default():
     assert label == "millions_assumed"
 
 
+def test_detect_financial_unit_edge_cases():
+    s1 = BeautifulSoup("<div>All figures in PHP '000</div>", "lxml")
+    m1, l1 = detect_financial_unit(s1)
+    assert m1 == 1_000
+    assert l1 == "thousands"
+
+    s2 = BeautifulSoup("<div>Amounts in PHP Thousands</div>", "lxml")
+    m2, l2 = detect_financial_unit(s2)
+    assert m2 == 1_000
+    assert l2 == "thousands"
+
+    s3 = BeautifulSoup("<div>Financial values in Philippine Pesos</div>", "lxml")
+    m3, l3 = detect_financial_unit(s3)
+    assert m3 == 1
+    assert l3 == "peso"
+
+
 # ── Number Parsing Tests ──────────────────────────────────────
 
 def test_parse_cell_number():
@@ -148,6 +165,63 @@ def test_parse_financial_html():
     assert r2023["revenue"] == 90000.0
     assert r2023["net_income"] == 20000.0
     assert r2023["eps"] == 4.80
+
+
+def test_parse_financial_html_quarterly_and_small_caps():
+    small_cap_html = """
+    <html>
+    <body>
+        <div>Period Ended : September 30, 2024</div>
+        <div>Currency : Amounts in Millions</div>
+        <table>
+            <tr>
+                <th>Items</th>
+                <th>2024</th>
+                <th>2023</th>
+            </tr>
+            <tr>
+                <td>Net Sales</td>
+                <td>1,250.5</td>
+                <td>1,100.0</td>
+            </tr>
+            <tr>
+                <td>Net Income for the Period</td>
+                <td>185.2</td>
+                <td>145.0</td>
+            </tr>
+            <tr>
+                <td>Total Stockholders' Equity</td>
+                <td>4,500.0</td>
+                <td>3,900.0</td>
+            </tr>
+            <tr>
+                <td>Interest-Bearing Debt</td>
+                <td>1,200.0</td>
+                <td>950.0</td>
+            </tr>
+            <tr>
+                <td>Basic Earnings Per Share</td>
+                <td>1.45</td>
+                <td>1.15</td>
+            </tr>
+            <tr>
+                <td>Operating Cash Flows</td>
+                <td>310.0</td>
+                <td>280.0</td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    results = parse_financial_html(small_cap_html, cmpy_id="999")
+    assert len(results) == 2
+    r24 = next(r for r in results if r["year"] == 2024)
+    assert r24["revenue"] == 1250.5
+    assert r24["net_income"] == 185.2
+    assert r24["equity"] == 4500.0
+    assert r24["total_debt"] == 1200.0
+    assert r24["eps"] == 1.45
+    assert r24["operating_cash_flow"] == 310.0
 
 
 # ── Directory and Stock Data Scraper Tests ─────────────────────

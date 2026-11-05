@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pse_quant.db.connection import init_db
-from pse_quant.api.routes import stocks, customers, admin, auth
+from pse_quant.api.routes import stocks, customers, admin, auth, watchlist
 
 logger = logging.getLogger("pse_quant.api")
 
@@ -55,6 +55,7 @@ app.add_middleware(
 
 # Mount API Routers
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(watchlist.router, prefix="/api/v1")
 app.include_router(stocks.router, prefix="/api/v1")
 app.include_router(customers.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")

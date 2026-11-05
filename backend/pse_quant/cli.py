@@ -210,8 +210,23 @@ def cmd_email_digest(args: argparse.Namespace) -> None:
         generate_pdf_report(stocks_data, output_path=pdf_path)
 
         print(f"[*] Sending weekly digest email to {to_email}...")
-        res = send_weekly_report(to_email=to_email, top_stocks=stocks_data, pdf_attachment_path=pdf_path)
+        res = send_weekly_report(to=to_email, pdf_path=pdf_path, top_stocks=stocks_data)
         print(f"[+] Send status: {res.get('status')} (id: {res.get('id')})")
+
+
+def cmd_schedule_run(args: argparse.Namespace) -> None:
+    from pse_quant.scheduler import execute_job
+    print(f"[*] Running scheduled job: '{args.job}'...")
+    res = execute_job(args.job)
+    print(f"[+] Scheduled job finished with status: {res.get('status')}")
+    if "summary" in res:
+        print(f"    Summary: {res['summary']}")
+
+
+def cmd_schedule_daemon(args: argparse.Namespace) -> None:
+    from pse_quant.scheduler import run_scheduler_daemon
+    print(f"[*] Starting StockPilot PH automated scheduler daemon (Poll Interval: {args.interval}s)...")
+    run_scheduler_daemon(poll_interval=args.interval, max_iterations=args.max_iterations)
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
@@ -251,6 +266,20 @@ def main() -> None:
     p_run = subparsers.add_parser("run-all", help="Execute complete pipeline (sync, score, report)")
     p_run.add_argument("--tickers", nargs="*", help="Specific tickers to scrape")
 
+    # schedule-run
+    p_sched_run = subparsers.add_parser("schedule-run", help="Execute an automated scheduled task on demand")
+    p_sched_run.add_argument(
+        "--job",
+        choices=["quotes_sync", "morning_alerts", "weekly_report"],
+        default="quotes_sync",
+        help="Scheduled task to trigger",
+    )
+
+    # schedule-daemon
+    p_sched_daemon = subparsers.add_parser("schedule-daemon", help="Run continuous background scheduler daemon")
+    p_sched_daemon.add_argument("--interval", type=int, default=60, help="Polling interval in seconds")
+    p_sched_daemon.add_argument("--max-iterations", type=int, default=None, help="Optional max iterations for testing")
+
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -265,6 +294,10 @@ def main() -> None:
         cmd_report(args)
     elif args.command == "email-digest":
         cmd_email_digest(args)
+    elif args.command == "schedule-run":
+        cmd_schedule_run(args)
+    elif args.command == "schedule-daemon":
+        cmd_schedule_daemon(args)
     elif args.command == "run-all":
         with get_session() as session:
             print("[*] Running full pipeline...")

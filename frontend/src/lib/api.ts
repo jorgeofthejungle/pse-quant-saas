@@ -257,6 +257,65 @@ export const customerApi = {
   },
 };
 
+function getMemberHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('stockpilot_member_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
+// ── Watchlist API (Authenticated Member) ─────────────────────
+
+export const watchlistApi = {
+  async getWatchlist(): Promise<WatchlistItem[]> {
+    try {
+      const headers = getMemberHeaders();
+      if (!headers['Authorization']) return [];
+      const res = await fetch(`${BASE_URL}/watchlist`, {
+        cache: 'no-store',
+        headers,
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.error('[watchlistApi.getWatchlist] Error:', err);
+    }
+    return [];
+  },
+
+  async addToWatchlist(ticker: string, targetMos = 20.0, notes?: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/watchlist`, {
+        method: 'POST',
+        headers: getMemberHeaders(),
+        body: JSON.stringify({ ticker: ticker.toUpperCase(), target_mos_pct: targetMos, notes }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('[watchlistApi.addToWatchlist] Error:', err);
+      return false;
+    }
+  },
+
+  async removeFromWatchlist(ticker: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE_URL}/watchlist/${ticker.toUpperCase()}`, {
+        method: 'DELETE',
+        headers: getMemberHeaders(),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('[watchlistApi.removeFromWatchlist] Error:', err);
+      return false;
+    }
+  },
+};
+
 function getAdminHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (typeof window !== 'undefined') {

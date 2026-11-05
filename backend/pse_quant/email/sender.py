@@ -78,18 +78,34 @@ def send_email(
 
 
 def send_weekly_report(
-    to: str,
-    member_name: str,
-    run_date: str,
-    pdf_path: str | Path,
-    top_stocks: list[dict[str, Any]],
+    to: str | None = None,
+    member_name: str = "Investor",
+    run_date: str | None = None,
+    pdf_path: str | Path | None = None,
+    top_stocks: list[dict[str, Any]] | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Sends the weekly StockPilot PH PDF report to a subscriber."""
-    pdf_path = Path(pdf_path)
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF report not found at {pdf_path}")
+    from datetime import date
+    recipient = to or kwargs.get("to_email") or kwargs.get("recipient")
+    if not recipient:
+        raise ValueError("Recipient email address must be provided.")
 
-    with open(pdf_path, "rb") as f:
+    file_path = pdf_path or kwargs.get("pdf_attachment_path")
+    if not file_path:
+        raise ValueError("PDF report path must be provided.")
+
+    pdf_file = Path(file_path)
+    if not pdf_file.exists():
+        raise FileNotFoundError(f"PDF report not found at {pdf_file}")
+
+    if run_date is None:
+        run_date = date.today().isoformat()
+
+    if top_stocks is None:
+        top_stocks = kwargs.get("top_stocks") or []
+
+    with open(pdf_file, "rb") as f:
         pdf_bytes = f.read()
 
     stock_rows_html = "".join([
@@ -118,7 +134,7 @@ def send_weekly_report(
                 <p style="font-size: 16px; color: #334155; margin-top: 0;">Hi {member_name or 'there'},</p>
                 <p style="font-size: 15px; color: #475569; line-height: 1.5;">
                     The latest Philippine Stock Exchange quantitative rankings report has been generated.
-                    Your complete research report is attached as a PDF (<strong>{pdf_path.name}</strong>).
+                    Your complete research report is attached as a PDF (<strong>{pdf_file.name}</strong>).
                 </p>
 
                 <h3 style="color: #0f172a; font-size: 16px; border-bottom: 2px solid #0f172a; padding-bottom: 6px; margin-top: 24px;">
@@ -153,11 +169,11 @@ def send_weekly_report(
     """
 
     return send_email(
-        to=to,
+        to=recipient,
         subject=f"📊 StockPilot PH Rankings Report — {run_date}",
         html_content=html,
         attachments=[{
-            "filename": pdf_path.name,
+            "filename": pdf_file.name,
             "content": pdf_bytes,
         }],
     )

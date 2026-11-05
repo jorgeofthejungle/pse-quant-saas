@@ -344,6 +344,7 @@ class CustomerService:
         ).all()
         mrr_php = sum(s.amount_php for s in active_subs if s.plan == "monthly")
         mrr_php += sum((s.amount_php / 12.0) for s in active_subs if s.plan == "annual")
+        mrr_php += sum((s.amount_php / 24.0) for s in active_subs if s.plan == "lifetime")
 
         return {
             "total_customers": total_users,

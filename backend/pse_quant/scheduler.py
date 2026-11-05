@@ -97,12 +97,18 @@ def execute_job(job_name: str, session: Session | None = None) -> dict[str, Any]
             return _run(s)
 
 
+# In-memory execution ledger to prevent double-execution within the same operational window
+_LAST_EXECUTED: dict[str, Any] = {}
+
+
 def run_scheduler_tick() -> list[dict[str, Any]]:
     """
     Checks the current PHT wall-clock against scheduled operational windows.
     Returns list of job execution results for tasks triggered in this tick.
+    Guarantees exactly-once execution per calendar date per job.
     """
     now_pht = get_current_pht()
+    today_pht = now_pht.date()
     weekday = now_pht.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
     hour = now_pht.hour
     minute = now_pht.minute
@@ -111,21 +117,27 @@ def run_scheduler_tick() -> list[dict[str, Any]]:
 
     # 1. Weekday Post-Market Quotes Sync (16:00 - 16:05 PHT, Mon-Fri)
     if weekday in range(0, 5) and hour == 16 and minute in range(0, 5):
-        logger.info("[Scheduler] Post-market sync window detected.")
-        res = execute_job("quotes_sync")
-        executed.append(res)
+        if _LAST_EXECUTED.get("quotes_sync") != today_pht:
+            logger.info("[Scheduler] Post-market sync window detected.")
+            res = execute_job("quotes_sync")
+            _LAST_EXECUTED["quotes_sync"] = today_pht
+            executed.append(res)
 
     # 2. Weekday Morning Pre-Market Alerts (08:30 - 08:35 PHT, Mon-Fri)
     if weekday in range(0, 5) and hour == 8 and minute in range(30, 35):
-        logger.info("[Scheduler] Pre-market alert evaluation window detected.")
-        res = execute_job("morning_alerts")
-        executed.append(res)
+        if _LAST_EXECUTED.get("morning_alerts") != today_pht:
+            logger.info("[Scheduler] Pre-market alert evaluation window detected.")
+            res = execute_job("morning_alerts")
+            _LAST_EXECUTED["morning_alerts"] = today_pht
+            executed.append(res)
 
     # 3. Monday Morning Research Digest (08:00 - 08:05 PHT, Monday only)
     if weekday == 0 and hour == 8 and minute in range(0, 5):
-        logger.info("[Scheduler] Monday quantitative report broadcast window detected.")
-        res = execute_job("weekly_report")
-        executed.append(res)
+        if _LAST_EXECUTED.get("weekly_report") != today_pht:
+            logger.info("[Scheduler] Monday quantitative report broadcast window detected.")
+            res = execute_job("weekly_report")
+            _LAST_EXECUTED["weekly_report"] = today_pht
+            executed.append(res)
 
     return executed
 

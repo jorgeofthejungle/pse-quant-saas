@@ -83,3 +83,26 @@ def test_execute_invalid_job(scheduler_session: Session):
 def test_scheduler_daemon_single_iteration():
     # Verify daemon exits cleanly after max_iterations=1
     run_scheduler_daemon(poll_interval=0, max_iterations=1)
+
+
+def test_scheduler_tick_idempotency(monkeypatch):
+    from datetime import datetime
+    from pse_quant.scheduler import run_scheduler_tick, _LAST_EXECUTED, PHT_TZ
+
+    _LAST_EXECUTED.clear()
+    # Mock Wednesday at 16:02 PHT (market close window)
+    mock_pht_now = datetime(2026, 11, 4, 16, 2, 0, tzinfo=PHT_TZ)
+    monkeypatch.setattr("pse_quant.scheduler.get_current_pht", lambda: mock_pht_now)
+    monkeypatch.setattr("pse_quant.scheduler.execute_job", lambda job: {"status": "completed", "job": job})
+
+    # First tick -> must execute
+    res1 = run_scheduler_tick()
+    assert len(res1) == 1
+    assert res1[0]["job"] == "quotes_sync"
+
+    # Second tick on same date at 16:03 PHT -> must NOT re-execute
+    mock_pht_later = datetime(2026, 11, 4, 16, 3, 0, tzinfo=PHT_TZ)
+    monkeypatch.setattr("pse_quant.scheduler.get_current_pht", lambda: mock_pht_later)
+    res2 = run_scheduler_tick()
+    assert len(res2) == 0
+    _LAST_EXECUTED.clear()

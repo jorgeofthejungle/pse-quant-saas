@@ -65,6 +65,9 @@ class PseEdgeClient:
                 resp = self.session.get(url, params=params, timeout=DEFAULT_TIMEOUT_SECS)
                 if resp.status_code == 200:
                     return resp
+                if resp.status_code == 429:
+                    logger.warning(f"Rate limited (HTTP 429) on {url}. Applying extended backoff...")
+                    time.sleep(self.delay_secs * 3)
                 logger.warning(f"HTTP {resp.status_code} from {url} (attempt {attempt}/{retries})")
             except requests.RequestException as e:
                 logger.warning(f"Request error for {url}: {e} (attempt {attempt}/{retries})")

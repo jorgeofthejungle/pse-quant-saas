@@ -428,3 +428,45 @@ def test_run_pipeline_orchestration(in_memory_session: Session):
     assert pipeline_run.status == "completed"
     assert pipeline_run.summary_json is not None
     assert pipeline_run.summary_json["ranked_counts"]["unified"] == 1
+
+
+def test_client_rate_limit_backoff():
+    client = PseEdgeClient(delay_secs=0.01)
+    client._warmed_up = True
+
+    mock_resp_429 = MagicMock()
+    mock_resp_429.status_code = 429
+
+    mock_resp_200 = MagicMock()
+    mock_resp_200.status_code = 200
+
+    client.session.get = MagicMock(side_effect=[mock_resp_429, mock_resp_200])
+
+    resp = client.get("/test_endpoint")
+    assert resp is not None
+    assert resp.status_code == 200
+    assert client.session.get.call_count == 2
+
+
+def test_sync_stock_quotes_batch_resilience(in_memory_session: Session, monkeypatch):
+    # Two stocks in DB
+    in_memory_session.add(Stock(ticker="GOOD", name="Good Corp", cmpy_id="111", status="active"))
+    in_memory_session.add(Stock(ticker="BAD", name="Bad Corp", cmpy_id="222", status="active"))
+    in_memory_session.commit()
+
+    mock_client = MagicMock(spec=PseEdgeClient)
+
+    def mock_quote(client, cmpy_id):
+        if cmpy_id == "222":
+            raise ValueError("Malformed table data")
+        return {"close": 50.0, "market_cap": 1000000.0}
+
+    monkeypatch.setattr("pse_quant.scraper.etl.fetch_stock_quote", mock_quote)
+    monkeypatch.setattr("pse_quant.scraper.etl.fetch_dividend_history", lambda c, id, m: [])
+
+    # sync quotes must not crash; GOOD must be updated despite BAD raising an exception
+    count = sync_stock_quotes(mock_client, in_memory_session)
+    assert count == 1
+    good_price = in_memory_session.scalar(select(Price).where(Price.ticker == "GOOD"))
+    assert good_price is not None
+    assert good_price.close == 50.0

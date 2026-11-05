@@ -110,50 +110,54 @@ def sync_stock_quotes(
     today = date.today()
 
     for stock in stocks:
-        if not stock.cmpy_id:
-            resolved = lookup_company(client, stock.ticker)
-            if resolved and resolved.get("cmpy_id"):
-                stock.cmpy_id = resolved["cmpy_id"]
-            else:
-                continue
+        try:
+            if not stock.cmpy_id:
+                resolved = lookup_company(client, stock.ticker)
+                if resolved and resolved.get("cmpy_id"):
+                    stock.cmpy_id = resolved["cmpy_id"]
+                else:
+                    continue
 
-        quote = fetch_stock_quote(client, stock.cmpy_id)
-        if quote and quote.get("close"):
-            price_row = session.scalar(
-                select(Price).where(
-                    Price.ticker == stock.ticker,
-                    Price.trade_date == today,
+            quote = fetch_stock_quote(client, stock.cmpy_id)
+            if quote and quote.get("close"):
+                price_row = session.scalar(
+                    select(Price).where(
+                        Price.ticker == stock.ticker,
+                        Price.trade_date == today,
+                    )
                 )
-            )
-            if price_row is None:
-                price_row = Price(
-                    ticker=stock.ticker,
-                    trade_date=today,
-                    close=float(quote["close"]),
-                    market_cap=float(quote["market_cap"]) if quote.get("market_cap") else None,
-                )
-                session.add(price_row)
-            else:
-                price_row.close = float(quote["close"])
-                if quote.get("market_cap"):
-                    price_row.market_cap = float(quote["market_cap"])
+                if price_row is None:
+                    price_row = Price(
+                        ticker=stock.ticker,
+                        trade_date=today,
+                        close=float(quote["close"]),
+                        market_cap=float(quote["market_cap"]) if quote.get("market_cap") else None,
+                    )
+                    session.add(price_row)
+                else:
+                    price_row.close = float(quote["close"])
+                    if quote.get("market_cap"):
+                        price_row.market_cap = float(quote["market_cap"])
 
-            stock.last_scraped_at = datetime.now(timezone.utc)
-            count += 1
+                stock.last_scraped_at = datetime.now(timezone.utc)
+                count += 1
 
-        # Also pull dividend declarations
-        divs = fetch_dividend_history(client, stock.cmpy_id, stock.fiscal_year_end_month)
-        for div_entry in divs:
-            d_year = div_entry["year"]
-            d_dps = div_entry["dps"]
-            fin = session.scalar(
-                select(Financial).where(
-                    Financial.ticker == stock.ticker,
-                    Financial.year == d_year,
+            # Also pull dividend declarations
+            divs = fetch_dividend_history(client, stock.cmpy_id, stock.fiscal_year_end_month)
+            for div_entry in divs:
+                d_year = div_entry["year"]
+                d_dps = div_entry["dps"]
+                fin = session.scalar(
+                    select(Financial).where(
+                        Financial.ticker == stock.ticker,
+                        Financial.year == d_year,
+                    )
                 )
-            )
-            if fin:
-                fin.dps = d_dps
+                if fin:
+                    fin.dps = d_dps
+        except Exception as e:
+            logger.warning(f"Error syncing quotes for {stock.ticker}: {e}")
+            continue
 
     session.commit()
     logger.info(f"Quote sync completed: {count} stock prices updated.")
@@ -179,55 +183,59 @@ def sync_financials(
         if not stock.cmpy_id:
             continue
 
-        fin_reports = fetch_financial_reports(client, stock.cmpy_id)
-        for rep in fin_reports:
-            validated = validate_financial_record(rep)
-            year = validated.get("year")
-            if not year:
-                continue
+        try:
+            fin_reports = fetch_financial_reports(client, stock.cmpy_id)
+            for rep in fin_reports:
+                validated = validate_financial_record(rep)
+                year = validated.get("year")
+                if not year:
+                    continue
 
-            fin = session.scalar(
-                select(Financial).where(
-                    Financial.ticker == stock.ticker,
-                    Financial.year == year,
+                fin = session.scalar(
+                    select(Financial).where(
+                        Financial.ticker == stock.ticker,
+                        Financial.year == year,
+                    )
                 )
-            )
-            if fin is None:
-                fin = Financial(
-                    ticker=stock.ticker,
-                    year=year,
-                    revenue=validated.get("revenue"),
-                    net_income=validated.get("net_income"),
-                    equity=validated.get("equity"),
-                    total_debt=validated.get("total_debt"),
-                    eps=validated.get("eps"),
-                    depreciation=validated.get("depreciation"),
-                    amortization=validated.get("amortization"),
-                    operating_cf=validated.get("operating_cash_flow"),
-                    capex=validated.get("capital_expenditures"),
-                )
-                session.add(fin)
-            else:
-                if validated.get("revenue") is not None:
-                    fin.revenue = validated["revenue"]
-                if validated.get("net_income") is not None:
-                    fin.net_income = validated["net_income"]
-                if validated.get("equity") is not None:
-                    fin.equity = validated["equity"]
-                if validated.get("total_debt") is not None:
-                    fin.total_debt = validated["total_debt"]
-                if validated.get("eps") is not None:
-                    fin.eps = validated["eps"]
-                if validated.get("depreciation") is not None:
-                    fin.depreciation = validated["depreciation"]
-                if validated.get("amortization") is not None:
-                    fin.amortization = validated["amortization"]
-                if validated.get("operating_cash_flow") is not None:
-                    fin.operating_cf = validated["operating_cash_flow"]
-                if validated.get("capital_expenditures") is not None:
-                    fin.capex = validated["capital_expenditures"]
+                if fin is None:
+                    fin = Financial(
+                        ticker=stock.ticker,
+                        year=year,
+                        revenue=validated.get("revenue"),
+                        net_income=validated.get("net_income"),
+                        equity=validated.get("equity"),
+                        total_debt=validated.get("total_debt"),
+                        eps=validated.get("eps"),
+                        depreciation=validated.get("depreciation"),
+                        amortization=validated.get("amortization"),
+                        operating_cf=validated.get("operating_cash_flow"),
+                        capex=validated.get("capital_expenditures"),
+                    )
+                    session.add(fin)
+                else:
+                    if validated.get("revenue") is not None:
+                        fin.revenue = validated["revenue"]
+                    if validated.get("net_income") is not None:
+                        fin.net_income = validated["net_income"]
+                    if validated.get("equity") is not None:
+                        fin.equity = validated["equity"]
+                    if validated.get("total_debt") is not None:
+                        fin.total_debt = validated["total_debt"]
+                    if validated.get("eps") is not None:
+                        fin.eps = validated["eps"]
+                    if validated.get("depreciation") is not None:
+                        fin.depreciation = validated["depreciation"]
+                    if validated.get("amortization") is not None:
+                        fin.amortization = validated["amortization"]
+                    if validated.get("operating_cash_flow") is not None:
+                        fin.operating_cf = validated["operating_cash_flow"]
+                    if validated.get("capital_expenditures") is not None:
+                        fin.capex = validated["capital_expenditures"]
 
-            records_synced += 1
+                records_synced += 1
+        except Exception as e:
+            logger.warning(f"Error syncing financials for {stock.ticker}: {e}")
+            continue
 
     session.commit()
     logger.info(f"Financials sync completed: {records_synced} annual statements upserted.")
@@ -281,13 +289,14 @@ def build_stock_quant_dict(
     fcf = None
     fcf_yield = None
     fcf_per_share = None
-    if f0 and f0.operating_cf is not None and f0.capex is not None:
-        fcf = calculate_fcf(f0.operating_cf, f0.capex)
+    if f0 and f0.operating_cf is not None:
+        effective_capex = f0.capex if f0.capex is not None else 0.0
+        fcf = calculate_fcf(f0.operating_cf, effective_capex)
         if market_cap:
             fcf_yield = calculate_fcf_yield(fcf, market_cap / 1e6)
         if latest_eps and latest_ni and latest_ni > 0:
             implied_shares = (latest_ni * 1e6) / latest_eps
-            if implied_shares > 0:
+            if implied_shares > 0 and fcf is not None:
                 fcf_per_share = round((fcf * 1e6) / implied_shares, 2)
 
     # CAGRs (5y or available)

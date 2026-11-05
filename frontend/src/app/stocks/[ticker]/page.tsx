@@ -12,7 +12,7 @@ import {
   Info,
 } from 'lucide-react';
 import { MOCK_STOCK_DETAILS, MOCK_RANKINGS } from '@/lib/mockData';
-import { getStockDetail } from '@/lib/db';
+import { stockApi } from '@/lib/api';
 
 export function generateStaticParams() {
   return MOCK_RANKINGS.map((stock) => ({
@@ -28,9 +28,9 @@ export default async function StockDetailPage({ params }: StockDetailPageProps) 
   const { ticker } = await params;
   const upperTicker = ticker.toUpperCase();
 
-  // Look up detail from database with fallback
-  const dbStock = await getStockDetail(upperTicker);
-  const stock = dbStock || MOCK_STOCK_DETAILS[upperTicker];
+  // Look up detail from backend server with fallback
+  const apiStock = await stockApi.getProfile(upperTicker);
+  const stock = apiStock || MOCK_STOCK_DETAILS[upperTicker];
 
   if (!stock || !stock.ticker) {
     notFound();

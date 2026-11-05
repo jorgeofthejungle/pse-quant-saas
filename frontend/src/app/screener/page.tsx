@@ -1,9 +1,9 @@
 import ScreenerTable from '@/components/ScreenerTable';
-import { getRankings } from '@/lib/db';
+import { stockApi } from '@/lib/api';
 import { Sparkles } from 'lucide-react';
 
 export default async function ScreenerPage() {
-  const stocks = await getRankings('unified');
+  const stocks = await stockApi.getRankings('unified');
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">

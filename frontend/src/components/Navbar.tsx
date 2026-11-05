@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Bookmark, TrendingUp, Sparkles, LayoutDashboard } from 'lucide-react';
+import { Compass, Bookmark, TrendingUp, Sparkles, LayoutDashboard, ShieldAlert } from 'lucide-react';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -12,6 +12,7 @@ export default function Navbar() {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/screener', label: 'Rankings Screener', icon: Compass },
     { href: '/watchlist', label: 'Watchlist', icon: Bookmark },
+    { href: '/admin', label: 'Admin Console', icon: ShieldAlert },
   ];
 
   return (

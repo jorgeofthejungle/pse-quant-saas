@@ -13,7 +13,7 @@ import {
   DollarSign,
   PieChart,
 } from 'lucide-react';
-import { getRankings } from '@/lib/db';
+import { stockApi } from '@/lib/api';
 import ScreenerTable from '@/components/ScreenerTable';
 
 export const metadata = {
@@ -22,9 +22,9 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const unifiedRankings = await getRankings('unified');
-  const dividendRankings = await getRankings('dividend');
-  const valueRankings = await getRankings('value');
+  const unifiedRankings = await stockApi.getRankings('unified');
+  const dividendRankings = await stockApi.getRankings('dividend');
+  const valueRankings = await stockApi.getRankings('value');
 
   // Filter top bargain candidates (positive Margin of Safety)
   const mosBargains = unifiedRankings.filter((s) => s.mosPct !== null && s.mosPct > 0);

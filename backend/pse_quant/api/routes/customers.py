@@ -116,7 +116,8 @@ def add_to_watchlist(user_id: int, req: WatchlistAddRequest, db: Session = Depen
 @router.delete("/{user_id}/watchlist/{ticker}", summary="Remove stock from customer watchlist")
 def remove_from_watchlist(user_id: int, ticker: str, db: Session = Depends(get_db)):
     """Removes a stock from customer's watchlist."""
-    removed = CustomerService.remove_from_watchlist(session=db, user_id=user_id, ticker=ticker)
+    clean_ticker = ticker.strip().upper()
+    removed = CustomerService.remove_from_watchlist(session=db, user_id=user_id, ticker=clean_ticker)
     if not removed:
         raise HTTPException(status_code=404, detail="Stock not present in watchlist.")
-    return {"status": "success", "removed": ticker.upper()}
+    return {"status": "success", "removed": clean_ticker}

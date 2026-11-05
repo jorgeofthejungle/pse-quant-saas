@@ -123,3 +123,42 @@ def test_customer_lifecycle_api(client_with_db: TestClient):
     assert metrics_resp.status_code == 200
     m = metrics_resp.json()
     assert m["total_customers"] >= 1
+
+
+def test_api_query_parameter_validation(client_with_db: TestClient):
+    # Invalid portfolio type
+    resp = client_with_db.get("/api/v1/stocks?portfolio=crypto")
+    assert resp.status_code == 422
+
+    # Negative min_score
+    resp = client_with_db.get("/api/v1/stocks?min_score=-5.0")
+    assert resp.status_code == 422
+
+    # Absurd limit
+    resp = client_with_db.get("/api/v1/stocks?limit=1000")
+    assert resp.status_code == 422
+
+
+def test_api_schema_boundary_validation(client_with_db: TestClient):
+    # Invalid email signup
+    resp = client_with_db.post("/api/v1/customers/signup", json={"email": "not-an-email"})
+    assert resp.status_code == 422
+
+    # Valid signup with whitespace email normalization
+    resp = client_with_db.post("/api/v1/customers/signup", json={"email": " ValidUser@Example.com "})
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "validuser@example.com"
+    uid = resp.json()["id"]
+
+    # Invalid subscription plan
+    resp = client_with_db.post(f"/api/v1/customers/{uid}/subscription", json={"plan": "diamond"})
+    assert resp.status_code == 422
+
+    # Watchlist ticker auto-sanitization (whitespace and lower-case)
+    resp = client_with_db.post(f"/api/v1/customers/{uid}/watchlist", json={"ticker": "  areit  ", "target_mos_pct": 15.0})
+    assert resp.status_code == 200
+    assert resp.json()["ticker"] == "AREIT"
+
+    # Out of bounds target_mos_pct
+    resp = client_with_db.post(f"/api/v1/customers/{uid}/watchlist", json={"ticker": "AREIT", "target_mos_pct": -500.0})
+    assert resp.status_code == 422

@@ -5,7 +5,7 @@ Separate login paths ensuring security isolation between regular investors and s
 
 from __future__ import annotations
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -24,27 +24,59 @@ def get_db():
 
 # ── Schemas ───────────────────────────────────────────────────
 
+def _clean_email_val(v: str) -> str:
+    clean = v.strip().lower()
+    if "@" not in clean or "." not in clean:
+        raise ValueError("Invalid email format.")
+    return clean
+
+
 class MemberLoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        return _clean_email_val(v)
 
 
 class MemberRegisterRequest(BaseModel):
-    email: str
-    password: str = Field(..., min_length=6)
-    name: Optional[str] = None
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=6, max_length=128)
+    name: Optional[str] = Field(None, max_length=150)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        return _clean_email_val(v)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else None
 
 
 class AdminLoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        return _clean_email_val(v)
 
 
 class AdminProvisionRequest(BaseModel):
-    email: str
-    password: str = Field(..., min_length=8)
-    master_key: str
-    name: Optional[str] = "System Administrator"
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8, max_length=128)
+    master_key: str = Field(..., min_length=1, max_length=256)
+    name: Optional[str] = Field("System Administrator", max_length=150)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        return _clean_email_val(v)
 
 
 class AuthResponse(BaseModel):

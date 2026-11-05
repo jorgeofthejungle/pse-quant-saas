@@ -30,18 +30,19 @@ def get_db():
 
 @router.get("", summary="List ranked stocks across portfolios")
 def list_stocks(
-    portfolio: str = Query("unified", description="Portfolio type: unified, dividend, or value"),
-    sector: Optional[str] = Query(None, description="Filter by sector name"),
-    min_score: Optional[float] = Query(None, description="Minimum quantitative score"),
-    min_mos: Optional[float] = Query(None, description="Minimum Margin of Safety percentage"),
-    limit: Optional[int] = Query(50, description="Max records to return"),
+    portfolio: str = Query("unified", pattern="^(unified|dividend|value)$", description="Portfolio type: unified, dividend, or value"),
+    sector: Optional[str] = Query(None, max_length=100, description="Filter by sector name"),
+    min_score: Optional[float] = Query(None, ge=0.0, le=100.0, description="Minimum quantitative score (0-100)"),
+    min_mos: Optional[float] = Query(None, ge=-100.0, le=200.0, description="Minimum Margin of Safety percentage"),
+    limit: Optional[int] = Query(50, ge=1, le=500, description="Max records to return"),
     db: Session = Depends(get_db),
 ):
     """Returns top ranked equities filtered and sorted by deterministic score."""
+    clean_sector = sector.strip() if sector else None
     rankings = StockService.get_rankings(
         session=db,
         portfolio_type=portfolio,
-        sector=sector,
+        sector=clean_sector,
         min_score=min_score,
         min_mos=min_mos,
         limit=limit,
@@ -51,7 +52,7 @@ def list_stocks(
 
 @router.get("/bargains", summary="High Margin of Safety opportunities")
 def get_bargain_stocks(
-    min_mos: float = Query(0.0, description="Minimum positive Margin of Safety percentage"),
+    min_mos: float = Query(0.0, ge=-100.0, le=200.0, description="Minimum positive Margin of Safety percentage"),
     db: Session = Depends(get_db),
 ):
     """Returns equities currently trading below mathematical Intrinsic Value."""
@@ -74,7 +75,8 @@ def get_macro_benchmarks():
 @router.get("/{ticker}", response_model=StockProfileResponse, summary="Deep-dive equity profile")
 def get_stock_profile(ticker: str, db: Session = Depends(get_db)):
     """Retrieves full equity profile, 3-layer factors, valuation models, and 10Y financials."""
-    profile = StockService.get_stock_profile(session=db, ticker=ticker)
+    clean_ticker = ticker.strip().upper()
+    profile = StockService.get_stock_profile(session=db, ticker=clean_ticker)
     if not profile:
-        raise HTTPException(status_code=404, detail=f"Stock {ticker.upper()} not found.")
+        raise HTTPException(status_code=404, detail=f"Stock {clean_ticker} not found.")
     return profile

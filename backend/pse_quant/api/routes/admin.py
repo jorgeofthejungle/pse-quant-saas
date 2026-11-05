@@ -4,7 +4,7 @@ pse_quant/api/routes/admin.py — Direct Server Controls for Admin Dashboard
 
 from __future__ import annotations
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Path
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 
@@ -35,8 +35,9 @@ def trigger_full_pipeline(
     db: Session = Depends(get_db),
 ):
     """Executes directory sync, quotes, multi-year financial statements, and 3-layer scoring."""
+    clean_tickers = [t.strip().upper() for t in tickers] if tickers else None
     try:
-        run_log = StockService.collect_and_sync_all(session=db, tickers=tickers)
+        run_log = StockService.collect_and_sync_all(session=db, tickers=clean_tickers)
         return {
             "status": run_log.status,
             "run_id": run_log.id,
@@ -53,7 +54,8 @@ def trigger_scrape_quotes(
     db: Session = Depends(get_db),
 ):
     """Refreshes current trading prices, market caps, and cash dividends from PSE Edge."""
-    count = StockService.collect_quotes_only(session=db, tickers=tickers)
+    clean_tickers = [t.strip().upper() for t in tickers] if tickers else None
+    count = StockService.collect_quotes_only(session=db, tickers=clean_tickers)
     return {"status": "completed", "quotes_updated": count}
 
 
@@ -83,7 +85,7 @@ def trigger_evaluate_alerts(db: Session = Depends(get_db)):
 
 
 @router.get("/pipeline/runs", summary="Audit log of previous pipeline runs")
-def get_pipeline_runs(limit: int = 15, db: Session = Depends(get_db)):
+def get_pipeline_runs(limit: int = Query(15, ge=1, le=200), db: Session = Depends(get_db)):
     """Returns recent pipeline execution history, status, and canary reports."""
     runs = db.scalars(
         select(PipelineRun).order_by(desc(PipelineRun.started_at)).limit(limit)
@@ -111,7 +113,11 @@ def get_admin_metrics(db: Session = Depends(get_db)):
 
 
 @router.get("/customers", summary="List all customers for administration")
-def list_customers(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def list_customers(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
     """Returns customer list with subscription status and watchlist counts."""
     return CustomerService.list_customers_admin(session=db, skip=skip, limit=limit)
 
@@ -121,15 +127,16 @@ def list_customers(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
 @router.post("/stocks/{ticker}/financials/{year}", summary="Manual financial statement correction")
 def override_stock_financials(
     ticker: str,
-    year: int,
-    req: FinancialOverrideRequest,
+    year: int = Path(..., ge=1990, le=2100),
+    req: FinancialOverrideRequest = ...,
     db: Session = Depends(get_db),
 ):
     """Admin override: Manually update or correct annual financial statement data."""
+    clean_ticker = ticker.strip().upper()
     try:
         fin = StockService.override_financial_data(
             session=db,
-            ticker=ticker,
+            ticker=clean_ticker,
             year=year,
             data=req.model_dump(exclude_unset=True),
         )

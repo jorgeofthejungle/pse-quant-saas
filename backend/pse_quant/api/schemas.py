@@ -4,15 +4,31 @@ pse_quant/api/schemas.py — Pydantic Schemas for Customer & Stock Data API
 
 from __future__ import annotations
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Customer Schemas ──────────────────────────────────────────
 
 class CustomerSignupRequest(BaseModel):
-    email: str = Field(..., description="Customer email address")
-    name: Optional[str] = Field(None, description="Customer full name")
+    email: str = Field(..., min_length=3, max_length=255, description="Customer email address")
+    name: Optional[str] = Field(None, max_length=150, description="Customer full name")
     tier: str = Field("free", description="Subscription tier: free or paid")
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if "@" not in clean or "." not in clean:
+            raise ValueError("Invalid email format.")
+        return clean
+
+    @field_validator("tier")
+    @classmethod
+    def clean_tier(cls, v: str) -> str:
+        val = v.strip().lower()
+        if val not in ("free", "paid"):
+            raise ValueError("Tier must be 'free' or 'paid'.")
+        return val
 
 
 class CustomerResponse(BaseModel):
@@ -27,14 +43,38 @@ class CustomerResponse(BaseModel):
 
 class SubscriptionUpdateRequest(BaseModel):
     plan: str = Field(..., description="monthly, annual, lifetime, or free")
-    status: str = Field("active", description="active or cancelled")
-    amount_php: Optional[float] = None
+    status: str = Field("active", description="active, cancelled, or suspended")
+    amount_php: Optional[float] = Field(None, ge=0.0)
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, v: str) -> str:
+        val = v.strip().lower()
+        if val not in ("free", "monthly", "annual", "lifetime"):
+            raise ValueError("Plan must be 'free', 'monthly', 'annual', or 'lifetime'.")
+        return val
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        val = v.strip().lower()
+        if val not in ("active", "cancelled", "suspended"):
+            raise ValueError("Status must be 'active', 'cancelled', or 'suspended'.")
+        return val
 
 
 class WatchlistAddRequest(BaseModel):
-    ticker: str = Field(..., description="PSE Ticker Symbol, e.g. AREIT")
-    target_mos_pct: float = Field(20.0, description="Target Margin of Safety threshold percentage")
-    notes: Optional[str] = Field(None, description="Personal investment rationale or notes")
+    ticker: str = Field(..., min_length=1, max_length=15, description="PSE Ticker Symbol, e.g. AREIT")
+    target_mos_pct: float = Field(20.0, ge=-100.0, le=200.0, description="Target Margin of Safety threshold percentage")
+    notes: Optional[str] = Field(None, max_length=500, description="Personal investment rationale or notes")
+
+    @field_validator("ticker")
+    @classmethod
+    def clean_ticker(cls, v: str) -> str:
+        clean = v.strip().upper()
+        if not clean:
+            raise ValueError("Ticker symbol cannot be empty.")
+        return clean
 
 
 class WatchlistItemResponse(BaseModel):

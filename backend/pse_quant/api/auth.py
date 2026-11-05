@@ -5,6 +5,7 @@ Secures endpoints, separating Member and Administrator access boundaries.
 
 from __future__ import annotations
 import os
+import secrets
 from typing import Optional
 from fastapi import Depends, HTTPException, Security, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -62,8 +63,8 @@ def require_admin(
       1. A valid JWT token with role == 'admin'
       2. An X-Admin-Key header matching ADMIN_MASTER_KEY
     """
-    # 1. Check direct X-Admin-Key header
-    if x_admin_key and x_admin_key == ADMIN_MASTER_KEY:
+    # 1. Check direct X-Admin-Key header (timing-safe comparison)
+    if x_admin_key and ADMIN_MASTER_KEY and secrets.compare_digest(x_admin_key, ADMIN_MASTER_KEY):
         return {"id": 0, "email": "system@admin.local", "role": "admin", "tier": "admin"}
 
     # 2. Check JWT Bearer token

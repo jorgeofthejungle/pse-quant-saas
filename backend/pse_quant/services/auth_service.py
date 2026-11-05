@@ -142,7 +142,7 @@ class AuthService:
         name: str | None = "System Operator",
     ) -> tuple[User, str]:
         """Registers an admin account. Requires valid master setup key."""
-        if master_key != ADMIN_MASTER_KEY:
+        if not ADMIN_MASTER_KEY or not secrets.compare_digest(master_key, ADMIN_MASTER_KEY):
             raise ValueError("Invalid master admin provisioning key.")
 
         clean_email = email.lower().strip()

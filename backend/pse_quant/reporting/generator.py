@@ -111,29 +111,50 @@ def generate_pdf_report(
         ]
     ]
 
-    for stock in ranked_stocks[:20]:
-        price = stock.get("current_price")
-        price_str = f"PHP {price:,.2f}" if price else "N/A"
-        iv = stock.get("intrinsic_value")
-        iv_str = f"PHP {iv:,.2f}" if iv else "N/A"
-        mos = stock.get("mos_pct")
-        if mos is not None:
-            mos_str = f"+{mos:.1f}%" if mos > 0 else f"{mos:.1f}%"
-            mos_color = GREEN if mos > 0 else RED
-        else:
-            mos_str = "N/A"
-            mos_color = DARK_GREY
-
+    stocks_to_render = ranked_stocks or []
+    if not stocks_to_render:
         table_rows.append([
-            Paragraph(f"#{stock.get('rank', '-')}", styles["BodySmall"]),
-            Paragraph(f"<b>{stock.get('ticker')}</b>", styles["BodySmall"]),
-            Paragraph(stock.get("sector", "General")[:14], styles["BodySmall"]),
-            Paragraph(f"<b>{stock.get('score', 0):.1f}</b>", styles["BodySmall"]),
-            Paragraph(stock.get("category", "Watchlist"), styles["BodySmall"]),
-            Paragraph(price_str, styles["BodySmall"]),
-            Paragraph(iv_str, styles["BodySmall"]),
-            Paragraph(f"<font color='{mos_color.hexval()}'><b>{mos_str}</b></font>", styles["BodySmall"]),
+            Paragraph("-", styles["BodySmall"]),
+            Paragraph("<i>None</i>", styles["BodySmall"]),
+            Paragraph("<i>No qualifying equities</i>", styles["BodySmall"]),
+            Paragraph("N/A", styles["BodySmall"]),
+            Paragraph("Watchlist", styles["BodySmall"]),
+            Paragraph("N/A", styles["BodySmall"]),
+            Paragraph("N/A", styles["BodySmall"]),
+            Paragraph("N/A", styles["BodySmall"]),
         ])
+    else:
+        for stock in stocks_to_render[:20]:
+            price = stock.get("current_price")
+            price_str = f"PHP {price:,.2f}" if price is not None else "N/A"
+            iv = stock.get("intrinsic_value")
+            iv_str = f"PHP {iv:,.2f}" if iv is not None else "N/A"
+            mos = stock.get("mos_pct")
+            if mos is not None:
+                mos_str = f"+{mos:.1f}%" if mos > 0 else f"{mos:.1f}%"
+                mos_color = GREEN if mos > 0 else RED
+            else:
+                mos_str = "N/A"
+                mos_color = DARK_GREY
+
+            score = stock.get("score")
+            score_str = f"<b>{score:.1f}</b>" if score is not None else "N/A"
+            rank_val = stock.get("rank")
+            rank_str = f"#{rank_val}" if rank_val is not None else "-"
+            ticker_str = stock.get("ticker", "UNKNOWN")
+            sector_str = str(stock.get("sector", "General"))[:14]
+            category_str = stock.get("category", "Watchlist")
+
+            table_rows.append([
+                Paragraph(rank_str, styles["BodySmall"]),
+                Paragraph(f"<b>{ticker_str}</b>", styles["BodySmall"]),
+                Paragraph(sector_str, styles["BodySmall"]),
+                Paragraph(score_str, styles["BodySmall"]),
+                Paragraph(category_str, styles["BodySmall"]),
+                Paragraph(price_str, styles["BodySmall"]),
+                Paragraph(iv_str, styles["BodySmall"]),
+                Paragraph(f"<font color='{mos_color.hexval()}'><b>{mos_str}</b></font>", styles["BodySmall"]),
+            ])
 
     col_widths = [
         CONTENT_WIDTH * 0.08,  # Rank

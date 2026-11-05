@@ -34,3 +34,26 @@ def test_send_weekly_report_mock(tmp_path):
     )
     assert res["status"] == "mock_sent"
     assert res["to"] == ["subscriber@example.com"]
+
+
+def test_send_weekly_report_validation_and_empty_list(tmp_path):
+    fake_pdf = tmp_path / "StockPilot_Empty.pdf"
+    fake_pdf.write_bytes(b"%PDF-1.4 mock content")
+
+    # 1. Empty top stocks works gracefully
+    res = send_weekly_report(
+        to="subscriber@example.com",
+        member_name="Maria",
+        pdf_path=fake_pdf,
+        top_stocks=[],
+    )
+    assert res["status"] == "mock_sent"
+
+    # 2. Invalid recipient email
+    import pytest
+    with pytest.raises(ValueError, match="Invalid recipient email"):
+        send_weekly_report(to="bad-email", pdf_path=fake_pdf)
+
+    # 3. Missing PDF file
+    with pytest.raises(FileNotFoundError):
+        send_weekly_report(to="sub@example.com", pdf_path=tmp_path / "nonexistent.pdf")

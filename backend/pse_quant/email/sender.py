@@ -91,6 +91,10 @@ def send_weekly_report(
     if not recipient:
         raise ValueError("Recipient email address must be provided.")
 
+    clean_recipient = recipient.strip().lower()
+    if "@" not in clean_recipient or "." not in clean_recipient:
+        raise ValueError(f"Invalid recipient email address: '{recipient}'.")
+
     file_path = pdf_path or kwargs.get("pdf_attachment_path")
     if not file_path:
         raise ValueError("PDF report path must be provided.")
@@ -98,6 +102,9 @@ def send_weekly_report(
     pdf_file = Path(file_path)
     if not pdf_file.exists():
         raise FileNotFoundError(f"PDF report not found at {pdf_file}")
+
+    if pdf_file.stat().st_size > 25 * 1024 * 1024:
+        raise ValueError(f"PDF report size ({pdf_file.stat().st_size} bytes) exceeds 25MB email dispatch limit.")
 
     if run_date is None:
         run_date = date.today().isoformat()
@@ -108,17 +115,39 @@ def send_weekly_report(
     with open(pdf_file, "rb") as f:
         pdf_bytes = f.read()
 
-    stock_rows_html = "".join([
-        f"""<tr>
-            <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">#{s.get('rank', i+1)} {s.get('ticker')}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{s.get('score', 0):.1f}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{s.get('category', 'Quality')}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: #16a34a; font-weight: bold;">
-                {s.get('mos_pct', 0.0):+.1f}%
+    if top_stocks:
+        rendered_rows = []
+        for i, s in enumerate(top_stocks[:5]):
+            rank_str = f"#{s.get('rank', i+1)}"
+            ticker_str = str(s.get("ticker", "UNKNOWN"))
+            score_val = s.get("score")
+            score_str = f"{score_val:.1f}" if score_val is not None else "N/A"
+            category_str = str(s.get("category", "Quality"))
+            mos_val = s.get("mos_pct")
+            if mos_val is not None:
+                mos_str = f"{mos_val:+.1f}%"
+                mos_color = "#16a34a" if mos_val > 0 else "#dc2626"
+            else:
+                mos_str = "N/A"
+                mos_color = "#64748b"
+
+            rendered_rows.append(
+                f"""<tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">{rank_str} {ticker_str}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{score_str}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{category_str}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: {mos_color}; font-weight: bold;">
+                        {mos_str}
+                    </td>
+                </tr>"""
+            )
+        stock_rows_html = "".join(rendered_rows)
+    else:
+        stock_rows_html = """<tr>
+            <td colspan="4" style="padding: 12px; text-align: center; color: #64748b; font-style: italic;">
+                No qualifying equities found for this run date.
             </td>
         </tr>"""
-        for i, s in enumerate(top_stocks[:5])
-    ])
 
     html = f"""
     <!DOCTYPE html>

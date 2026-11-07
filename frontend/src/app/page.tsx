@@ -120,16 +120,16 @@ export default function HomePage() {
 
               <div className="space-y-2 text-xs text-slate-300 bg-slate-900/70 rounded-xl p-3.5 border border-slate-800">
                 <p>
-                  <strong className="text-white">• Verdict:</strong> Solid pang-passive income ang AREIT: nagbibigay ng 6.44% net dividend yield habang naka-discount pa ng 22.1% sa Fair Value nito.
+                  <strong className="text-white">• Verdict:</strong> Solid pang-passive income ang AREIT: Flagship commercial REIT ng Ayala Land na nagbibigay ng 6.36% net dividend yield habang naka-discount pa ng 22.1% sa Fair Value nito.
                 </p>
                 <p>
-                  <strong className="text-emerald-400">• Peso Value Test:</strong> Nagbabayad ka lang ng ₱0.78 for every ₱1.00 of true business value (Current Price: ₱36.50 vs. Fair Value: ₱46.84 — 22.1% discount).
+                  <strong className="text-emerald-400">• Peso Value Test:</strong> Nagbabayad ka lang ng ₱0.78 for every ₱1.00 of true business value (Current Price: ₱36.50 vs. Fair Value: ₱46.84 — 22.1% discount). Action: Accumulate up to ₱46.84.
                 </p>
                 <p>
-                  <strong className="text-amber-400">• Net Dividend per ₱10k:</strong> Sa bawat ₱10,000 na investment, kikita ka ng ~₱644/year in net cash dividends (6.44% net after 10% tax) — halos 26x na mas mataas kaysa sa 0.25% traditional bank savings.
+                  <strong className="text-amber-400">• Net Dividend per ₱10k:</strong> Sa bawat ₱10,000 na investment, kikita ka ng ~₱636/year in net cash dividends (6.36% net after 10% tax; 7.07% gross) — halos 25x na mas mataas kaysa sa 0.25% traditional bank savings.
                 </p>
                 <p>
-                  <strong className="text-blue-400">• Health:</strong> Quality Score: 73.0/100. Kumikita ng ₱12.8 net profit sa bawat ₱100 na capital (ROE). Mababa at safe ang utang (₱36 debt per ₱100 equity).
+                  <strong className="text-blue-400">• Health:</strong> Quality Score: 73.0/100 (Strong Growth). 3Y EPS Trend: ₱2.18 → ₱2.54 → ₱2.92. Kumikita ng ₱12.3 net profit sa bawat ₱100 na capital (ROE). Mababa at safe ang utang (₱36 debt per ₱100 equity).
                 </p>
               </div>
 
@@ -137,7 +137,7 @@ export default function HomePage() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-slate-900 rounded-xl p-3 border border-blue-500/20">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">3-Layer Score</span>
-                    <span className="font-bold text-white">73.0/100 (H:78.5 I:69.0 P:71.5)</span>
+                    <span className="font-bold text-white">73.0/100 (H:87 I:98 P:90)</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">DCF/DDM Fair Value</span>
@@ -145,11 +145,11 @@ export default function HomePage() {
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Net Yield vs BVAL</span>
-                    <span className="font-bold text-amber-300">6.44% (+59 bps vs 10Y)</span>
+                    <span className="font-bold text-amber-300">6.36% (+51 bps vs 10Y)</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">ROE & Debt/Equity</span>
-                    <span className="font-bold text-slate-200">ROE 12.8% • D/E 0.36x</span>
+                    <span className="font-bold text-slate-200">ROE 12.3% • D/E 0.36x</span>
                   </div>
                 </div>
               )}
@@ -169,16 +169,16 @@ export default function HomePage() {
 
               <div className="space-y-2 text-xs text-slate-300 bg-slate-900/70 rounded-xl p-3.5 border border-slate-800">
                 <p>
-                  <strong className="text-white">• Verdict:</strong> Iwas muna sa DITO: bagsak sa safety at valuation filter natin (Score: 28.5/100). Huwag basta maniwala sa FB group hype hangga&apos;t hindi umaayos ang kita at presyo.
+                  <strong className="text-white">• Verdict:</strong> Iwas muna sa DITO: base sa audited PSE Edge financials, may ₱13.75 Billion net loss ito (EPS: ₱-0.63) at bagsak sa safety filter (persistent negative earnings; 3Y normalized EPS = -0.69).
                 </p>
                 <p>
-                  <strong className="text-emerald-400">• Peso Value Test:</strong> Mas mahal na sa Fair Value ngayon: nagbabayad ka ng ₱2.20 for every ₱1.00 of value (Current Price: ₱1.65 vs. Fair Value: ₱0.75).
+                  <strong className="text-emerald-400">• Peso Value Test:</strong> Current Price is ₱0.55, pero walang DCF/EPS Fair Value cushion dahil negatibo ang kita (EPS: ₱-0.63) — mataas ang panganib ng dilution o capital loss.
                 </p>
                 <p>
-                  <strong className="text-amber-400">• Net Dividend per ₱10k:</strong> ₱0/year sa ngayon — walang cash dividend payout.
+                  <strong className="text-amber-400">• Net Dividend per ₱10k:</strong> ₱0/year (0.00% dividend yield) — hindi makapagbigay ng cash dividend dahil nalulugi pa ang operasyon.
                 </p>
                 <p>
-                  <strong className="text-blue-400">• Health:</strong> Quality Score: 28.5/100. Nalulugi ng ₱18.5 sa bawat ₱100 na capital (-18.5% ROE) at mataas ang utang (₱420 debt per ₱100 equity).
+                  <strong className="text-blue-400">• Health:</strong> Quality Score: 37.6/100 (Watchlist). Audited Net Loss: -₱13.75 Billion. Capital Deficiency (Negative Shareholder Equity: -₱42.27B; Total Liabilities: ₱306.21B).
                 </p>
               </div>
 
@@ -186,19 +186,19 @@ export default function HomePage() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-slate-900 rounded-xl p-3 border border-blue-500/20">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">3-Layer Score</span>
-                    <span className="font-bold text-rose-400">28.5/100 (H:22.0 I:33.0 P:30.5)</span>
+                    <span className="font-bold text-rose-400">37.6/100 (H:5 I:94 P:83)</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">DCF/DDM Fair Value</span>
-                    <span className="font-bold text-rose-400">₱0.75 (-120% MoS)</span>
+                    <span className="font-bold text-slate-400">N/A (Negative Earnings)</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Net Yield</span>
                     <span className="font-bold text-slate-400">0.00%</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block text-[10px] uppercase">ROE & Debt/Equity</span>
-                    <span className="font-bold text-rose-300">ROE -18.5% • D/E 4.20x</span>
+                    <span className="text-slate-500 block text-[10px] uppercase">Capital Deficiency</span>
+                    <span className="font-bold text-rose-400">Equity: -₱42.27B</span>
                   </div>
                 </div>
               )}

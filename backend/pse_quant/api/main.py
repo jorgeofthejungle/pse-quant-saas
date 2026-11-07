@@ -4,6 +4,8 @@ Authoritative backend decision engine for StockPilot PH.
 Serves:
   - Customer Facing Dashboard (/api/v1/stocks, /api/v1/customers)
   - Admin Facing Dashboard (/api/v1/admin)
+  - Payment Webhook Ingestion (/api/v1/payments)
+  - Rate Limiting Diagnostics (/api/v1/rate-limit)
 """
 
 from __future__ import annotations
@@ -18,7 +20,8 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from pse_quant.db.connection import init_db
 from pse_quant.api.limiter import limiter, custom_rate_limit_handler
-from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas, payments
+from pse_quant.api.rate_limiting import TokenBucketMiddleware
+from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas, payments, rate_limit
 
 logger = logging.getLogger("pse_quant.api")
 
@@ -43,10 +46,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Attach SlowAPI Limiter state & handlers
+# ── Rate Limiting Layers ──────────────────────────────────────
+# Layer 1: SlowAPI (Per-route burst protection)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Layer 2: Institutional Token Bucket Middleware (Multi-tier quota & RFC headers)
+_token_bucket_enabled = os.getenv("ENABLE_TOKEN_BUCKET_RATE_LIMIT", "true").lower() in ("true", "1", "yes")
+app.add_middleware(TokenBucketMiddleware, enabled=_token_bucket_enabled)
+
 
 # ── Dynamic CORS Configuration ────────────────────────────────
 _raw_cors = os.getenv("CORS_ORIGINS", "")
@@ -104,6 +113,7 @@ app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(oaas.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
+app.include_router(rate_limit.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

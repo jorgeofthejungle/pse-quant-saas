@@ -78,3 +78,38 @@ sequenceDiagram
         end
     end
 ```
+
+---
+
+## Level 4: Multi-Tier Token Bucket Rate Limiting Architecture
+
+Eliminates the fixed-window boundary burst problem by tracking continuous token replenishment $\Delta t \times r$ bounded by burst capacity $C$.
+
+```mermaid
+flowchart TD
+    Req([Inbound HTTP Request]) --> ExemptCheck{Is Exempt Path?<br/>/health, /docs}
+    ExemptCheck -- Yes --> PassToApp([Route Handler])
+    ExemptCheck -- No --> Fingerprint[Resolve Fingerprint & Tier]
+    
+    Fingerprint --> AuthBranch{Identity Type?}
+    AuthBranch -- "X-Admin-Key" --> TierAdmin[Tier: ADMIN<br/>Burst: 1000, 50 t/s]
+    AuthBranch -- "Bearer JWT (role=admin)" --> TierAdmin
+    AuthBranch -- "Bearer JWT (tier=paid)" --> TierPaid[Tier: PAID<br/>Burst: 300, 5 t/s]
+    AuthBranch -- "Bearer JWT (tier=free)" --> TierFree[Tier: FREE<br/>Burst: 60, 1 t/s]
+    AuthBranch -- "Unauthenticated IP" --> TierAnon[Tier: ANONYMOUS<br/>Burst: 20, 0.5 t/s]
+
+    TierAdmin --> FetchBucket[Fetch or Create TokenBucket]
+    TierPaid --> FetchBucket
+    TierFree --> FetchBucket
+    TierAnon --> FetchBucket
+
+    FetchBucket --> MathStep["Calculate Refill:<br/>tokens = min(C, tokens + Δt * r)"]
+    MathStep --> TokenCheck{tokens >= 1.0?}
+
+    TokenCheck -- "Yes (Tokens Available)" --> ConsumeToken["tokens -= 1.0<br/>Calculate X-RateLimit headers"]
+    ConsumeToken --> InjectHeaders[Inject X-RateLimit Headers]
+    InjectHeaders --> PassToApp
+
+    TokenCheck -- "No (Depleted)" --> Throttled["Calculate Retry-After:<br/>(1.0 - tokens) / r"]
+    Throttled --> Reject[Return HTTP 429 Too Many Requests<br/>With Retry-After & X-RateLimit headers]
+```

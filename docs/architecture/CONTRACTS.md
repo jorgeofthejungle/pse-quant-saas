@@ -119,7 +119,7 @@ Prevent silent mathematical regressions, floating-point drift, and formula mutat
 ### Objective:
 Handle real-world payment gateway webhooks (PayMongo, Maya, GCash, Stripe) under at-least-once delivery semantics without duplicate fulfillments, replay exploits, or timeout drops.
 
-### A. Gateway Transport Invariants:
+### Gateway Transport Invariants:
 1. **Cryptographic Signature Verification**:
    - Every inbound webhook must carry a valid HMAC SHA-256 signature in headers (`Paymongo-Signature` or `X-Signature`).
    - Constant-time verification (`hmac.compare_digest`) must execute BEFORE parsing JSON bodies or accessing database records.
@@ -132,3 +132,38 @@ Handle real-world payment gateway webhooks (PayMongo, Maya, GCash, Stripe) under
    - Status state machine: `pending` $\to$ `processed` (or `failed`).
    - If a duplicate event arrives (e.g. gateway retry during network jitter), the system detects the existing record, acknowledges with `HTTP 200 {"idempotent": true}`, and suppresses duplicate fulfillment.
 
+---
+
+## 6. Multi-Tier Token Bucket Rate Limiting & IETF Header Contract
+
+### Objective:
+Protect calculation endpoints against Denial-of-Service (DoS) and bot scraping while eliminating the fixed-window boundary spike vulnerability.
+
+### Tier Quota Matrix:
+| Tier | Burst Capacity ($C$) | Refill Rate ($r$) | Sustained Throughput | Target Client Profile |
+| :--- | :--- | :--- | :--- | :--- |
+| **Anonymous** | 20 tokens | 0.5 tokens/sec | 30 req/min | Unauthenticated public visitors (Client IP) |
+| **Free Member** | 60 tokens | 1.0 tokens/sec | 60 req/min | Registered free members (JWT Bearer) |
+| **Paid Customer** | 300 tokens | 5.0 tokens/sec | 300 req/min | PWYC ₱49+ or monthly subscribers (JWT Bearer) |
+| **Administrator** | 1000 tokens | 50.0 tokens/sec | 3000 req/min | Master key or Admin JWT (`X-Admin-Key`) |
+
+### Standard RFC 6585 / IETF Headers:
+Every API response from non-exempt routes must include:
+- `X-RateLimit-Limit`: Maximum burst capacity for the client's tier.
+- `X-RateLimit-Remaining`: Floor integer of remaining available tokens.
+- `X-RateLimit-Reset`: Estimated seconds until the bucket is completely full.
+- `X-RateLimit-Tier`: The resolved tier name (`anonymous`, `free`, `paid`, `admin`).
+
+### Throttled Response Specification:
+When a client exhausts their token bucket, the server immediately halts processing with `HTTP 429 Too Many Requests`:
+```json
+{
+  "error": "TooManyRequests",
+  "message": "Rate limit exceeded for tier 'anonymous'. Bucket capacity depleted.",
+  "tier": "anonymous",
+  "burst_capacity": 20,
+  "retry_after_seconds": 2.5,
+  "path": "/api/v1/reports/done-for-you"
+}
+```
+**Mandatory Header**: `Retry-After: <seconds_until_next_token_available>`

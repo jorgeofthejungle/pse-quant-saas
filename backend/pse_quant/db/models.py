@@ -274,3 +274,34 @@ class OaasAlert(Base):
     cooldown_until: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active")  # active, cooldown, expired, cancelled
     dispatched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# ── Payment Webhooks & Idempotency Ledger ─────────────────────
+
+class PaymentEvent(Base):
+    """
+    Immutable ledger of inbound payment gateway events (PayMongo, Maya, Stripe).
+    Guarantees strict at-least-once idempotency: duplicate webhook deliveries
+    are recorded and acknowledged with HTTP 200 without executing duplicate fulfillments.
+    """
+    __tablename__ = "payment_events"
+    __table_args__ = (
+        UniqueConstraint("provider", "event_id", name="uq_payment_events_provider_event_id"),
+        Index("idx_payment_events_provider_status", "provider", "status"),
+        Index("idx_payment_events_customer_email", "customer_email"),
+        Index("idx_payment_events_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(32), default="paymongo")  # paymongo, maya, stripe
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)    # payment.paid, payment.failed
+    status: Mapped[str] = mapped_column(String(32), default="pending")     # pending, processed, duplicate, failed
+    amount_php: Mapped[float] = mapped_column(Float, default=0.0)
+    customer_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    payload_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+

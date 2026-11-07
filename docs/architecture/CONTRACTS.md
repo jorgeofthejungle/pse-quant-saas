@@ -111,3 +111,24 @@ Prevent silent mathematical regressions, floating-point drift, and formula mutat
   2. `intrinsic_value` and `mos_pct` must match reference values to $\pm 0.01$.
   3. Valuation component blends (`ddm`, `eps_pe`, `dcf`) must match reference hashes down to 4 decimal places.
 - **Drift Failure**: Any unintended formula modification will immediately fail the test suite, preventing accidental deployments.
+
+---
+
+## 5. Asynchronous Payment Webhook & Idempotency Contract
+
+### Objective:
+Handle real-world payment gateway webhooks (PayMongo, Maya, GCash, Stripe) under at-least-once delivery semantics without duplicate fulfillments, replay exploits, or timeout drops.
+
+### A. Gateway Transport Invariants:
+1. **Cryptographic Signature Verification**:
+   - Every inbound webhook must carry a valid HMAC SHA-256 signature in headers (`Paymongo-Signature` or `X-Signature`).
+   - Constant-time verification (`hmac.compare_digest`) must execute BEFORE parsing JSON bodies or accessing database records.
+   - Any unauthenticated or tampered request must be rejected immediately with `HTTP 401 Unauthorized`.
+2. **Sub-50ms Fast-ACK Rule**:
+   - The HTTP handler (`POST /api/v1/payments/webhook`) must acknowledge the gateway with `HTTP 200` in $< 50\text{ms}$.
+   - Heavy tasks (PDF report compilation via ReportLab and email transmission via Resend SMTP) MUST NEVER execute on the main HTTP request thread. They are scheduled onto `FastAPI.BackgroundTasks` or an asynchronous queue.
+3. **Relational Idempotency Lock**:
+   - Key: `(provider, event_id)` backed by unique database constraint.
+   - Status state machine: `pending` $\to$ `processed` (or `failed`).
+   - If a duplicate event arrives (e.g. gateway retry during network jitter), the system detects the existing record, acknowledges with `HTTP 200 {"idempotent": true}`, and suppresses duplicate fulfillment.
+

@@ -18,7 +18,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from pse_quant.db.connection import init_db
 from pse_quant.api.limiter import limiter, custom_rate_limit_handler
-from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas
+from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas, payments
 
 logger = logging.getLogger("pse_quant.api")
 
@@ -103,6 +103,7 @@ app.include_router(customers.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(oaas.router, prefix="/api/v1")
+app.include_router(payments.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

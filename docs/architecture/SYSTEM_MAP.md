@@ -32,3 +32,49 @@ C4Container
     Rel(quant, api, "Returns computed Fact Cards, Seasoned Numbers, and valuation metrics")
     Rel(api, db, "Reads & writes company financials, quotes, and scores", "SQLAlchemy ORM")
 ```
+
+---
+
+## Level 3: Asynchronous Payment Webhook & Idempotency Sequence
+
+Demonstrates the sub-50ms Fast-ACK boundary and asynchronous background fulfillment worker.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Investor as Paying Investor
+    participant Gateway as PayMongo / Maya Gateway
+    participant Route as FastAPI Webhook Handler (/payments/webhook)
+    participant PaymentSvc as PaymentService
+    participant DB as SQLite / PostgreSQL (PaymentEvents)
+    participant Worker as BackgroundTasks Fulfillment Worker
+    participant Resend as Resend SMTP / ReportLab PDF
+
+    Investor->>Gateway: Submits GCash / Card payment (₱49+)
+    Gateway->>Route: POST /api/v1/payments/webhook (Payload + HMAC Header)
+    Note over Route,PaymentSvc: Cryptographic Guard (<5ms)
+    Route->>PaymentSvc: verify_webhook_signature(raw_body, signature_header)
+    alt Invalid HMAC Signature
+        PaymentSvc-->>Route: False
+        Route-->>Gateway: HTTP 401 Unauthorized (Blocked)
+    else Valid HMAC Signature
+        PaymentSvc-->>Route: True
+        Route->>PaymentSvc: record_and_claim_event(provider, event_id, amount, email)
+        PaymentSvc->>DB: SELECT * FROM payment_events WHERE event_id = ?
+        alt Duplicate Delivery (Gateway Retry)
+            DB-->>PaymentSvc: Existing Event Found (Status: processed/pending)
+            PaymentSvc-->>Route: (event, claimed=False)
+            Route-->>Gateway: HTTP 200 {"status": "ok", "idempotent": true} (<15ms)
+        else First Arrival (New Event)
+            PaymentSvc->>DB: INSERT INTO payment_events (status="pending")
+            PaymentSvc-->>Route: (event, claimed=True)
+            Route->>Worker: Schedule process_payment_fulfillment(provider, event_id)
+            Route-->>Gateway: HTTP 200 {"status": "received", "idempotent": false} (<25ms)
+            
+            Note over Worker,Resend: Asynchronous Decoupled Worker
+            Worker->>DB: Upgrade User tier="paid" & Subscription active
+            Worker->>Resend: Generate ReportLab PDF & Dispatch Email
+            Worker->>DB: UPDATE payment_events SET status="processed"
+        end
+    end
+```

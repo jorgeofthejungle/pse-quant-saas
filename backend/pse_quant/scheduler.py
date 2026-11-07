@@ -72,6 +72,20 @@ def execute_job(job_name: str, session: Session | None = None) -> dict[str, Any]
                     "job": "weekly_report",
                     "digest_result": res,
                 }
+            elif clean_job in ("oaas_daily_triage", "oaas_triage", "causal_triage"):
+                from pse_quant.services.oaas_service import OaasService
+                res = OaasService.execute_daily_triage_and_dispatch(dry_run=False)
+                summary = {
+                    "job": "oaas_daily_triage",
+                    "result": res,
+                }
+            elif clean_job in ("oaas_weekly_brief", "oaas_weekly", "sunday_regime"):
+                from pse_quant.services.oaas_service import OaasService
+                res = OaasService.execute_weekly_brief_and_dispatch(dry_run=False)
+                summary = {
+                    "job": "oaas_weekly_brief",
+                    "result": res,
+                }
             else:
                 raise ValueError(f"Unknown scheduled job name: '{clean_job}'")
 
@@ -137,6 +151,22 @@ def run_scheduler_tick() -> list[dict[str, Any]]:
             logger.info("[Scheduler] Monday quantitative report broadcast window detected.")
             res = execute_job("weekly_report")
             _LAST_EXECUTED["weekly_report"] = today_pht
+            executed.append(res)
+
+    # 4. Weekday Post-Market Causal Shock Triage (16:15 - 16:20 PHT, Mon-Fri)
+    if weekday in range(0, 5) and hour == 16 and minute in range(15, 20):
+        if _LAST_EXECUTED.get("oaas_daily_triage") != today_pht:
+            logger.info("[Scheduler] Causal Shock Triage & Instant Alert window detected.")
+            res = execute_job("oaas_daily_triage")
+            _LAST_EXECUTED["oaas_daily_triage"] = today_pht
+            executed.append(res)
+
+    # 5. Sunday Evening Weekly Regime Brief (20:00 - 20:05 PHT, Sunday only)
+    if weekday == 6 and hour == 20 and minute in range(0, 5):
+        if _LAST_EXECUTED.get("oaas_weekly_brief") != today_pht:
+            logger.info("[Scheduler] Sunday Weekly Regime Brief broadcast window detected.")
+            res = execute_job("oaas_weekly_brief")
+            _LAST_EXECUTED["oaas_weekly_brief"] = today_pht
             executed.append(res)
 
     return executed

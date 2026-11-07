@@ -205,3 +205,72 @@ class EmailLog(Base):
     resend_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     error_detail: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# ── OaaS & Causal Alert Engine Models ─────────────────────────
+
+class OaasMacroState(Base):
+    __tablename__ = "oaas_macro_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    regime_title: Mapped[str] = mapped_column(String(255), default="Neutral Macro Flow")
+    z_bsp_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    z_us10y_yield: Mapped[float] = mapped_column(Float, default=0.0)
+    z_brent_crude: Mapped[float] = mapped_column(Float, default=0.0)
+    z_usd_php: Mapped[float] = mapped_column(Float, default=0.0)
+    z_msci_flow: Mapped[float] = mapped_column(Float, default=0.0)
+    php_10y_bval_rate: Mapped[float] = mapped_column(Float, default=0.0585)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    source: Mapped[str] = mapped_column(String(64), default="hybrid_auto")  # hybrid_auto, admin_override
+    metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class OaasRun(Base):
+    __tablename__ = "oaas_runs"
+    __table_args__ = (
+        Index("idx_oaas_runs_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_type: Mapped[str] = mapped_column(String(64), default="daily_triage")  # daily_triage, weekly_brief, dry_run
+    regime_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    macro_state_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("oaas_macro_states.id", ondelete="SET NULL"), nullable=True)
+    tickers_evaluated_count: Mapped[int] = mapped_column(Integer, default=0)
+    alerts_triggered_count: Mapped[int] = mapped_column(Integer, default=0)
+    top_allocations_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    quarantined_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    full_matrix_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    dispatched_emails_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class OaasAlert(Base):
+    __tablename__ = "oaas_alerts"
+    __table_args__ = (
+        Index("idx_oaas_alerts_ticker", "ticker"),
+        Index("idx_oaas_alerts_cooldown", "cooldown_until"),
+        Index("idx_oaas_alerts_created", "dispatched_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("oaas_runs.id", ondelete="CASCADE"), nullable=True)
+    ticker: Mapped[str] = mapped_column(String(16), ForeignKey("stocks.ticker", ondelete="CASCADE"), nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)  # INSTANT_ALERT, INSTANT_DISTRIBUTION_WARNING
+    direction: Mapped[str] = mapped_column(String(32), default="BUY")    # BUY, AVOID, DUMP_WARNING
+    reference_price: Mapped[float] = mapped_column(Float, nullable=False)
+    displacement_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    gate_threshold_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    net_hurdle_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    friction_bps: Mapped[float] = mapped_column(Float, nullable=False)
+    board_lot: Mapped[int] = mapped_column(Integer, default=10)
+    executable_shares: Mapped[int] = mapped_column(Integer, default=0)
+    executable_ticket_php: Mapped[float] = mapped_column(Float, default=0.0)
+    limit_low: Mapped[float] = mapped_column(Float, default=0.0)
+    limit_high: Mapped[float] = mapped_column(Float, default=0.0)
+    stop_loss: Mapped[float] = mapped_column(Float, default=0.0)
+    crowd_participation_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    cooldown_until: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active")  # active, cooldown, expired, cancelled
+    dispatched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

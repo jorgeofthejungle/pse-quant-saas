@@ -92,6 +92,7 @@ class CustomerService:
             "monthly": 499.0,
             "annual": 4990.0,
             "lifetime": 9990.0,
+            "on_demand": 499.0,
         }
         price = amount_php if amount_php is not None else plan_prices.get(plan, 499.0)
 
@@ -339,19 +340,21 @@ class CustomerService:
         active_watchlists = session.scalar(select(func.count(Watchlist.id))) or 0
         emails_sent = session.scalar(select(func.count(EmailLog.id)).where(EmailLog.status == "sent")) or 0
 
-        # Calculate estimated Monthly Recurring Revenue (MRR)
+        # Calculate estimated Monthly Recurring Revenue (MRR) and On-Demand Revenue
         active_subs = session.scalars(
             select(Subscription).where(Subscription.status == "active", Subscription.plan != "free")
         ).all()
         mrr_php = sum(s.amount_php for s in active_subs if s.plan == "monthly")
         mrr_php += sum((s.amount_php / 12.0) for s in active_subs if s.plan == "annual")
         mrr_php += sum((s.amount_php / 24.0) for s in active_subs if s.plan == "lifetime")
+        on_demand_revenue_php = sum(s.amount_php for s in active_subs if s.plan == "on_demand")
 
         return {
             "total_customers": total_users,
             "paid_subscribers": paid_users,
             "free_members": total_users - paid_users,
             "mrr_php": round(mrr_php, 2),
+            "on_demand_revenue_php": round(on_demand_revenue_php, 2),
             "active_watchlists": active_watchlists,
             "total_emails_delivered": emails_sent,
         }

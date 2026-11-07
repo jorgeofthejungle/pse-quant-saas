@@ -130,6 +130,11 @@ def _yoy_changes(series: list[float | None]) -> list[float]:
 
 def _score_roe(stock: dict[str, Any], group: str) -> float | None:
     roe = stock.get("roe")
+    if roe is None:
+        ni = stock.get("net_income")
+        eq = stock.get("equity")
+        if (ni is not None and ni < 0) or (eq is not None and eq <= 0):
+            return 5.0
     table = _ROE_BANK if group == "bank" else _ROE_STD
     return _normalise(roe, table)
 
@@ -139,9 +144,12 @@ def _score_ni_margin(stock: dict[str, Any], group: str) -> float | None:
     rev_list = stock.get("revenue_5y") or []
     ni = next((v for v in ni_list if v is not None), None)
     rev = next((v for v in rev_list if v is not None), None)
-    if ni is None or rev is None or rev == 0:
+    if ni is not None and rev is not None and rev != 0:
+        margin = (ni / rev) * 100.0
+    elif stock.get("net_margin") is not None:
+        margin = float(stock["net_margin"])
+    else:
         return None
-    margin = (ni / rev) * 100.0
     table = _NI_MARGIN_BANK if group == "bank" else _NI_MARGIN_STD
     return _normalise(margin, table)
 
@@ -150,6 +158,10 @@ def _score_de_ratio(stock: dict[str, Any], group: str) -> float | None:
     if group == "bank":
         return None  # Leverage is the business model for banks
     de = stock.get("de_ratio")
+    if de is None:
+        eq = stock.get("equity")
+        if eq is not None and eq <= 0:
+            return 5.0
     table = _DE_REIT if group == "reit" else _DE_STD
     return _normalise(de, table)
 
@@ -510,6 +522,11 @@ def rank_stocks(
         dyn_cutoff = MIN_SCORE_THRESHOLD
 
     qualifying = [s for s in scored if s["score"] >= dyn_cutoff]
+
+    # If qualifying stocks is fewer than 10 (e.g. during small demo/seed universes),
+    # ensure top candidates scoring above MIN_SCORE_THRESHOLD are included up to 10
+    if len(qualifying) < 10:
+        qualifying = [s for idx, s in enumerate(scored) if s["score"] >= dyn_cutoff or (s["score"] >= MIN_SCORE_THRESHOLD and idx < 10)]
 
     # Assign 1-based ranks
     for rank, stock in enumerate(qualifying, start=1):

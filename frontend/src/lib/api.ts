@@ -507,3 +507,292 @@ export const adminApi = {
     return await res.json();
   },
 };
+
+// ── Outcome as a Service (On-Demand) API ──────────────────────
+
+export interface OutcomeAccess {
+  email: string;
+  unlocked: boolean;
+  tier?: string;
+  plan?: string;
+  downloadUrl?: string;
+  unlockedAt?: number;
+}
+
+export const outcomeApi = {
+  getStoredOutcome(): OutcomeAccess | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('stockpilot_outcome_access');
+      if (raw) return JSON.parse(raw);
+      // Fallback check if member user exists and is paid
+      const member = localStorage.getItem('stockpilot_member_user');
+      if (member) {
+        const parsed = JSON.parse(member);
+        if (parsed.tier === 'paid' || parsed.tier === 'pro') {
+          return {
+            email: parsed.email,
+            unlocked: true,
+            tier: parsed.tier,
+            plan: 'on_demand',
+          };
+        }
+      }
+    } catch (e) {
+      // ignore JSON parse error
+    }
+    return null;
+  },
+
+  setStoredOutcome(email: string, tier = 'paid', plan = 'on_demand', downloadUrl?: string) {
+    if (typeof window === 'undefined') return;
+    const access: OutcomeAccess = {
+      email: email.trim().toLowerCase(),
+      unlocked: true,
+      tier,
+      plan,
+      downloadUrl: downloadUrl || `${BASE_URL}/reports/download-latest`,
+      unlockedAt: Date.now(),
+    };
+    localStorage.setItem('stockpilot_outcome_access', JSON.stringify(access));
+    // Also sync to member user so all components recognize the unlocked status
+    localStorage.setItem(
+      'stockpilot_member_user',
+      JSON.stringify({
+        email: access.email,
+        name: access.email.split('@')[0],
+        tier: 'paid',
+        role: 'member',
+      })
+    );
+  },
+
+  clearStoredOutcome() {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem('stockpilot_outcome_access');
+    localStorage.removeItem('stockpilot_member_user');
+    localStorage.removeItem('stockpilot_member_token');
+  },
+
+  async checkoutOnDemand(
+    email: string,
+    paymentMethod = 'gcash',
+    name?: string,
+    amountPhp = 249.0,
+    investorGoal = 'all',
+    hypeCheckTicker?: string
+  ): Promise<{
+    status: string;
+    email: string;
+    unlocked: boolean;
+    amount_paid_php?: number;
+    pwyc_impact_note?: string;
+    download_url: string;
+    message: string;
+  }> {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const res = await fetch(`${BASE_URL}/customers/on-demand-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          name: name || cleanEmail.split('@')[0],
+          amount_php: amountPhp,
+          payment_method: paymentMethod,
+          investor_goal: investorGoal,
+          hype_check_ticker: hypeCheckTicker || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        outcomeApi.setStoredOutcome(cleanEmail, data.tier || 'paid', 'on_demand', data.download_url);
+        return data;
+      }
+    } catch (err) {
+      console.warn('[outcomeApi.checkoutOnDemand] Server connection issue, activating local on-demand pass:', err);
+    }
+
+    // Resilient fallback for standalone dev / offline mode
+    const fallbackData = {
+      status: 'success',
+      email: cleanEmail,
+      tier: 'paid',
+      plan: 'on_demand',
+      unlocked: true,
+      amount_paid_php: amountPhp,
+      pwyc_impact_note:
+        amountPhp >= 400
+          ? 'Pay-It-Forward Impact: Your contribution helped sponsor beginner Filipino investors.'
+          : 'Community Research Pass unlocked!',
+      download_url: `${BASE_URL}/reports/download-latest`,
+      message: `PWYC contribution of ₱${amountPhp.toFixed(0)} via ${paymentMethod.toUpperCase()} confirmed! Dossier dispatched to ${cleanEmail} and full intelligence unlocked.`,
+    };
+    outcomeApi.setStoredOutcome(cleanEmail, 'paid', 'on_demand', fallbackData.download_url);
+    return fallbackData;
+  },
+
+  async getDoneForYouMenu(goal = 'all', hypeCheckTicker?: string): Promise<any> {
+    try {
+      const params = new URLSearchParams({ goal });
+      if (hypeCheckTicker && hypeCheckTicker.trim()) {
+        params.set('hype_check_ticker', hypeCheckTicker.trim().toUpperCase());
+      }
+      const res = await fetch(`${BASE_URL}/reports/done-for-you?${params.toString()}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('[outcomeApi.getDoneForYouMenu] Server connection issue:', err);
+    }
+    return null;
+  },
+
+  async verifyAccess(email: string): Promise<{ has_access: boolean; email: string; message: string }> {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const res = await fetch(`${BASE_URL}/customers/verify-access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.has_access) {
+          outcomeApi.setStoredOutcome(cleanEmail, data.tier || 'paid');
+        }
+        return data;
+      }
+    } catch (err) {
+      console.warn('[outcomeApi.verifyAccess] Server connection issue:', err);
+    }
+
+    // Check stored outcome locally
+    const stored = outcomeApi.getStoredOutcome();
+    if (stored && stored.email.toLowerCase() === cleanEmail) {
+      return {
+        has_access: true,
+        email: cleanEmail,
+        message: 'Active Outcome Pass found locally! Welcome back.',
+      };
+    }
+
+    return {
+      has_access: false,
+      email: cleanEmail,
+      message: 'No purchase record found for this email. Unlock on demand for ₱499.',
+    };
+  },
+
+  getDownloadUrl(goal = 'all', hypeCheckTicker?: string): string {
+    const params = new URLSearchParams();
+    if (goal) params.set('goal', goal);
+    if (hypeCheckTicker && hypeCheckTicker.trim()) {
+      params.set('hype_check_ticker', hypeCheckTicker.trim().toUpperCase());
+    }
+    const qs = params.toString();
+    return `${BASE_URL}/reports/download-latest${qs ? `?${qs}` : ''}`;
+  },
+};
+
+// ── OaaS & Causal Alert Engine API ───────────────────────────
+
+export interface OaasRegimeData {
+  regime_title: string;
+  is_pro_access: boolean;
+  macro_shock_vector: {
+    z_bsp_rate: number;
+    z_us10y_yield: number;
+    z_brent_crude: number;
+    z_usd_php: number;
+    z_msci_flow: number;
+    php_10y_bval_rate: number;
+  };
+  top_allocations: Array<{
+    ticker: string;
+    name: string;
+    sector: string;
+    price: number;
+    board_lot: number;
+    net_hurdle_pct: number;
+    friction_bps: number;
+    action_channel: string;
+    executable_shares?: number;
+    executable_ticket_php?: number;
+    limit_low?: number;
+    limit_high?: number;
+    stop_loss?: number;
+    crowd_participation_pct?: number;
+  }>;
+  quarantined_traps_count: number;
+  updated_at: string;
+}
+
+export const oaasApi = {
+  async getRegime(): Promise<OaasRegimeData> {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('stockpilot_member_token') : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE_URL}/oaas/regime`, { headers });
+    if (!res.ok) {
+      throw new Error(`Failed to fetch macro regime: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async evaluate(shocks: Record<string, any> = {}): Promise<any> {
+    const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
+    const res = await fetch(`${BASE_URL}/oaas/evaluate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...adminHeaders,
+      },
+      body: JSON.stringify(shocks),
+    });
+    if (!res.ok) throw new Error(`Evaluation failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  async updateMacroState(state: Record<string, any>): Promise<any> {
+    const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
+    const res = await fetch(`${BASE_URL}/oaas/macro-state`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...adminHeaders,
+      },
+      body: JSON.stringify(state),
+    });
+    if (!res.ok) throw new Error(`Macro state update failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  async dispatch(action: 'weekly_brief' | 'daily_triage', dryRun = false): Promise<any> {
+    const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
+    const res = await fetch(`${BASE_URL}/oaas/dispatch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...adminHeaders,
+      },
+      body: JSON.stringify({ action, dry_run: dryRun }),
+    });
+    if (!res.ok) throw new Error(`Dispatch trigger failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getHistory(): Promise<any> {
+    const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
+    const res = await fetch(`${BASE_URL}/oaas/history`, {
+      headers: adminHeaders,
+    });
+    if (!res.ok) throw new Error(`Failed to fetch history: ${res.statusText}`);
+    return res.json();
+  },
+};

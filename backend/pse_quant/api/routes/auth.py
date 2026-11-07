@@ -6,12 +6,13 @@ Separate login paths ensuring security isolation between regular investors and s
 from __future__ import annotations
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from pse_quant.db.connection import get_db_session
 from pse_quant.services.auth_service import AuthService
 from pse_quant.api.auth import get_current_user
+from pse_quant.api.limiter import limiter
 from pse_quant.db.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -88,7 +89,8 @@ class AuthResponse(BaseModel):
 # ── Member Endpoints ──────────────────────────────────────────
 
 @router.post("/member/register", response_model=AuthResponse, summary="Register member account")
-def register_member(req: MemberRegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register_member(request: Request, req: MemberRegisterRequest, db: Session = Depends(get_db)):
     """Creates a new investor member account and returns authentication token."""
     try:
         user, token = AuthService.register_member(
@@ -113,7 +115,8 @@ def register_member(req: MemberRegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/member/login", response_model=AuthResponse, summary="Member sign-in gate")
-def login_member(req: MemberLoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login_member(request: Request, req: MemberLoginRequest, db: Session = Depends(get_db)):
     """Authenticates investor members and returns a signed session token."""
     try:
         user, token = AuthService.authenticate_member(
@@ -139,7 +142,8 @@ def login_member(req: MemberLoginRequest, db: Session = Depends(get_db)):
 # ── Admin Endpoints ───────────────────────────────────────────
 
 @router.post("/admin/login", response_model=AuthResponse, summary="Restricted System Admin sign-in gate")
-def login_admin(req: AdminLoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login_admin(request: Request, req: AdminLoginRequest, db: Session = Depends(get_db)):
     """
     STRICTLY RESTRICTED LOGIN GATE FOR SYSTEM ADMINISTRATORS.
     Requires role='admin'. Rejects regular members.
@@ -168,7 +172,8 @@ def login_admin(req: AdminLoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/admin/provision", response_model=AuthResponse, summary="Provision initial administrator")
-def provision_admin(req: AdminProvisionRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def provision_admin(request: Request, req: AdminProvisionRequest, db: Session = Depends(get_db)):
     """Initial provisioning endpoint: Creates administrator account using master setup key."""
     try:
         user, token = AuthService.register_admin(

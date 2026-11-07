@@ -202,28 +202,35 @@ SECTOR_SCORING_CONFIG: dict[str, dict[str, dict[str, float]]] = {
 SECTOR_SCORING_CONFIG["general"] = SECTOR_SCORING_CONFIG["services"]
 
 # ── Sector Whitelists & Overrides ──────────────────────────────
-REIT_WHITELIST: set[str] = {"VREIT", "PREIT", "MREIT", "AREIT", "CREIT", "RCR", "FILRT"}
-BANK_TICKERS: set[str] = {"BDO", "MBT", "SECB", "BPI", "CHIB", "PNB", "UBP", "EW", "RCB"}
+REIT_WHITELIST: set[str] = {"VREIT", "PREIT", "MREIT", "AREIT", "CREIT", "RCR", "FILRT", "DDMPR"}
+BANK_TICKERS: set[str] = {"BDO", "MBT", "SECB", "BPI", "CHIB", "PNB", "UBP", "EW", "RCB", "AUB", "BNCOM", "CBC", "CSB", "PBB", "PBC", "PSB"}
 
 SECTOR_MANUAL_MAP: dict[str, str] = {
     "BDO": "Financials", "MBT": "Financials", "SECB": "Financials", "MFIN": "Financials",
     "AC": "Holding Firms", "DMC": "Holding Firms", "FDC": "Holding Firms",
     "GTCAP": "Holding Firms", "LTG": "Holding Firms", "SM": "Holding Firms", "VLC": "Holding Firms",
+    "LTL": "Holding Firms", "RCI": "Holding Firms", "ROX": "Holding Firms",
     "ALI": "Property", "CREIT": "Property", "FLI": "Property", "HOME": "Property",
     "HTI": "Property", "IDC": "Property", "KPPI": "Property", "LPC": "Property",
     "MREIT": "Property", "PREIT": "Property", "RCR": "Property", "SMPH": "Property",
-    "VREIT": "Property", "AREIT": "Property",
+    "VREIT": "Property", "AREIT": "Property", "DDMPR": "Property",
     "ALLDY": "Industrial", "BALAI": "Industrial", "CIC": "Industrial", "CNPF": "Industrial",
     "DELM": "Industrial", "DNL": "Industrial", "EMI": "Industrial", "FCG": "Industrial",
     "FRUIT": "Industrial", "GSMI": "Industrial", "JFC": "Industrial", "MEDIC": "Industrial",
     "MM": "Industrial", "MVC": "Industrial", "PGOLD": "Industrial", "PMPC": "Industrial",
     "RFM": "Industrial", "RRHI": "Industrial", "UPSON": "Industrial",
+    "TECH": "Industrial", "PNC": "Industrial", "SBS": "Industrial", "SHLPH": "Industrial",
+    "STN": "Industrial", "T": "Industrial", "URC": "Industrial", "VMC": "Industrial", "VITA": "Industrial",
     "BCOR": "Services", "BLOOM": "Services", "CEU": "Services", "ECP": "Services",
     "EEI": "Services", "FMETF": "Services", "GLO": "Services", "ICT": "Services",
     "IPO": "Services", "IS": "Services", "PAL": "Services", "PHC": "Services",
     "PLUS": "Services", "TEL": "Services", "TOP": "Services", "X": "Services", "XG": "Services",
     "ALTER": "Services", "ASLAG": "Services", "CREC": "Services", "MER": "Services",
     "MWC": "Services", "MYNLD": "Services", "REDC": "Services", "SPNEC": "Services", "VVT": "Services",
+    "TUGS": "Services", "SEVN": "Services", "PIZZA": "Services", "SPC": "Services",
+    "SSI": "Services", "STI": "Services", "TBGI": "Services", "WEB": "Services",
+    "WPI": "Services", "WLCON": "Services",
+    "SCC": "Mining and Oil",
 }
 
 # ── App & Infrastructure Settings ──────────────────────────────

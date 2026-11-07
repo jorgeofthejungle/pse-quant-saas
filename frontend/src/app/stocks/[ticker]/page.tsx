@@ -14,6 +14,8 @@ import {
 import { MOCK_STOCK_DETAILS, MOCK_RANKINGS } from '@/lib/mockData';
 import { stockApi } from '@/lib/api';
 
+export const dynamicParams = true;
+
 export function generateStaticParams() {
   return MOCK_RANKINGS.map((stock) => ({
     ticker: stock.ticker,

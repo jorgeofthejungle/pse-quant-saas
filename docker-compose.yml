@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # ── PostgreSQL Relational Database ──────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: stockpilot-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stockpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stockpilot_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-stockpilot_pse}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stockpilot} -d ${POSTGRES_DB:-stockpilot_pse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Quant Decision Server ───────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stockpilot-backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-stockpilot}:${POSTGRES_PASSWORD:-stockpilot_secure_pass_2026}@db:5432/${POSTGRES_DB:-stockpilot_pse}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-stockpilot-ph-quant-jwt-secret-key-2026}
+      ADMIN_MASTER_KEY: ${ADMIN_MASTER_KEY:-stockpilot-admin-master-2026}
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,${PRODUCTION_FRONTEND_URL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-StockPilot PH <reports@stockpilot.ph>}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  # ── Automated PHT Scheduler Daemon ──────────────────────────
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stockpilot-scheduler
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["python", "-m", "pse_quant.cli", "schedule-daemon", "--interval", "60"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-stockpilot}:${POSTGRES_PASSWORD:-stockpilot_secure_pass_2026}@db:5432/${POSTGRES_DB:-stockpilot_pse}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-stockpilot-ph-quant-jwt-secret-key-2026}
+      ADMIN_MASTER_KEY: ${ADMIN_MASTER_KEY:-stockpilot-admin-master-2026}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-StockPilot PH <reports@stockpilot.ph>}
+
+  # ── Next.js 16 Customer & Admin Portal ──────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stockpilot-frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000/api/v1}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

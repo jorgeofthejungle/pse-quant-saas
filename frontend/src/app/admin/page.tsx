@@ -21,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { adminApi, AdminMetrics, PipelineRunLog } from '@/lib/api';
+import { CausalEngineConsole } from '@/components/CausalEngineConsole';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -196,6 +197,9 @@ export default function AdminDashboardPage() {
           <p className="mt-1 text-xs text-slate-500">Weekly PDF digests via Resend API</p>
         </div>
       </div>
+
+      {/* ── Causal Alert Engine & Macro Triage Controller ──── */}
+      <CausalEngineConsole />
 
       {/* ── Direct Pipeline Control Operations ─────────────── */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 sm:p-8 backdrop-blur-sm space-y-6">

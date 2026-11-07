@@ -48,6 +48,16 @@ def trigger_full_pipeline(
         raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {e}")
 
 
+@router.post("/pipeline/sync-directory", summary="Scrape and synchronize complete PSE ticker directory")
+def trigger_sync_directory(db: Session = Depends(get_db)):
+    """Fetches the complete active listed company directory from PSE Edge and upserts Stock records."""
+    from pse_quant.scraper.client import PseEdgeClient
+    from pse_quant.scraper.etl import sync_directory
+    client = PseEdgeClient()
+    count = sync_directory(client, db)
+    return {"status": "completed", "stocks_synced": count}
+
+
 @router.post("/pipeline/scrape-quotes", summary="Trigger daily quote refresh")
 def trigger_scrape_quotes(
     tickers: Optional[list[str]] = Query(None),

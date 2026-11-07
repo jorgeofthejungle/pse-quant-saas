@@ -18,7 +18,7 @@ export default function Footer() {
           <div className="md:col-span-2">
             <span className="text-lg font-bold text-white">StockPilot PH</span>
             <p className="mt-3 max-w-md text-sm text-slate-400">
-              A deterministic multi-factor Philippine equity ranking and intrinsic value valuation engine. Delivering weekly PDF research reports and daily pre-market alerts directly to subscribers.
+              Outcome as a Service for Philippine equity investors. Deterministic 3-layer fundamental scoring, DCF intrinsic valuations, and Margin of Safety buy cushions delivered on demand. Zero recurring subscription traps.
             </p>
           </div>
           <div>

@@ -162,3 +162,45 @@ def test_api_schema_boundary_validation(client_with_db: TestClient):
     # Out of bounds target_mos_pct
     resp = client_with_db.post(f"/api/v1/customers/{uid}/watchlist", json={"ticker": "AREIT", "target_mos_pct": -500.0})
     assert resp.status_code == 422
+
+
+def test_on_demand_outcome_checkout_and_verify(client_with_db: TestClient):
+    """Test Outcome as a Service (OaaS) on-demand checkout and email verification."""
+    # 1. On-Demand Checkout with Email & Fixed Fee
+    checkout_payload = {
+        "email": "investor.demand@example.com",
+        "name": "Maria Santos",
+        "amount_php": 499.0,
+        "payment_method": "gcash",
+    }
+    resp = client_with_db.post("/api/v1/customers/on-demand-checkout", json=checkout_payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert data["email"] == "investor.demand@example.com"
+    assert data["tier"] == "paid"
+    assert data["plan"] == "on_demand"
+    assert data["unlocked"] is True
+    assert "download_url" in data
+
+    # 2. Verify Access by Email
+    verify_resp = client_with_db.post("/api/v1/customers/verify-access", json={"email": "investor.demand@example.com"})
+    assert verify_resp.status_code == 200
+    verify_data = verify_resp.json()
+    assert verify_data["has_access"] is True
+    assert verify_data["email"] == "investor.demand@example.com"
+    assert verify_data["tier"] == "paid"
+
+    # 3. Verify Non-existent Email
+    unknown_resp = client_with_db.post("/api/v1/customers/verify-access", json={"email": "nobody@example.com"})
+    assert unknown_resp.status_code == 200
+    assert unknown_resp.json()["has_access"] is False
+
+
+def test_reports_download_endpoint(client_with_db: TestClient):
+    """Test /api/v1/reports/download-latest generates or serves PDF."""
+    resp = client_with_db.get("/api/v1/reports/download-latest")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert len(resp.content) > 0
+

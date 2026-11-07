@@ -22,10 +22,14 @@ elif _DB_URL.startswith("postgres://"):
     # Fix legacy Railway PostgreSQL URLs
     _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
 
-# Configure engine with pooling
+# Configure engine with pooling and thread concurrency
 _IS_SQLITE = _DB_URL.startswith("sqlite")
 engine_kwargs = {}
-if not _IS_SQLITE:
+if _IS_SQLITE:
+    engine_kwargs.update({
+        "connect_args": {"timeout": 30, "check_same_thread": False},
+    })
+else:
     engine_kwargs.update({
         "pool_size": 10,
         "max_overflow": 20,

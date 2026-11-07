@@ -93,6 +93,35 @@ flowchart TD
   - **Column Headers:** Automatic extraction of explicit comparative years from table header cells (e.g. `2024` and `2023`) even when standard "current year" wording is omitted.
   - **Field Mapping:** Expanded aliases for `net sales`, `sale of goods`, `operating revenues`, `net income for the period`, `total stockholders equity`, `interest-bearing debt`, and `basic eps`.
 
+### 5. PSE-Native Quantitative Outcome-as-a-Service (OaaS) & Causal Alert Engine
+- **Mathematical Specification & Verification:** Implemented `pse_quant_engine.py` and `backend/pse_quant/core/oaas_engine.py` solving the PSE Liquidity–Friction–Flow Trilemma:
+  - Exact PSE statutory fee equations (Buy 0.300%, Sell 0.900%, Round-trip 1.200% / 120 bps + statutory floor).
+  - Discrete 15-tier PSE tick ladder and board lot lookup table.
+  - Amihud square-root illiquidity market impact ($\lambda_{\text{PSE}} = 0.55$).
+  - 4 PSE-Native Alpha Factors ($NFF$ foreign persistence, $HNAV$ HoldCo look-through discount, $IBC$ Rule 10/Form 23 insider conviction, $TADC$ 10% tax-adjusted REIT carry).
+  - Anti-self-slippage crowd capacity sizing ($\le 5\%$ of $MDTV_{20}$ and discrete board lot rounding).
+  - Causal Macro Shock Transmission Matrix with quantitative alert gating ($|\Delta \hat{R}| \ge 2\times \text{Friction} + 1.5\sigma$).
+  - Pre-commitment falsification: `ILLIQ` (3rd-liner penny trap) and `JFC` (foreign distribution dump) rejected and quarantined.
+- **Database Architecture:** Created SQLAlchemy 2.0 declarative models (`OaasMacroState`, `OaasRun`, `OaasAlert`) in `models.py`. Seeded top 15 liquid PSE benchmark equities and macro baseline via `pse_quant.db.seed_oaas`.
+- **Service & Throttling Layer:** Created `OaasService` in `backend/pse_quant/services/oaas_service.py` enforcing strict 5-day ticker cooldowns, a maximum 2 Instant Alerts/day cap, in-memory TTL evaluation caching, and executive HTML/Markdown email rendering.
+- **FastAPI Endpoints:** Mounted at `/api/v1/oaas/*`:
+  - `GET /api/v1/oaas/regime`: Public/Pro view of active macro regime, standardized Z-scores, and top friction-cleared allocations.
+  - `POST /api/v1/oaas/evaluate`: Admin dry-run matrix simulation with custom shock vector.
+  - `PUT /api/v1/oaas/macro-state`: Admin override and persistence of active macro state.
+  - `POST /api/v1/oaas/dispatch`: Admin manual triggers for Sunday Weekly Brief or Daily Triage.
+  - `GET /api/v1/oaas/history`: Historical evaluation runs and active alert cooldowns.
+- **Scheduler & CLI Integration:**
+  - Added 16:15 PHT weekday post-market shock triage and 20:00 PHT Sunday weekly brief to `scheduler.py`.
+  - Added CLI commands: `oaas-seed`, `oaas-triage`, `oaas-weekly`.
+- **Frontend Widgets:**
+  - `<MacroRegimeCard />` mounted on `/dashboard` (live macro meters, friction-cleared allocations, Pro-gated limit order tickets).
+  - `<CausalEngineConsole />` mounted on `/admin` (interactive Z-score sliders, dry-run matrix readout, state persistence, and dispatch buttons).
+- **Security & Hardening:**
+  - Injected security headers (`X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`).
+  - Hardened CORS origins without wildcards.
+  - Sanitized global exception handling preventing internal stack trace leaks.
+  - Multi-stage container deployment (`backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`, `railway.toml`).
+
 ---
 
 ## 3. Seeded Test Credentials
@@ -109,20 +138,39 @@ The local database (`backend/pse_quant/db/pse_local.db`) has been initialized wi
 
 ## 4. Current Daemon Tasks & Services
 
-Both services are active in the background:
+Three active background services:
 
 | Task ID | Description | Address | Command | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| `task-174` | **FastAPI Quant Decision Server** | `http://127.0.0.1:8000` | `cd backend; python -m pse_quant.cli serve --port 8000 --host 127.0.0.1` | **ONLINE** |
-| `task-176` | **Next.js 16 Web Portal** | `http://localhost:3000` | `cd frontend; npm.cmd start` | **ONLINE** |
+| `task-340` | **FastAPI Quant Decision Server** | `http://127.0.0.1:8000` | `cd backend; python -m pse_quant.cli serve --port 8000 --host 127.0.0.1` | **ONLINE** |
+| `task-342` | **Next.js 16 Web Portal** | `http://localhost:3000` | `cd frontend; npm.cmd start` | **ONLINE** |
+| `task-253` | **Automated PHT Scheduler Daemon** | *Background Timer* | `cd backend; python -m pse_quant.cli schedule-daemon --interval 60` | **ONLINE** |
 
 ---
 
 ## 5. Verification & Test Suite Status
 
 1. **Backend Tests:**
-   - Command: `cd backend; python -m pytest`
-   - Results: **86 passed in 3.16s (100% green)**
+   - Command: `cd backend; python -m pytest --ignore=tests/test_e2e_live.py`
+   - Results: **120 passed in 5.48s (100% green)**
+   - Test files:
+     - `tests/test_oaas_engine.py`: 11 tests verifying statutory fee exactness, 15-tier tick ladder, Amihud impact, 4 alpha factors, and falsification of `ILLIQ` & `JFC`.
+     - `tests/test_oaas_service.py`: 9 tests verifying evaluation structure, state persistence, daily triage, weekly brief, and authenticated API endpoints.
+     - `tests/test_watchlist.py`, `tests/test_scheduler.py`, `tests/test_scraper.py`, `tests/test_services.py`, `tests/test_auth.py`, `tests/test_api.py`, `tests/test_scoring.py`, `tests/test_mos.py`, `tests/test_validator.py`, `tests/test_filters.py`, `tests/test_sector_groups.py`.
+
+2. **Frontend Build:**
+   - Command: `cd frontend; npm.cmd run build`
+   - Results: **Compiled successfully with Turbopack (zero errors in 5.8s)**
+   - Routes:
+     - `○ /` (Landing Page)
+     - `○ /login` (Member Sign In / Register)
+     - `○ /dashboard` (Member Command Center + `<MemberGreeting />` + `<MacroRegimeCard />`)
+     - `○ /screener` (Quantitative Rankings Screener)
+     - `○ /watchlist` (Cloud-Synced Member Watchlist)
+     - `○ /admin/login` (Admin Security Gate)
+     - `○ /admin` (Admin Operations Console + `<CausalEngineConsole />`)
+     - `● /stocks/[ticker]` (SSG routes for DMC, AREIT, ICT, SMPH, BDO, etc.)
+     - `ƒ /api/*` (Proxy API endpoints)
    - Test files:
      - `tests/test_watchlist.py`: Authenticated CRUD, JWT header verification, MoS target triggers.
      - `tests/test_scheduler.py`: PHT timezone calculation, quotes sync, morning alerts, weekly report.

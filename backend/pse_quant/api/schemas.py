@@ -42,7 +42,7 @@ class CustomerResponse(BaseModel):
 
 
 class SubscriptionUpdateRequest(BaseModel):
-    plan: str = Field(..., description="monthly, annual, lifetime, or free")
+    plan: str = Field(..., description="monthly, annual, lifetime, on_demand, or free")
     status: str = Field("active", description="active, cancelled, or suspended")
     amount_php: Optional[float] = Field(None, ge=0.0)
 
@@ -50,8 +50,8 @@ class SubscriptionUpdateRequest(BaseModel):
     @classmethod
     def validate_plan(cls, v: str) -> str:
         val = v.strip().lower()
-        if val not in ("free", "monthly", "annual", "lifetime"):
-            raise ValueError("Plan must be 'free', 'monthly', 'annual', or 'lifetime'.")
+        if val not in ("free", "monthly", "annual", "lifetime", "on_demand"):
+            raise ValueError("Plan must be 'free', 'monthly', 'annual', 'lifetime', or 'on_demand'.")
         return val
 
     @field_validator("status")
@@ -88,6 +88,76 @@ class WatchlistItemResponse(BaseModel):
     is_triggered: bool
     notes: Optional[str] = None
     added_at: str
+
+
+# ── Outcome-as-a-Service (On-Demand PWYC) Schemas ─────────────
+
+class OnDemandCheckoutRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255, description="Customer email address")
+    name: Optional[str] = Field(None, max_length=150, description="Customer name")
+    amount_php: float = Field(
+        249.0,
+        ge=49.0,
+        le=100_000.0,
+        description="Pay-What-You-Can (PWYC) contribution in PHP (minimum ₱49 floor to cover data/server costs)",
+    )
+    payment_method: str = Field("gcash", description="Payment method: gcash, maya, card")
+    investor_goal: Optional[str] = Field(
+        "all",
+        pattern="^(all|dividend|value|growth)$",
+        description="Investor goal preference: all, dividend, value, or growth",
+    )
+    hype_check_ticker: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Optional stock ticker seen in Facebook groups/forums for instant Hype Check",
+    )
+    starting_capital_php: Optional[float] = Field(
+        10_000.0,
+        ge=1_000.0,
+        le=100_000_000.0,
+        description="Optional reference capital in PHP",
+    )
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if "@" not in clean or "." not in clean:
+            raise ValueError("Invalid email format.")
+        return clean
+
+
+class OnDemandCheckoutResponse(BaseModel):
+    status: str
+    email: str
+    tier: str
+    plan: str
+    unlocked: bool
+    amount_paid_php: Optional[float] = None
+    pwyc_impact_note: Optional[str] = None
+    download_url: str
+    message: str
+
+
+class VerifyAccessRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255, description="Customer email address to verify")
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if "@" not in clean or "." not in clean:
+            raise ValueError("Invalid email format.")
+        return clean
+
+
+class VerifyAccessResponse(BaseModel):
+    has_access: bool
+    email: str
+    tier: Optional[str] = None
+    name: Optional[str] = None
+    message: str
 
 
 # ── Stock Data Schemas ────────────────────────────────────────

@@ -82,7 +82,7 @@ def calc_ddm(
         return None, "DDM not applicable — no positive dividend history"
 
     cagr = dividend_cagr if dividend_cagr is not None else 0.03
-    if cagr > 1.0:
+    if cagr > 1.0 or cagr < -1.0:
         cagr = cagr / 100.0
 
     # Cap terminal growth rate
@@ -112,9 +112,9 @@ def calc_two_stage_ddm(
         return None, "Two-stage DDM not applicable — no positive dividend history"
 
     growth = eps_growth_rate if eps_growth_rate is not None else 5.0
-    if growth > 1.0:
+    if growth > 1.0 or growth < -1.0:
         growth = growth / 100.0
-    if terminal_growth > 1.0:
+    if terminal_growth > 1.0 or terminal_growth < -1.0:
         terminal_growth = terminal_growth / 100.0
 
     # Stage 1: dividend growth capped at 60% of earnings growth or 10%
@@ -179,9 +179,9 @@ def calc_dcf(
         return None, "DCF not applicable — non-positive FCF per share"
 
     g = growth_rate if growth_rate is not None else 0.05
-    if g > 1.0:
+    if g > 1.0 or g < -1.0:
         g = g / 100.0
-    g = min(g, 0.15)  # conservative cap
+    g = max(-0.20, min(g, 0.15))  # conservative cap between -20% and +15%
 
     pv_fcf = 0.0
     fcf = fcf_per_share

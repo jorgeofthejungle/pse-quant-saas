@@ -3,26 +3,29 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Compass, Bookmark, TrendingUp, Sparkles, LayoutDashboard, User, LogOut } from 'lucide-react';
+import {
+  Compass,
+  Bookmark,
+  TrendingUp,
+  Sparkles,
+  LayoutDashboard,
+  User,
+  LogOut,
+  Download,
+  Zap,
+  CheckCircle2,
+} from 'lucide-react';
+import { outcomeApi, OutcomeAccess } from '@/lib/api';
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [memberUser, setMemberUser] = useState<{ email: string; name?: string; tier?: string } | null>(null);
+  const [outcome, setOutcome] = useState<OutcomeAccess | null>(null);
 
   useEffect(() => {
-    // Check if member is logged in
-    const storedUser = localStorage.getItem('stockpilot_member_user');
-    const token = localStorage.getItem('stockpilot_member_token');
-    if (storedUser && token) {
-      try {
-        setMemberUser(JSON.parse(storedUser));
-      } catch (e) {
-        setMemberUser(null);
-      }
-    } else {
-      setMemberUser(null);
-    }
+    // Check if outcome access or member session is present
+    const active = outcomeApi.getStoredOutcome();
+    setOutcome(active);
   }, [pathname]);
 
   // If inside the admin portal, do not render the consumer navbar
@@ -30,18 +33,16 @@ export default function Navbar() {
     return null;
   }
 
-  const handleSignOut = () => {
-    localStorage.removeItem('stockpilot_member_token');
-    localStorage.removeItem('stockpilot_member_user');
-    setMemberUser(null);
-    router.push('/login');
+  const handleClearAccess = () => {
+    outcomeApi.clearStoredOutcome();
+    setOutcome(null);
+    router.push('/');
   };
 
   const navLinks = [
-    { href: '/', label: 'Overview' },
-    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/', label: 'Request Report' },
     { href: '/screener', label: 'Rankings Screener', icon: Compass },
-    { href: '/watchlist', label: 'Watchlist', icon: Bookmark },
+    { href: '/dashboard', label: 'Done-For-You Hub', icon: LayoutDashboard },
   ];
 
   return (
@@ -80,43 +81,49 @@ export default function Navbar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/screener"
-            className="hidden sm:flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:brightness-110"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Top Rankings</span>
-          </Link>
-
-          {memberUser ? (
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {outcome && outcome.unlocked ? (
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs">
-                <User className="h-3.5 w-3.5 text-blue-400" />
-                <span className="max-w-[140px] truncate text-slate-200 font-medium">
-                  {memberUser.email}
+              <a
+                href="http://127.0.0.1:8000/api/v1/reports/download-latest"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Download Latest PDF Dossier"
+                className="hidden sm:flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-all"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>PDF Report</span>
+              </a>
+
+              <div className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="max-w-[120px] sm:max-w-[160px] truncate text-slate-200 font-medium">
+                  {outcome.email}
                 </span>
-                <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 uppercase">
-                  {memberUser.tier || 'Member'}
+                <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-bold text-emerald-300 uppercase tracking-wider">
+                  Paid
                 </span>
               </div>
+
               <button
-                onClick={handleSignOut}
-                title="Sign Out"
-                className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+                onClick={handleClearAccess}
+                title="Switch Email / Clear Session"
+                className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Sign Out</span>
+                <span className="hidden sm:inline">Switch</span>
               </button>
             </div>
           ) : (
-            <Link
-              href="/login"
-              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3.5 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/20 hover:text-blue-300 transition-all"
-            >
-              <User className="h-3.5 w-3.5" />
-              <span>Sign In</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-md shadow-blue-600/25 transition-all hover:brightness-110"
+              >
+                <Zap className="h-3.5 w-3.5 text-amber-300" />
+                <span>Request Report (PWYC)</span>
+              </Link>
+            </div>
           )}
         </div>
       </div>

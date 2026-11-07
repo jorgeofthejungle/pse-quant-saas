@@ -7,13 +7,18 @@ Serves:
 """
 
 from __future__ import annotations
+import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from pse_quant.db.connection import init_db
-from pse_quant.api.routes import stocks, customers, admin, auth, watchlist
+from pse_quant.api.limiter import limiter, custom_rate_limit_handler
+from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas
 
 logger = logging.getLogger("pse_quant.api")
 
@@ -38,27 +43,66 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for decoupled frontends (Customer dashboard & Admin dashboard)
+# Attach SlowAPI Limiter state & handlers
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# ── Dynamic CORS Configuration ────────────────────────────────
+_raw_cors = os.getenv("CORS_ORIGINS", "")
+_allowed_origins = [
+    origin.strip() for origin in _raw_cors.split(",") if origin.strip()
+] if _raw_cors else [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "*",  # Permissive in development
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
+
+
+# ── Security Headers Middleware ───────────────────────────────
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Injects defensive HTTP security headers into every response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# ── Global Exception Handler ──────────────────────────────────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Prevents stack traces and sensitive server internals from leaking to clients."""
+    logger.exception(f"Unhandled exception on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "InternalServerError",
+            "message": "A server error occurred while processing the request.",
+            "path": request.url.path,
+        },
+    )
+
 
 # Mount API Routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(watchlist.router, prefix="/api/v1")
 app.include_router(stocks.router, prefix="/api/v1")
 app.include_router(customers.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(oaas.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

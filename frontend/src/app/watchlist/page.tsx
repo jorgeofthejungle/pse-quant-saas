@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Bookmark, Plus, Trash2, ArrowRight, ShieldCheck, Bell, Sparkles, LogIn, CheckCircle2, AlertCircle } from 'lucide-react';
-import { watchlistApi, stockApi, WatchlistItem } from '@/lib/api';
+import { Bookmark, Plus, Trash2, ArrowRight, ShieldCheck, Bell, Sparkles, LogIn, CheckCircle2, AlertCircle, Zap } from 'lucide-react';
+import { watchlistApi, stockApi, outcomeApi, WatchlistItem } from '@/lib/api';
 import { MOCK_RANKINGS } from '@/lib/mockData';
 
 interface WatchlistDisplayItem {
@@ -29,12 +29,16 @@ export default function WatchlistPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Check login state and fetch initial watchlist
+  // Check outcome / login state and fetch initial watchlist
   useEffect(() => {
+    const outcome = outcomeApi.getStoredOutcome();
     const token = typeof window !== 'undefined' ? localStorage.getItem('stockpilot_member_token') : null;
     const storedUser = typeof window !== 'undefined' ? localStorage.getItem('stockpilot_member_user') : null;
 
-    if (token) {
+    if (outcome && outcome.unlocked) {
+      setIsLoggedIn(true);
+      setUserEmail(outcome.email);
+    } else if (token) {
       setIsLoggedIn(true);
       if (storedUser) {
         try {
@@ -44,7 +48,9 @@ export default function WatchlistPage() {
           // ignore json parse error
         }
       }
+    }
 
+    if (token) {
       setLoading(true);
       watchlistApi
         .getWatchlist()
@@ -70,7 +76,6 @@ export default function WatchlistPage() {
         })
         .finally(() => setLoading(false));
     } else {
-      setIsLoggedIn(false);
       // Fallback guest demonstration items
       setWatchlist([
         {
@@ -199,10 +204,10 @@ export default function WatchlistPage() {
         ) : (
           <Link
             href="/login"
-            className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3.5 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 transition-colors"
           >
-            <LogIn className="h-4 w-4" />
-            <span>Guest Mode — Sign in to sync across devices</span>
+            <Zap className="h-4 w-4 text-amber-400" />
+            <span>Connect Email to Sync Alerts (₱499 On Demand)</span>
           </Link>
         )}
       </div>

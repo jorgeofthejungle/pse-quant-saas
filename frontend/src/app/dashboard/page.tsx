@@ -16,10 +16,11 @@ import {
 import { stockApi } from '@/lib/api';
 import ScreenerTable from '@/components/ScreenerTable';
 import MemberGreeting from '@/components/MemberGreeting';
+import OnDemandCheckoutCard from '@/components/OnDemandCheckoutCard';
 
 export const metadata = {
-  title: 'Executive Dashboard | StockPilot PH',
-  description: 'Real-time Philippine equity quantitative rankings, Margin of Safety valuations, and macro indicators.',
+  title: 'Done-For-You Investment Hub | StockPilot PH',
+  description: 'Taglish Fact Cards, Hype Check, and Seasoned Numbers for Philippine equities.',
 };
 
 export default async function DashboardPage() {
@@ -44,13 +45,13 @@ export default async function DashboardPage() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-0.5 text-xs font-semibold text-blue-400 mb-2">
             <Activity className="h-3.5 w-3.5" />
-            <span>Market Intelligence Dashboard</span>
+            <span>Done-For-You Investment Hub</span>
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight sm:text-4xl">
-            Philippine Equity Command Center
+            Take Your Pick: Curated PSE Menu
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Real-time multi-layer fundamental audit, intrinsic valuation models, and discount margin screening.
+            Taglish Fact Cards, FB Group Hype Check, at Seasoned Numbers para sa bawat stock.
           </p>
         </div>
 
@@ -62,15 +63,11 @@ export default async function DashboardPage() {
             <BarChart3 className="h-4 w-4" />
             <span>Full Screener</span>
           </Link>
-          <Link
-            href="/watchlist"
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-600/25 hover:bg-blue-500 transition-colors"
-          >
-            <Zap className="h-4 w-4" />
-            <span>My Watchlist</span>
-          </Link>
         </div>
       </div>
+
+      {/* ── Done-For-You Investment Menu & Hype Check ──────── */}
+      <OnDemandCheckoutCard />
 
       {/* ── Macro Financial Indicators ─────────────────────── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4">

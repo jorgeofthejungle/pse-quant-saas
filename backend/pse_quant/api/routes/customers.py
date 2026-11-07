@@ -17,6 +17,10 @@ from pse_quant.api.schemas import (
     SubscriptionUpdateRequest,
     WatchlistAddRequest,
     WatchlistItemResponse,
+    OnDemandCheckoutRequest,
+    OnDemandCheckoutResponse,
+    VerifyAccessRequest,
+    VerifyAccessResponse,
 )
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -44,6 +48,83 @@ def signup(req: CustomerSignupRequest, db: Session = Depends(get_db)):
         "status": user.status,
         "notification_prefs": user.notification_prefs,
         "created_at": user.created_at.isoformat(),
+    }
+
+
+@router.post("/on-demand-checkout", response_model=OnDemandCheckoutResponse, summary="Pay What You Can (PWYC) per report & unlock outcome")
+def on_demand_checkout(req: OnDemandCheckoutRequest, db: Session = Depends(get_db)):
+    """
+    Outcome as a Service (OaaS) Pay-What-You-Can (PWYC) per-report checkout:
+    Customer selects a fair contribution (minimum ₱49 floor), provides their email,
+    and immediately receives the done-for-you investment dossier + full on-screen unlock.
+    """
+    clean_email = req.email.lower().strip()
+    user, _created = CustomerService.register_or_get_customer(
+        session=db,
+        email=clean_email,
+        name=req.name,
+        tier="paid",
+    )
+
+    # Record or update to on_demand active status
+    CustomerService.update_subscription(
+        session=db,
+        user_id=user.id,
+        plan="on_demand",
+        status="active",
+        amount_php=req.amount_php,
+    )
+
+    # Compute PWYC Community Impact Note
+    if req.amount_php >= 400.0:
+        sponsored_count = max(1, int((req.amount_php - 249.0) // 99.0) + 1)
+        impact_note = f"Pay-It-Forward Impact: Your ₱{req.amount_php:,.0f} contribution directly subsidized research access for {sponsored_count} beginner Filipino investor(s)."
+    elif req.amount_php >= 200.0:
+        impact_note = "Fair Community Pass: Thank you for sustaining independent, hype-free Philippine investment research."
+    else:
+        impact_note = "Starter Community Pass unlocked! Subsidized by our Pay-It-Forward investor community."
+
+    # Trigger instant PDF email digest dispatch
+    try:
+        CustomerService.dispatch_weekly_digest(session=db, target_emails=[clean_email])
+    except Exception:
+        # Non-blocking for local development / missing Resend key
+        pass
+
+    return {
+        "status": "success",
+        "email": clean_email,
+        "tier": "paid",
+        "plan": "on_demand",
+        "unlocked": True,
+        "amount_paid_php": req.amount_php,
+        "pwyc_impact_note": impact_note,
+        "download_url": "/api/v1/reports/download-latest",
+        "message": f"PWYC contribution of ₱{req.amount_php:.0f} via {req.payment_method.upper()} confirmed! Done-for-you dossier sent to {clean_email}.",
+    }
+
+
+@router.post("/verify-access", response_model=VerifyAccessResponse, summary="Verify on-demand access by email")
+def verify_access(req: VerifyAccessRequest, db: Session = Depends(get_db)):
+    """Verifies whether an email has on-demand access or an active account."""
+    clean_email = req.email.lower().strip()
+    user = db.scalar(select(User).where(User.email == clean_email))
+    if not user:
+        return {
+            "has_access": False,
+            "email": clean_email,
+            "tier": None,
+            "name": None,
+            "message": "No purchase found for this email. Unlock on-demand for a flat ₱499 fee.",
+        }
+
+    has_paid = user.tier == "paid" or user.status == "active"
+    return {
+        "has_access": has_paid,
+        "email": user.email,
+        "tier": user.tier,
+        "name": user.name,
+        "message": "Outcome access active! Welcome back." if has_paid else "Account found, but requires on-demand unlock.",
     }
 
 

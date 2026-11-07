@@ -305,3 +305,30 @@ class PaymentEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+
+
+# ── Scraper Resilience & Dead-Letter Ledger ────────────────────
+
+class ScraperDeadLetter(Base):
+    """
+    Persistent dead-letter queue (DLQ) for malformed, corrupt, or repeated-failure
+    PSE Edge scraper payloads. Isolates poison-pill records so the broader batch
+    ETL can continue uninterrupted.
+    """
+    __tablename__ = "scraper_dead_letters"
+    __table_args__ = (
+        Index("idx_scraper_dead_letters_ticker", "ticker"),
+        Index("idx_scraper_dead_letters_status_stage", "status", "stage"),
+        Index("idx_scraper_dead_letters_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(16), nullable=False)
+    stage: Mapped[str] = mapped_column(String(64), nullable=False)  # directory, quote, financials, validation
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    error_reason: Mapped[str] = mapped_column(String, nullable=False)
+    payload_preview: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32), default="pending")  # pending, reprocessed, ignored
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

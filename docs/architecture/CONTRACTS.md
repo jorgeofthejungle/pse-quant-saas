@@ -167,3 +167,36 @@ When a client exhausts their token bucket, the server immediately halts processi
 }
 ```
 **Mandatory Header**: `Retry-After: <seconds_until_next_token_available>`
+
+
+---
+
+## 7. Scraper ETL Resiliency, Circuit Breaker & Dead-Letter Queue Contract
+
+### Objective:
+Protect backend ingestion workers against upstream outages (PSE Edge 502/503/504 errors) and prevent malformed, corrupt company disclosures ("poison pills") from aborting batch pipeline execution.
+
+### A. Circuit Breaker State Machine Contract:
+- **Scope**: Network interactions with `edge.pse.com.ph` inside `PseEdgeClient`.
+- **States**:
+  - `CLOSED`: Normal operation. Inbound requests execute normally.
+  - `OPEN`: Tripped after 5 consecutive upstream 5xx or connection timeout failures. All subsequent requests fail fast in $< 1\text{ms}$ with zero network overhead.
+  - `HALF_OPEN`: Entered after 30-second cooldown expires. Executes a single canary probe. If successful, resets to `CLOSED`. If failed, re-trips immediately to `OPEN`.
+- **Exclusion**: HTTP 404 (non-existent ticker) is a client error and must NOT count toward circuit breaker failure thresholds.
+
+### B. Full Jitter Exponential Backoff Specification:
+To eliminate the 'thundering herd' retry synchronization against PSE Edge:
+$$\text{delay} = \text{random.uniform}(0, \min(\text{max\_delay}, \text{base\_delay} \times 2^{\text{attempt}}))$$
+- Base delay: $2.0\text{s}$
+- Max delay cap: $30.0\text{s}$
+
+### C. Dead-Letter Queue (DLQ) Ledger Contract:
+When a ticker's filing contains unparseable HTML, corrupt date fields, or missing mandatory financial keys:
+1. The exception is quarantined into the `scraper_dead_letters` table:
+   - `ticker`: Stock ticker
+   - `stage`: `directory`, `quote`, `financials`, `validation`
+   - `source_url`: Failing request path
+   - `error_reason`: Exception message and stack trace
+   - `status`: `pending`
+2. The outer ETL batch catches the dead letter and continues to the remaining tickers without crashing.
+3. Operators can inspect and resolve poison pills via `/api/v1/admin/dead-letters`.

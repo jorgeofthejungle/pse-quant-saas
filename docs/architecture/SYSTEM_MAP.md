@@ -113,3 +113,59 @@ flowchart TD
     TokenCheck -- "No (Depleted)" --> Throttled["Calculate Retry-After:<br/>(1.0 - tokens) / r"]
     Throttled --> Reject[Return HTTP 429 Too Many Requests<br/>With Retry-After & X-RateLimit headers]
 ```
+
+
+---
+
+## Level 5: Scraper ETL Circuit Breaker State Machine & Dead-Letter Flow
+
+Protects the quant engine from cascading halts caused by upstream PSE Edge timeouts and isolates malformed corporate filings into durable dead-letter storage.
+
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED
+
+    state CLOSED {
+        [*] --> ExecutingRequests
+        ExecutingRequests --> Success: HTTP 200
+        Success --> ExecutingRequests: Reset failure count
+        ExecutingRequests --> Failure: 5xx / Connection Timeout
+        Failure --> CheckThreshold: failures += 1
+        CheckThreshold --> ExecutingRequests: failures < 5
+    }
+
+    CLOSED --> OPEN: Consecutive failures >= 5
+    
+    state OPEN {
+        [*] --> FastFailImmediate: <1ms Return None
+        FastFailImmediate --> CooldownTimer: Wait 30 seconds
+    }
+
+    OPEN --> HALF_OPEN: Cooldown Expired (30s)
+
+    state HALF_OPEN {
+        [*] --> SendCanaryProbe: Single test request
+        SendCanaryProbe --> CanarySuccess: HTTP 200
+        SendCanaryProbe --> CanaryFail: 5xx / Timeout
+    }
+
+    HALF_OPEN --> CLOSED: CanarySuccess (Healthy again)
+    HALF_OPEN --> OPEN: CanaryFail (Outage persists)
+```
+
+```mermaid
+flowchart TD
+    ETL[Batch Scraper Loop: 278 Stocks] --> FetchStock[Fetch Stock Quote / Filing]
+    FetchStock --> CBCheck{Circuit Breaker<br/>State?}
+    CBCheck -- OPEN --> SkipFast[Fail-Fast & Pause Batch]
+    CBCheck -- CLOSED / HALF-OPEN --> EdgeReq[Execute Request to PSE Edge]
+    
+    EdgeReq --> Outcome{Response Valid?}
+    Outcome -- "Valid (200)" --> UpsertDB[(Upsert Stock/Financials)]
+    Outcome -- "Malformed / Corrupt / 5xx" --> DLQ[DeadLetterService.record_dead_letter]
+    
+    DLQ --> DB_DLQ[(scraper_dead_letters Table)]
+    DB_DLQ --> NextStock[Continue to Next Stock]
+    UpsertDB --> NextStock
+    NextStock --> ETL
+```

@@ -161,3 +161,60 @@ def override_stock_financials(
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Scraper Resilience & Circuit Breaker Telemetry ────────────
+
+@router.get("/circuit-breaker/status", summary="Inspect PSE Edge Scraper Circuit Breaker telemetry")
+def get_circuit_breaker_status():
+    """Returns the live state machine status (CLOSED, OPEN, HALF_OPEN) of the PSE Edge scraper."""
+    from pse_quant.scraper.resilience import global_pse_edge_circuit
+    return global_pse_edge_circuit.get_state()
+
+
+@router.post("/circuit-breaker/reset", summary="Manually reset PSE Edge Scraper Circuit Breaker")
+def reset_circuit_breaker():
+    """Manually resets the circuit breaker back to CLOSED state."""
+    from pse_quant.scraper.resilience import global_pse_edge_circuit
+    global_pse_edge_circuit.reset()
+    return {"status": "success", "message": "Circuit breaker reset to CLOSED", "circuit": global_pse_edge_circuit.get_state()}
+
+
+@router.get("/dead-letters", summary="List scraper dead-letter poison pills for triage")
+def list_scraper_dead_letters(
+    status: str = Query("pending", pattern="^(pending|reprocessed|ignored)$"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Returns recent dead-letter records quarantined during ETL processing."""
+    from pse_quant.scraper.resilience import DeadLetterService
+    letters = DeadLetterService.list_dead_letters(session=db, status=status, limit=limit)
+    return [
+        {
+            "id": dl.id,
+            "ticker": dl.ticker,
+            "stage": dl.stage,
+            "source_url": dl.source_url,
+            "error_reason": dl.error_reason,
+            "payload_preview": dl.payload_preview,
+            "attempts": dl.attempts,
+            "status": dl.status,
+            "created_at": dl.created_at.isoformat() if dl.created_at else None,
+            "resolved_at": dl.resolved_at.isoformat() if dl.resolved_at else None,
+        }
+        for dl in letters
+    ]
+
+
+@router.post("/dead-letters/{letter_id}/resolve", summary="Resolve or discard a scraper dead-letter item")
+def resolve_scraper_dead_letter(
+    letter_id: int = Path(..., ge=1),
+    resolution: str = Query("reprocessed", pattern="^(reprocessed|ignored)$"),
+    db: Session = Depends(get_db),
+):
+    """Marks a dead letter as resolved or discarded."""
+    from pse_quant.scraper.resilience import DeadLetterService
+    resolved = DeadLetterService.resolve_dead_letter(session=db, dead_letter_id=letter_id, resolution=resolution)
+    if not resolved:
+        raise HTTPException(status_code=404, detail=f"Dead-letter record ID {letter_id} not found.")
+    return {"status": "success", "id": resolved.id, "resolution": resolved.status}

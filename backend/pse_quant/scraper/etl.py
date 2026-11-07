@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 
+from pse_quant.scraper.resilience import DeadLetterService
 from pse_quant.scraper.client import PseEdgeClient
 from pse_quant.scraper.directory import fetch_all_companies, lookup_company
 from pse_quant.scraper.stock_data import fetch_stock_quote, fetch_dividend_history
@@ -157,6 +158,16 @@ def sync_stock_quotes(
                     fin.dps = d_dps
         except Exception as e:
             logger.warning(f"Error syncing quotes for {stock.ticker}: {e}")
+            try:
+                DeadLetterService.record_dead_letter(
+                    session=session,
+                    ticker=stock.ticker,
+                    stage="quote",
+                    source_url=f"/companyPage/stockData.do?cmpy_id={stock.cmpy_id}",
+                    error_reason=str(e),
+                )
+            except Exception:
+                pass
             continue
 
     session.commit()
@@ -235,6 +246,16 @@ def sync_financials(
                 records_synced += 1
         except Exception as e:
             logger.warning(f"Error syncing financials for {stock.ticker}: {e}")
+            try:
+                DeadLetterService.record_dead_letter(
+                    session=session,
+                    ticker=stock.ticker,
+                    stage="financials",
+                    source_url=f"/companyPage/financialReports.do?cmpy_id={stock.cmpy_id}",
+                    error_reason=str(e),
+                )
+            except Exception:
+                pass
             continue
 
     session.commit()

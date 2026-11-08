@@ -1,63 +1,39 @@
 """
 pse_quant/db/connection.py — Database Engine & Session Factory
-Provides SQLAlchemy connection pooling for PostgreSQL (and fallback SQLite for local testing).
+PSE Quant SaaS (v2 Rebuild) — Lab 8
+
+Provides SQLAlchemy connection pooling for PostgreSQL (and fallback SQLite for local testing),
+dual-engine read replica routing, and transaction management.
 """
 
 from __future__ import annotations
-import os
 from contextlib import contextmanager
 from typing import Generator
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 
-from pse_quant.config import DATABASE_URL
 from pse_quant.db.models import Base
+from pse_quant.db.pool import pool_manager, DatabasePoolManager
 
-# Fallback to local SQLite if DATABASE_URL is not provided (for local unit testing)
-_DB_URL = DATABASE_URL
-if not _DB_URL:
-    _LOCAL_SQLITE = os.path.join(os.path.dirname(__file__), "pse_local.db")
-    _DB_URL = f"sqlite:///{_LOCAL_SQLITE}"
-elif _DB_URL.startswith("postgres://"):
-    # Fix legacy Railway PostgreSQL URLs
-    _DB_URL = _DB_URL.replace("postgres://", "postgresql://", 1)
-
-# Configure engine with pooling and thread concurrency
-_IS_SQLITE = _DB_URL.startswith("sqlite")
-engine_kwargs = {}
-if _IS_SQLITE:
-    engine_kwargs.update({
-        "connect_args": {"timeout": 30, "check_same_thread": False},
-    })
-else:
-    engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_pre_ping": True,
-        "pool_recycle": 1800,
-    })
-
-engine = create_engine(_DB_URL, **engine_kwargs)
-
-if _IS_SQLITE:
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Backward-compatible references
+engine = pool_manager.writer_engine
+SessionLocal = pool_manager.WriterSession
 
 
 def init_db() -> None:
-    """Creates all tables if they do not exist."""
-    Base.metadata.create_all(bind=engine)
+    """Creates all tables on the primary writer engine if they do not exist."""
+    Base.metadata.create_all(bind=pool_manager.writer_engine)
 
 
 @contextmanager
-def get_db_session() -> Generator[Session, None, None]:
-    """Context manager for database sessions with automatic commit/rollback."""
-    session = SessionLocal()
+def get_write_session() -> Generator[Session, None, None]:
+    """
+    Context manager for write sessions:
+    - Routes to the primary (writer) database pool.
+    - Executes within a transaction with automatic commit/rollback.
+    - Increments the write query routing counter.
+    """
+    pool_manager.record_write()
+    session = pool_manager.WriterSession()
     try:
         yield session
         session.commit()
@@ -68,4 +44,45 @@ def get_db_session() -> Generator[Session, None, None]:
         session.close()
 
 
+@contextmanager
+def get_read_session() -> Generator[Session, None, None]:
+    """
+    Context manager for read sessions:
+    - Routes to the read replica pool (or isolated reader pool in SQLite fallback).
+    - Read-only execution with zero commit round-trip latency.
+    - Increments the read query routing counter.
+    """
+    pool_manager.record_read()
+    session = pool_manager.ReaderSession()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@contextmanager
+def get_db_session() -> Generator[Session, None, None]:
+    """
+    Default session context manager with automatic commit/rollback.
+    Maintains 100% backward compatibility for existing callers.
+    """
+    with get_write_session() as session:
+        yield session
+
+
 get_session = get_db_session
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI route dependency for transactional write sessions."""
+    with get_write_session() as session:
+        yield session
+
+
+def get_read_db() -> Generator[Session, None, None]:
+    """FastAPI route dependency for high-throughput read-only sessions."""
+    with get_read_session() as session:
+        yield session

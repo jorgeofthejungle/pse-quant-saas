@@ -235,6 +235,15 @@ SECTOR_MANUAL_MAP: dict[str, str] = {
 
 # ── App & Infrastructure Settings ──────────────────────────────
 DATABASE_URL: str | None = os.getenv("DATABASE_URL")
+DATABASE_REPLICA_URL: str | None = os.getenv("DATABASE_REPLICA_URL")
+DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "15"))
+DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+DB_POOL_TIMEOUT: float = float(os.getenv("DB_POOL_TIMEOUT", "10.0"))
+DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "1800"))
+
+DB_REPLICA_POOL_SIZE: int = int(os.getenv("DB_REPLICA_POOL_SIZE", "25"))
+DB_REPLICA_MAX_OVERFLOW: int = int(os.getenv("DB_REPLICA_MAX_OVERFLOW", "20"))
+
 RESEND_API_KEY: str | None = os.getenv("RESEND_API_KEY")
 EMAIL_FROM: str = os.getenv("EMAIL_FROM", "StockPilot PH <reports@stockpilot.ph>")
 ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")

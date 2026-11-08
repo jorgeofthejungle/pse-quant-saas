@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from pse_quant.db.connection import get_db_session
+from pse_quant.db.connection import get_read_session
 from pse_quant.services.stock_service import StockService
 from pse_quant.config import (
     PH_RISK_FREE_RATE,
@@ -23,9 +23,14 @@ from pse_quant.api.schemas import (
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 
-def get_db():
-    with get_db_session() as session:
+def get_read_db():
+    """FastAPI dependency: routes to reader replica pool."""
+    with get_read_session() as session:
         yield session
+
+
+# Alias for backward compatibility and test dependency overrides
+get_db = get_read_db
 
 
 @router.get("", summary="List ranked stocks across portfolios")
@@ -35,9 +40,9 @@ def list_stocks(
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0, description="Minimum quantitative score (0-100)"),
     min_mos: Optional[float] = Query(None, ge=-100.0, le=200.0, description="Minimum Margin of Safety percentage"),
     limit: Optional[int] = Query(50, ge=1, le=500, description="Max records to return"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
 ):
-    """Returns top ranked equities filtered and sorted by deterministic score."""
+    """Returns top ranked equities filtered and sorted by deterministic score (routed to read replica)."""
     clean_sector = sector.strip() if sector else None
     rankings = StockService.get_rankings(
         session=db,
@@ -53,9 +58,9 @@ def list_stocks(
 @router.get("/bargains", summary="High Margin of Safety opportunities")
 def get_bargain_stocks(
     min_mos: float = Query(0.0, ge=-100.0, le=200.0, description="Minimum positive Margin of Safety percentage"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
 ):
-    """Returns equities currently trading below mathematical Intrinsic Value."""
+    """Returns equities currently trading below mathematical Intrinsic Value (routed to read replica)."""
     bargains = StockService.get_bargain_stocks(session=db, min_mos=min_mos)
     return {"count": len(bargains), "data": bargains}
 
@@ -73,8 +78,8 @@ def get_macro_benchmarks():
 
 
 @router.get("/{ticker}", response_model=StockProfileResponse, summary="Deep-dive equity profile")
-def get_stock_profile(ticker: str, db: Session = Depends(get_db)):
-    """Retrieves full equity profile, 3-layer factors, valuation models, and 10Y financials."""
+def get_stock_profile(ticker: str, db: Session = Depends(get_read_db)):
+    """Retrieves full equity profile, 3-layer factors, valuation models, and 10Y financials (routed to read replica)."""
     clean_ticker = ticker.strip().upper()
     profile = StockService.get_stock_profile(session=db, ticker=clean_ticker)
     if not profile:

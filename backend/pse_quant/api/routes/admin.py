@@ -246,3 +246,24 @@ def flush_cache(pattern: Optional[str] = Query(None, description="Optional glob 
         "keys_cleared": cleared,
         "metrics": global_cache.get_metrics(),
     }
+
+
+# ── Database Connection Pool & Replica Telemetry ─────────────
+
+@router.get("/db/pool-metrics", summary="Inspect Database Connection Pool and Read-Replica metrics")
+def get_db_pool_metrics():
+    """Returns writer & reader connection pool telemetry, active checked-out connections, and routing distribution."""
+    from pse_quant.db.pool import pool_manager
+    return pool_manager.get_pool_metrics()
+
+
+@router.post("/db/pool-metrics/reset", summary="Reset Database Query Routing telemetry counters")
+def reset_db_pool_metrics():
+    """Resets the query routing telemetry counters."""
+    from pse_quant.db.pool import pool_manager
+    pool_manager.reset_metrics()
+    return {
+        "status": "success",
+        "message": "Query routing counters reset to 0",
+        "metrics": pool_manager.get_pool_metrics(),
+    }

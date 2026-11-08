@@ -251,3 +251,85 @@ sequenceDiagram
         DB-->>UI: Real-time Badge Increment (+1 Unread Alert)
     end
 ```
+
+
+---
+
+## Level 8: Database Read Replicas & Connection Pool Tuning Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients["Traffic Sources"]
+        Investor["Investor Browsing (Screeners, Fact Cards, Rankings)"]
+        ETL["Background Scraper & ETL Workers (278 Equities)"]
+        Webhook["Payment Webhook Fast-ACK Background Worker"]
+        Admin["Admin Manual Overrides & Management"]
+    end
+
+    subgraph Router["Session & Routing Layer (pse_quant.db)"]
+        ReadDep["FastAPI Dependency: get_read_db / get_read_session()"]
+        WriteDep["FastAPI Dependency: get_db / get_write_session()"]
+        PoolMgr["DatabasePoolManager (Telemetry & Atomic Query Counters)"]
+    end
+
+    subgraph Pools["SQLAlchemy Connection Pools (QueuePool)"]
+        ReaderPool["Reader Pool<br/>size: 25 | overflow: 20<br/>timeout: 10s | recycle: 1800s"]
+        WriterPool["Writer Pool<br/>size: 15 | overflow: 10<br/>timeout: 10s | recycle: 1800s"]
+    end
+
+    subgraph Storage["Database Instances"]
+        ReplicaDB[("Read Replica Database<br/>(High-throughput queries)")]
+        PrimaryDB[("Primary Database<br/>(ACID Transactions)")]
+    end
+
+    Investor -->|"GET /api/v1/stocks"| ReadDep
+    ReadDep -->|"record_read()"| PoolMgr
+    ReadDep -->|"ReaderSession()"| ReaderPool
+    ReaderPool -->|"Read-only queries"| ReplicaDB
+
+    ETL -->|"Batch upserts"| WriteDep
+    Webhook -->|"Fulfill subscription"| WriteDep
+    Admin -->|"Financial override"| WriteDep
+
+    WriteDep -->|"record_write()"| PoolMgr
+    WriteDep -->|"WriterSession()"| WriterPool
+    WriterPool -->|"ACID Commit / Rollback"| PrimaryDB
+
+    PrimaryDB -.->|"Replication Stream"| ReplicaDB
+
+    PoolMgr -.->|"Telemetry (/api/v1/admin/db/pool-metrics)"| Admin
+```
+
+### Connection Pool Lifecycle & Contention Isolation Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Public Screener (Next.js)
+    participant API as FastAPI Gateway
+    participant ReadMgr as get_read_session()
+    participant WriteMgr as get_write_session()
+    participant Worker as Background Scraper ETL
+    participant ReaderPool as Reader Pool (Size: 25)
+    participant WriterPool as Writer Pool (Size: 15)
+    participant DB as Database Cluster
+
+    par Concurrent Scraper Batch Write & Screener Reads
+        Worker->>WriteMgr: Start financial batch upsert
+        WriteMgr->>WriterPool: Checkout connection
+        WriterPool->>DB: BEGIN TRANSACTION (Exclusive table write)
+        
+        UI->>API: GET /api/v1/stocks (Investor request)
+        API->>ReadMgr: Route to read session
+        ReadMgr->>ReaderPool: Checkout reader connection
+        ReaderPool->>DB: Execute SELECT query on Replica
+        DB-->>ReaderPool: Return 50 ranked stocks
+        ReaderPool-->>API: Stream JSON response (Sub-50ms)
+        API-->>UI: Render screener table
+        
+        Note over ReadMgr,ReaderPool: Zero pool starvation: Read queries bypass Writer Pool
+        
+        DB-->>WriterPool: COMMIT TRANSACTION
+        WriterPool-->>Worker: Batch upsert complete
+    end
+```

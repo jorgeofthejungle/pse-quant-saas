@@ -258,3 +258,72 @@ When an event fires, `AlertFanoutService`:
 - Cooldown Window: 4 hours (240 minutes).
 - Invariant: If a notification of the same `alert_type` was already generated for that user and ticker within the last 4 hours, subsequent events are suppressed, preventing alert storms on boundary price fluctuations.
 - Persistence: Stored in relational `user_notifications` ledger with unread badge tracking.
+
+
+---
+
+## 10. Database Read Replicas & Connection Pool Tuning Contract
+
+### Objective:
+Decouple heavy background batch write workloads (PSE Edge scraping, 10-year statement parsing, batch quant scoring, webhook payment fulfillment) from high-concurrency investor read traffic (stock screeners, ranking lookups, fact cards), eliminating pool starvation, lock contention, and p99 latency degradation.
+
+### A. Dual-Engine & Routing Architecture:
+1. **Writer Engine (`pool_manager.writer_engine`)**:
+   - URL: Bound to `DATABASE_URL` (or local SQLite file in local development).
+   - Session: `pool_manager.WriterSession`.
+   - Routing Context: `get_write_session()`, `get_db_session()`, `get_db`.
+   - Semantics: Full ACID transactional isolation with automatic commit on success and rollback on exception.
+2. **Reader Replica Engine (`pool_manager.reader_engine`)**:
+   - URL: Bound to `DATABASE_REPLICA_URL`. If not configured, gracefully falls back to `DATABASE_URL` with an independent read connection pool.
+   - Session: `pool_manager.ReaderSession`.
+   - Routing Context: `get_read_session()`, `get_read_db`.
+   - Semantics: High-throughput read-only queries with zero commit round-trip overhead.
+
+### B. Connection Pool Sizing & Fail-Fast Tuning:
+| Parameter | Writer Pool | Reader Replica Pool | Purpose |
+| :--- | :--- | :--- | :--- |
+| `pool_size` | 15 connections | 25 connections | Dedicated baseline persistent connection capacity. |
+| `max_overflow` | 10 connections | 20 connections | Burst capacity for traffic spikes and parallel background jobs. |
+| `pool_timeout` | 10.0 seconds | 10.0 seconds | Fail-fast threshold preventing connection hanging during DB saturation. |
+| `pool_recycle` | 1800 seconds (30m) | 1800 seconds (30m) | Proactively closes and re-establishes stale connections before DB drops them. |
+| `pool_pre_ping` | `True` | `True` | Pessimistic liveness check (`SELECT 1`) eliminating dead connection errors. |
+
+### C. Observability & Telemetry Contract:
+- **Metrics Endpoint**: `GET /api/v1/admin/db/pool-metrics` (Admin authorized via `X-Admin-Key` or Admin JWT).
+- **Payload Schema**:
+  ```json
+  {
+    "status": "healthy",
+    "routing": {
+      "read_queries_routed": 1420,
+      "write_queries_routed": 85,
+      "total_queries_routed": 1505,
+      "read_percentage": 94.35,
+      "read_replica_configured": true
+    },
+    "writer_pool": {
+      "pool_size": 15,
+      "checked_in": 14,
+      "checked_out": 1,
+      "overflow": 0,
+      "active_connections": 1
+    },
+    "reader_pool": {
+      "pool_size": 25,
+      "checked_in": 23,
+      "checked_out": 2,
+      "overflow": 0,
+      "active_connections": 2
+    },
+    "tuning": {
+      "writer_pool_size": 15,
+      "writer_max_overflow": 10,
+      "reader_pool_size": 25,
+      "reader_max_overflow": 20,
+      "pool_timeout_seconds": 10.0,
+      "pool_recycle_seconds": 1800,
+      "pool_pre_ping": true
+    }
+  }
+  ```
+- **Reset Endpoint**: `POST /api/v1/admin/db/pool-metrics/reset` clears routing counters back to zero.

@@ -213,3 +213,41 @@ sequenceDiagram
         API-->>InvestorB: HTTP 200
     end
 ```
+
+
+---
+
+## Level 7: Event-Driven Alert Fanout & Deduplication Cooldown Sequence
+
+Decouples quant scoring calculation from notification channels via an in-memory Pub-Sub Event Bus and suppresses alert storms through a 4-hour deduplication window.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Scraper as ETL Pipeline / Scraper
+    participant Quant as Quant Valuation Engine
+    participant Bus as In-Memory EventBus
+    participant Fanout as AlertFanoutService
+    participant DB as SQLite DB (Watchlist & Notifications)
+    participant UI as Member Dashboard (Badge & Alerts)
+
+    Scraper->>Quant: compute_scores_and_rankings()
+    Quant->>Bus: publish(QuantValuationEvent("AREIT", price=32.50, MoS=30.6%))
+    Bus->>Fanout: handle_quant_valuation(event)
+    
+    Fanout->>DB: SELECT * FROM watchlists WHERE ticker = 'AREIT'
+    DB-->>Fanout: [Investor A: Target 20%, Investor B: Target 35%]
+    
+    Note over Fanout: Filter: Investor B skipped (30.6% < 35%)
+    Note over Fanout: Candidate: Investor A qualified (30.6% >= 20%)
+    
+    Fanout->>DB: Check Cooldown: SELECT * FROM user_notifications WHERE user=A AND ticker='AREIT' AND created_at >= now - 4h
+    alt Within 4-Hour Cooldown Window
+        DB-->>Fanout: Existing Alert Found
+        Note over Fanout: Suppress Alert: Prevent alert fatigue from price bounce
+    else Outside Cooldown Window
+        DB-->>Fanout: No Recent Alert
+        Fanout->>DB: INSERT INTO user_notifications (user_id=A, ticker='AREIT', type='MOS_BREACH')
+        DB-->>UI: Real-time Badge Increment (+1 Unread Alert)
+    end
+```

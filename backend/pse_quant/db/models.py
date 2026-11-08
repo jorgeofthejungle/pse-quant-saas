@@ -155,6 +155,7 @@ class User(Base):
 
     subscriptions: Mapped[list[Subscription]] = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     watchlists: Mapped[list[Watchlist]] = relationship("Watchlist", back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[list[UserNotification]] = relationship("UserNotification", back_populates="user", cascade="all, delete-orphan")
 
 
 class Subscription(Base):
@@ -332,3 +333,31 @@ class ScraperDeadLetter(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending")  # pending, reprocessed, ignored
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# ── Event-Driven In-App Notification Ledger ───────────────────
+
+class UserNotification(Base):
+    """
+    Persistent notification ledger fanned out from domain events
+    (Margin of Safety triggers, Price limits, Macro regime shifts).
+    """
+    __tablename__ = "user_notifications"
+    __table_args__ = (
+        Index("idx_user_notifications_user_read", "user_id", "is_read"),
+        Index("idx_user_notifications_ticker_created", "ticker", "created_at"),
+        Index("idx_user_notifications_dedup", "user_id", "ticker", "alert_type", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(16), nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)  # MOS_BREACH, PRICE_LIMIT, MACRO_REGIME_SHIFT
+    severity: Mapped[str] = mapped_column(String(32), default="opportunity")  # info, opportunity, warning
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    metadata_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped[User] = relationship("User", back_populates="notifications")

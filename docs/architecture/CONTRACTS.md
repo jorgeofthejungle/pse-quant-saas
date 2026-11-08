@@ -230,3 +230,31 @@ Eliminate redundant database queries and repeated 3-model intrinsic valuation ca
    - When `compute_scores_and_rankings` completes: invalidates `stock:*` and `report:*`.
 2. **Admin Override Invalidation**:
    - Manually overriding a stock's financials (`override_financial_data`) immediately purges `stock:profile:{ticker}` and `stock:rankings:*`.
+
+
+---
+
+## 9. Event-Driven Portfolio Alerts & Pub-Sub Fanout Contract
+
+### Objective:
+Decouple quant calculation and market ingestion from customer notification pipelines, eliminating database polling and guaranteeing deduplicated alert delivery.
+
+### A. Domain Event Schemas:
+1. **`QuantValuationEvent`**:
+   - Topic: `quant.valuation.{TICKER}`
+   - Fields: `ticker`, `price`, `intrinsic_value`, `mos_pct`, `score`, `category`, `timestamp`
+2. **`MarketTickEvent`**:
+   - Topic: `market.tick.{TICKER}`
+   - Fields: `ticker`, `price`, `volume`, `change_pct`, `timestamp`
+
+### B. Fanout & Predicate Filtering Rules:
+When an event fires, `AlertFanoutService`:
+1. Queries all active watchlists matching `ticker`.
+2. Verifies user status is active and `notification_prefs["price_alerts"] == True`.
+3. Verifies `event.mos_pct >= watchlist.target_mos_pct` (default: 20%).
+
+### C. Anti-Fatigue Deduplication Cooldown Contract:
+- Key: `(user_id, ticker, alert_type)`
+- Cooldown Window: 4 hours (240 minutes).
+- Invariant: If a notification of the same `alert_type` was already generated for that user and ticker within the last 4 hours, subsequent events are suppressed, preventing alert storms on boundary price fluctuations.
+- Persistence: Stored in relational `user_notifications` ledger with unread badge tracking.

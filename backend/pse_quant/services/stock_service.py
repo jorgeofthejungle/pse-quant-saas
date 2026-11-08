@@ -23,6 +23,8 @@ from pse_quant.scraper.etl import (
 from pse_quant.db.models import Stock, Financial, Price, Score, PipelineRun
 from pse_quant.core.mos import enrich_stock_valuation
 from pse_quant.core.validator import validate_financial_record
+from pse_quant.cache import global_cache
+
 
 logger = logging.getLogger("pse_quant.services.stock")
 
@@ -66,120 +68,133 @@ class StockService:
         min_mos: float | None = None,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Queries stored quantitative rankings with optional sector and threshold filters."""
-        stmt = (
-            select(Score)
-            .where(Score.portfolio_type == portfolio_type)
-            .order_by(Score.rank.asc())
-        )
-        if min_score is not None:
-            stmt = stmt.where(Score.score >= min_score)
+        """Queries stored quantitative rankings with Cache-Aside lazy loading."""
+        cache_key = f"stock:rankings:{portfolio_type}:{sector}:{min_score}:{min_mos}:{limit}"
 
-        scores = session.scalars(stmt).all()
-        results: list[dict[str, Any]] = []
+        def _fetch():
+            stmt = (
+                select(Score)
+                .where(Score.portfolio_type == portfolio_type)
+                .order_by(Score.rank.asc())
+            )
+            if min_score is not None:
+                stmt = stmt.where(Score.score >= min_score)
 
-        for s in scores:
-            if not s.breakdown_json:
-                continue
-            data = dict(s.breakdown_json)
-            # Ensure primary score attributes match column
-            data["rank"] = s.rank
-            data["score"] = s.score
-            data["category"] = s.category
+            scores = session.scalars(stmt).all()
+            results: list[dict[str, Any]] = []
 
-            # Sector filter
-            if sector and data.get("sector", "").lower() != sector.lower():
-                continue
+            for s in scores:
+                if not s.breakdown_json:
+                    continue
+                data = dict(s.breakdown_json)
+                data["rank"] = s.rank
+                data["score"] = s.score
+                data["category"] = s.category
 
-            # MoS filter
-            if min_mos is not None:
-                mos = data.get("mos_pct")
-                if mos is None or mos < min_mos:
+                if sector and data.get("sector", "").lower() != sector.lower():
                     continue
 
-            results.append(data)
-            if limit and len(results) >= limit:
-                break
+                if min_mos is not None:
+                    mos = data.get("mos_pct")
+                    if mos is None or mos < min_mos:
+                        continue
 
-        return results
+                results.append(data)
+                if limit and len(results) >= limit:
+                    break
+
+            return results
+
+        return global_cache.get_or_compute(
+            key=cache_key,
+            fetcher_fn=_fetch,
+            ttl_seconds=300.0,
+            tags=["stock", "rankings", f"portfolio:{portfolio_type}"],
+        )
 
     @staticmethod
     def get_stock_profile(session: Session, ticker: str) -> dict[str, Any] | None:
         """
-        Retrieves deep-dive equity profile: core info, latest price, 5-year financials,
-        and full 3-layer scores + valuation models.
+        Retrieves deep-dive equity profile with Cache-Aside lazy loading:
+        core info, latest price, 5-year financials, full 3-layer scores + valuation models.
         """
         clean_ticker = ticker.upper().strip()
-        stock = session.get(Stock, clean_ticker)
-        if not stock:
-            return None
+        cache_key = f"stock:profile:{clean_ticker}"
 
-        # Fetch latest price
-        latest_price = session.scalar(
-            select(Price)
-            .where(Price.ticker == clean_ticker)
-            .order_by(desc(Price.trade_date))
-            .limit(1)
+        def _fetch_profile():
+            stock = session.get(Stock, clean_ticker)
+            if not stock:
+                return None
+
+            latest_price = session.scalar(
+                select(Price)
+                .where(Price.ticker == clean_ticker)
+                .order_by(desc(Price.trade_date))
+                .limit(1)
+            )
+
+            financials = session.scalars(
+                select(Financial)
+                .where(Financial.ticker == clean_ticker)
+                .order_by(desc(Financial.year))
+                .limit(10)
+            ).all()
+
+            score_row = session.scalar(
+                select(Score)
+                .where(Score.ticker == clean_ticker, Score.portfolio_type == "unified")
+                .order_by(desc(Score.run_date))
+                .limit(1)
+            )
+
+            quant_dict = build_stock_quant_dict(stock, latest_price, list(financials))
+            enriched_val = enrich_stock_valuation(quant_dict, portfolio_type="unified")
+            breakdown = score_row.breakdown_json if score_row and score_row.breakdown_json else {}
+
+            return {
+                "ticker": stock.ticker,
+                "name": stock.name,
+                "sector": stock.sector,
+                "is_bank": stock.is_bank,
+                "is_reit": stock.is_reit,
+                "status": stock.status,
+                "cmpy_id": stock.cmpy_id,
+                "last_scraped_at": stock.last_scraped_at.isoformat() if stock.last_scraped_at else None,
+                "current_price": latest_price.close if latest_price else None,
+                "market_cap": latest_price.market_cap if latest_price else None,
+                "trade_date": latest_price.trade_date.isoformat() if latest_price else None,
+                "score": score_row.score if score_row else None,
+                "rank": score_row.rank if score_row else None,
+                "category": score_row.category if score_row else "Watchlist",
+                "confidence": score_row.confidence if score_row else 1.0,
+                "intrinsic_value": enriched_val.get("intrinsic_value"),
+                "mos_pct": enriched_val.get("mos_pct"),
+                "mos_target_price": enriched_val.get("mos_target_price"),
+                "valuation": enriched_val.get("valuation", {}),
+                "layers": breakdown.get("breakdown", {}).get("layers", {}),
+                "historical_financials": [
+                    {
+                        "year": f.year,
+                        "revenue": f.revenue,
+                        "net_income": f.net_income,
+                        "equity": f.equity,
+                        "total_debt": f.total_debt,
+                        "eps": f.eps,
+                        "dps": f.dps,
+                        "operating_cf": f.operating_cf,
+                        "capex": f.capex,
+                        "depreciation": f.depreciation,
+                    }
+                    for f in financials
+                ],
+            }
+
+        return global_cache.get_or_compute(
+            key=cache_key,
+            fetcher_fn=_fetch_profile,
+            ttl_seconds=300.0,
+            tags=["stock", f"stock:{clean_ticker}", "profile"],
         )
-
-        # Fetch historical financials (up to 10 years, newest first)
-        financials = session.scalars(
-            select(Financial)
-            .where(Financial.ticker == clean_ticker)
-            .order_by(desc(Financial.year))
-            .limit(10)
-        ).all()
-
-        # Fetch latest quantitative score
-        score_row = session.scalar(
-            select(Score)
-            .where(Score.ticker == clean_ticker, Score.portfolio_type == "unified")
-            .order_by(desc(Score.run_date))
-            .limit(1)
-        )
-
-        quant_dict = build_stock_quant_dict(stock, latest_price, list(financials))
-        enriched_val = enrich_stock_valuation(quant_dict, portfolio_type="unified")
-
-        breakdown = score_row.breakdown_json if score_row and score_row.breakdown_json else {}
-
-        return {
-            "ticker": stock.ticker,
-            "name": stock.name,
-            "sector": stock.sector,
-            "is_bank": stock.is_bank,
-            "is_reit": stock.is_reit,
-            "status": stock.status,
-            "cmpy_id": stock.cmpy_id,
-            "last_scraped_at": stock.last_scraped_at.isoformat() if stock.last_scraped_at else None,
-            "current_price": latest_price.close if latest_price else None,
-            "market_cap": latest_price.market_cap if latest_price else None,
-            "trade_date": latest_price.trade_date.isoformat() if latest_price else None,
-            "score": score_row.score if score_row else None,
-            "rank": score_row.rank if score_row else None,
-            "category": score_row.category if score_row else "Watchlist",
-            "confidence": score_row.confidence if score_row else 1.0,
-            "intrinsic_value": enriched_val.get("intrinsic_value"),
-            "mos_pct": enriched_val.get("mos_pct"),
-            "mos_target_price": enriched_val.get("mos_target_price"),
-            "valuation": enriched_val.get("valuation", {}),
-            "layers": breakdown.get("breakdown", {}).get("layers", {}),
-            "historical_financials": [
-                {
-                    "year": f.year,
-                    "revenue": f.revenue,
-                    "net_income": f.net_income,
-                    "equity": f.equity,
-                    "total_debt": f.total_debt,
-                    "eps": f.eps,
-                    "dps": f.dps,
-                    "operating_cf": f.operating_cf,
-                    "capex": f.capex,
-                    "depreciation": f.depreciation,
-                }
-                for f in financials
-            ],
-        }
 
     @staticmethod
     def get_bargain_stocks(session: Session, min_mos: float = 0.0) -> list[dict[str, Any]]:
@@ -235,4 +250,6 @@ class StockService:
 
         session.commit()
         logger.info(f"Financial record for {clean_ticker} FY{year} manually updated by admin.")
+        global_cache.invalidate(f"stock:profile:{clean_ticker}")
+        global_cache.invalidate_pattern("stock:rankings:*")
         return fin

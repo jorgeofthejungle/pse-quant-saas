@@ -169,3 +169,47 @@ flowchart TD
     UpsertDB --> NextStock
     NextStock --> ETL
 ```
+
+
+---
+
+## Level 6: Cache-Aside Architecture & Single-Flight Mutex Sequence
+
+Eliminates redundant database queries and quant recalculations on read endpoints while guaranteeing single-flight origin fetching under concurrent cache stampedes.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor InvestorA as Investor Client A
+    actor InvestorB as Investor Client B
+    participant API as FastAPI Gateway
+    participant Cache as CacheEngine (L1 Memory)
+    participant Lock as Key-Specific Mutex Lock
+    participant DB as SQLite DB & Quant Engine
+
+    InvestorA->>API: GET /api/v1/stocks/AREIT
+    InvestorB->>API: GET /api/v1/stocks/AREIT (Simultaneous)
+    
+    API->>Cache: get("stock:profile:AREIT")
+    alt Cache Hit (Common Path)
+        Cache-->>API: Return Cached Profile (<0.1ms)
+        API-->>InvestorA: HTTP 200 (Instant Response)
+    else Cache Miss (Stampede Prevention)
+        Cache-->>API: None (Miss)
+        API->>Lock: Acquire Lock("stock:profile:AREIT")
+        Note over InvestorA,Lock: Investor A acquires lock; Investor B blocks waiting
+        API->>Cache: Double-Check get("stock:profile:AREIT")
+        alt Populated by predecessor
+            Cache-->>API: Return Value
+        else Still Miss
+            API->>DB: SELECT * FROM stocks, prices, financials WHERE ticker='AREIT'
+            DB-->>API: Raw Statement Rows
+            API->>API: enrich_stock_valuation() [Quant Math]
+            API->>Cache: set("stock:profile:AREIT", profile, TTL=300s + Jitter)
+        end
+        Lock-->>API: Release Lock
+        Note over InvestorB,Lock: Investor B acquires lock, finds cached entry, exits in <0.1ms
+        API-->>InvestorA: HTTP 200
+        API-->>InvestorB: HTTP 200
+    end
+```

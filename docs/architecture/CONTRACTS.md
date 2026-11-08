@@ -200,3 +200,33 @@ When a ticker's filing contains unparseable HTML, corrupt date fields, or missin
    - `status`: `pending`
 2. The outer ETL batch catches the dead letter and continues to the remaining tickers without crashing.
 3. Operators can inspect and resolve poison pills via `/api/v1/admin/dead-letters`.
+
+
+---
+
+## 8. Multi-Tier Cache-Aside & Automated Invalidation Contract
+
+### Objective:
+Eliminate redundant database queries and repeated 3-model intrinsic valuation calculations for static read traffic while guaranteeing immediate consistency upon new scraping disclosures.
+
+### A. Cache-Aside Boundary Invariant:
+1. **L1 In-Memory Fast Path**:
+   - Keys:
+     - `stock:profile:{ticker}`: Deep-dive profile payload (TTL: 300s).
+     - `stock:rankings:{portfolio}:{sector}:{min_score}:{min_mos}:{limit}`: Screener ranking query (TTL: 300s).
+     - `report:done-for-you:{goal}:{ticker}`: Fact Card presentation payload (TTL: 300s).
+   - Read latency: $< 0.1\text{ms}$ on cache hit.
+2. **Single-Flight Stampede Mutex (Dog-Piling Lock)**:
+   - When an entry expires under high concurrency, only ONE thread acquires the per-key mutex to query the database and recompute the valuation models.
+   - All concurrent threads wait on the mutex and read the resulting cached value once populated, preventing database connection pool exhaustion.
+3. **TTL Jitter Contract**:
+   - Every cached entry must apply a $\pm 15\%$ random jitter to the base TTL:
+     $$\text{TTL}_{\text{actual}} = \text{max}(1.0, \text{TTL}_{\text{base}} + \text{random.uniform}(-0.15 \times \text{TTL}_{\text{base}}, +0.15 \times \text{TTL}_{\text{base}}))$$
+   - Prevents simultaneous expiration cascades across hundreds of listed equities.
+
+### B. Automated Invalidation Hooks:
+1. **ETL Pipeline Invalidation**:
+   - When `sync_stock_quotes` or `sync_financials` completes: invalidates `stock:profile:*` and `stock:rankings:*`.
+   - When `compute_scores_and_rankings` completes: invalidates `stock:*` and `report:*`.
+2. **Admin Override Invalidation**:
+   - Manually overriding a stock's financials (`override_financial_data`) immediately purges `stock:profile:{ticker}` and `stock:rankings:*`.

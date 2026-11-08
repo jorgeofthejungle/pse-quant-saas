@@ -16,6 +16,8 @@ from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 
 from pse_quant.scraper.resilience import DeadLetterService
+from pse_quant.cache import global_cache
+
 from pse_quant.scraper.client import PseEdgeClient
 from pse_quant.scraper.directory import fetch_all_companies, lookup_company
 from pse_quant.scraper.stock_data import fetch_stock_quote, fetch_dividend_history
@@ -172,6 +174,8 @@ def sync_stock_quotes(
 
     session.commit()
     logger.info(f"Quote sync completed: {count} stock prices updated.")
+    global_cache.invalidate_pattern("stock:profile:*")
+    global_cache.invalidate_pattern("stock:rankings:*")
     return count
 
 
@@ -260,6 +264,8 @@ def sync_financials(
 
     session.commit()
     logger.info(f"Financials sync completed: {records_synced} annual statements upserted.")
+    global_cache.invalidate_pattern("stock:profile:*")
+    global_cache.invalidate_pattern("stock:rankings:*")
     return records_synced
 
 
@@ -470,6 +476,8 @@ def compute_scores_and_rankings(
 
     session.commit()
     logger.info(f"Quant scoring complete for portfolios: {portfolio_types}")
+    global_cache.invalidate_pattern("stock:*")
+    global_cache.invalidate_pattern("report:*")
     return results
 
 

@@ -218,3 +218,31 @@ def resolve_scraper_dead_letter(
     if not resolved:
         raise HTTPException(status_code=404, detail=f"Dead-letter record ID {letter_id} not found.")
     return {"status": "success", "id": resolved.id, "resolution": resolved.status}
+
+
+# ── Multi-Tier Cache-Aside Management & Observability ─────────
+
+@router.get("/cache/metrics", summary="Inspect Cache-Aside telemetry and hit ratio")
+def get_cache_metrics():
+    """Returns active cache entries, hits, misses, hit ratio, and eviction metrics."""
+    from pse_quant.cache import global_cache
+    return global_cache.get_metrics()
+
+
+@router.post("/cache/flush", summary="Manually flush or pattern-invalidate cache entries")
+def flush_cache(pattern: Optional[str] = Query(None, description="Optional glob pattern e.g. 'stock:profile:*'")):
+    """Flushes entire cache or clears entries matching the specified glob pattern."""
+    from pse_quant.cache import global_cache
+    if pattern:
+        cleared = global_cache.invalidate_pattern(pattern)
+        msg = f"Invalidated {cleared} keys matching '{pattern}'"
+    else:
+        cleared = global_cache.flush_all()
+        msg = f"Flushed all {cleared} cache keys"
+
+    return {
+        "status": "success",
+        "message": msg,
+        "keys_cleared": cleared,
+        "metrics": global_cache.get_metrics(),
+    }

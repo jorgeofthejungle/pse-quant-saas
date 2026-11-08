@@ -333,3 +333,94 @@ sequenceDiagram
         WriterPool-->>Worker: Batch upsert complete
     end
 ```
+
+
+---
+
+## Level 9: Distributed Background Task Queue & Leased Worker Architecture
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["Clients & API Gateway"]
+        AdminReq["Admin Scraper / Valuation Trigger"]
+        UserReq["Customer PDF Factsheet Request"]
+        CronTrigger["Automated Weekly Digest Dispatch"]
+        TaskRoute["FastAPI Task Router<br/>POST /api/v1/tasks/enqueue<br/>(HTTP 202 Fast-ACK)"]
+    end
+
+    subgraph QueueEngine["Distributed Queue Engine (pse_quant.tasks)"]
+        QueueSvc["TaskQueueService<br/>- enqueue()<br/>- get_status()<br/>- cancel()"]
+        Registry["TaskRegistry<br/>- etl.sync_all<br/>- etl.scrape_quotes<br/>- etl.recompute_scores<br/>- reports.generate_pdf<br/>- email.dispatch_digest"]
+    end
+
+    subgraph LedgerStorage["Relational Ledger (PostgreSQL / SQLite)"]
+        TaskLedger[("background_tasks (TaskRecord)<br/>- id: task_xyz<br/>- status: PENDING / RUNNING / COMPLETED / FAILED<br/>- priority: 1-10<br/>- worker_id: worker_1<br/>- lease_expires_at: timestamp<br/>- attempts: 1 / 3")]
+    end
+
+    subgraph Swarm["Autonomous Leased Worker Swarm"]
+        Worker1["TaskWorker 1<br/>- FOR UPDATE SKIP LOCKED<br/>- Heartbeat Daemon (15s)<br/>- Execute Handler"]
+        Worker2["TaskWorker 2<br/>- FOR UPDATE SKIP LOCKED<br/>- Heartbeat Daemon (15s)<br/>- Execute Handler"]
+        ZombieDetector["Zombie Recovery Sweeper<br/>(reclaims dead worker leases)"]
+    end
+
+    AdminReq -->|"Trigger Sync"| TaskRoute
+    UserReq -->|"Request PDF"| TaskRoute
+    CronTrigger -->|"Weekly Digest"| TaskRoute
+
+    TaskRoute -->|"enqueue()"| QueueSvc
+    QueueSvc -->|"INSERT status='pending'"| TaskLedger
+    TaskRoute -->|"202 Accepted {task_id}"| UserReq
+
+    Worker1 -->|"1. Atomic Lease Claim"| TaskLedger
+    Worker2 -->|"1. Atomic Lease Claim"| TaskLedger
+    Worker1 -->|"2. Invoke registered task"| Registry
+    Worker2 -->|"2. Invoke registered task"| Registry
+    Worker1 -.->|"3. Periodic Heartbeat"| TaskLedger
+    Worker2 -.->|"3. Periodic Heartbeat"| TaskLedger
+    Worker1 -->|"4. Mark COMPLETED / FAILED"| TaskLedger
+    Worker2 -->|"4. Mark COMPLETED / FAILED"| TaskLedger
+
+    ZombieDetector -->|"Salvage expired leases"| TaskLedger
+```
+
+### Leased Worker Lifecycle, Heartbeat & Zombie Salvage Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Client / Admin
+    participant Gateway as FastAPI (/api/v1/tasks)
+    participant Ledger as DB Ledger (background_tasks)
+    participant Worker1 as Worker 1 (Crashed)
+    participant Worker2 as Worker 2 (Healthy)
+    participant Handler as Task Handler
+
+    Client->>Gateway: POST /tasks/enqueue {task_name: 'reports.generate_pdf', priority: 8}
+    Gateway->>Ledger: INSERT status='pending', priority=8
+    Gateway-->>Client: 202 Accepted {task_id: 'task_889'}
+
+    Worker1->>Ledger: SELECT FOR UPDATE: Claim highest priority pending
+    Ledger-->>Worker1: Lease granted (status='running', worker='w1', lease_expires_at=now+30s)
+    
+    Worker1->>Handler: Start PDF generation
+    Note over Worker1: Worker 1 crashes abruptly (OOM / Pod reboot)
+    Note over Ledger: 30 seconds pass: lease_expires_at < now (Zombie detected)
+
+    Worker2->>Ledger: SELECT FOR UPDATE: Detect expired lease
+    Ledger-->>Worker2: Zombie lease salvaged (worker='w2', attempts=2, lease_expires_at=now+30s)
+    
+    par Active Heartbeat & Task Execution
+        Worker2->>Handler: Execute PDF generation
+        loop Every 15 seconds
+            Worker2->>Ledger: Heartbeat: Renew lease_expires_at = now + 30s
+        end
+        Handler-->>Worker2: PDF Generated successfully
+    end
+
+    Worker2->>Ledger: UPDATE status='completed', result_json={'pdf_path': '...'}
+    
+    Client->>Gateway: GET /tasks/task_889
+    Gateway->>Ledger: SELECT status, result_json FROM background_tasks
+    Ledger-->>Gateway: status='completed', result_json
+    Gateway-->>Client: 200 OK {status: 'completed', result: {...}}
+```

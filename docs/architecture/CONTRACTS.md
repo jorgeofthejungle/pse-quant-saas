@@ -327,3 +327,79 @@ Decouple heavy background batch write workloads (PSE Edge scraping, 10-year stat
   }
   ```
 - **Reset Endpoint**: `POST /api/v1/admin/db/pool-metrics/reset` clears routing counters back to zero.
+
+
+---
+
+## 11. Distributed Task Queue & Leased Worker Contract
+
+### Objective:
+Decouple compute-heavy or network-bound batch operations (278-stock PSE directory sync, 10-year financial statement parsing, quant batch scoring, PDF report compilation, and weekly email digest dispatches) from the synchronous HTTP request-response cycle. Guarantees zero dropped jobs across server restarts through a persistent relational ledger, exclusive worker leases, active heartbeats, and automatic zombie reclamation.
+
+### A. Task State Machine & Transitions:
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: enqueue(task_name, payload, priority)
+    PENDING --> RUNNING: worker.claim_next_task() [Lease Acquired]
+    PENDING --> CANCELLED: cancel_task(task_id) [Before Lease]
+    
+    state RUNNING {
+        [*] --> Executing
+        Executing --> Heartbeating: Lease renewal every (duration/2)
+        Heartbeating --> Executing
+    }
+
+    RUNNING --> COMPLETED: handler returns result [Success]
+    RUNNING --> PENDING: exception raised & attempts < max_retries [Retry]
+    RUNNING --> FAILED: attempts >= max_retries OR unrecoverable error
+    RUNNING --> RUNNING: lease_expires_at < now [Zombie Salvage by Peer Worker]
+    
+    COMPLETED --> [*]
+    FAILED --> [*]
+    CANCELLED --> [*]
+```
+
+### B. Worker Lease & Zombie Recovery Protocol:
+1. **Atomic Lease Lock**:
+   - Workers query candidates using `SELECT ... FOR UPDATE SKIP LOCKED` ordered by `priority DESC, created_at ASC`.
+   - Criteria: `status = 'pending'` OR (`status = 'running'` AND `lease_expires_at < UTC_NOW`).
+   - Lease Claim: Atomically sets `status = 'running'`, `worker_id = <uuid>`, `attempts += 1`, and `lease_expires_at = UTC_NOW + lease_duration` (30s).
+2. **Active Heartbeat Thread**:
+   - A dedicated daemon thread renews `lease_expires_at = UTC_NOW + lease_duration` every `lease_duration / 2` seconds while the handler is executing.
+   - Prevents healthy long-running tasks (e.g. 2-minute batch PDF compilation) from being mistakenly reclaimed.
+3. **Zombie Task Sweeping**:
+   - If a worker process abruptly terminates (OOM killer, pod restart, hardware crash), its lease expires without completion.
+   - Any surviving peer worker automatically salvages the task, increments attempts, and finishes execution without manual admin intervention.
+
+### C. Registered Task Catalog:
+| Task Name | Domain Responsibility | Retry Policy | Default Priority |
+| :--- | :--- | :--- | :--- |
+| `etl.sync_all` | Full 278-stock sync, quotes, multi-year statements, scoring | 2 retries | 4 (Batch) |
+| `etl.scrape_quotes` | Daily PSE Edge price, volume, and dividend refresh | 3 retries | 6 (Operational) |
+| `etl.recompute_scores` | Deterministic 3-layer scorer & MoS model valuation | 3 retries | 5 (Normal) |
+| `reports.generate_pdf` | Institutional A4 PDF research dossier compilation | 2 retries | 8 (High) |
+| `email.dispatch_digest` | Weekly research digest batch email distribution | 3 retries | 7 (High) |
+| `test.echo` / `test.fail`| Diagnostic verification, connectivity, and retry testing | 1-3 retries | 5 (Normal) |
+
+### D. Telemetry & Observability Contract:
+- **Metrics Endpoint**: `GET /api/v1/tasks/admin/metrics`
+  ```json
+  {
+    "queue_depth": 3,
+    "running_tasks": 2,
+    "completed_tasks": 142,
+    "failed_tasks": 1,
+    "cancelled_tasks": 2,
+    "total_tasks": 150,
+    "failure_rate_pct": 0.67,
+    "registered_tasks": [
+      "email.dispatch_digest",
+      "etl.recompute_scores",
+      "etl.scrape_quotes",
+      "etl.sync_all",
+      "reports.generate_pdf",
+      "test.echo",
+      "test.fail"
+    ]
+  }
+  ```

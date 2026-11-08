@@ -6,6 +6,7 @@ Serves:
   - Admin Facing Dashboard (/api/v1/admin)
   - Payment Webhook Ingestion (/api/v1/payments)
   - Rate Limiting Diagnostics (/api/v1/rate-limit)
+  - Distributed Task Queue (/api/v1/tasks)
 """
 
 from __future__ import annotations
@@ -21,18 +22,42 @@ from slowapi.middleware import SlowAPIMiddleware
 from pse_quant.db.connection import init_db
 from pse_quant.api.limiter import limiter, custom_rate_limit_handler
 from pse_quant.api.rate_limiting import TokenBucketMiddleware
-from pse_quant.api.routes import stocks, customers, admin, auth, watchlist, reports, oaas, payments, rate_limit, notifications
+from pse_quant.api.routes import (
+    stocks,
+    customers,
+    admin,
+    auth,
+    watchlist,
+    reports,
+    oaas,
+    payments,
+    rate_limit,
+    notifications,
+    tasks,
+)
 
 logger = logging.getLogger("pse_quant.api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initializes database schema and warm resources on startup."""
+    """Initializes database schema, background worker swarm, and warm resources on startup."""
     logger.info("Initializing database schema...")
     init_db()
+
+    enable_workers = os.getenv("ENABLE_TASK_WORKERS", "false").lower() in ("true", "1", "yes")
+    if enable_workers:
+        logger.info("Starting background task worker swarm...")
+        from pse_quant.tasks import global_worker_swarm
+        global_worker_swarm.start_all()
+
     logger.info("StockPilot PH Backend API ready.")
     yield
+
+    if enable_workers:
+        logger.info("Shutting down background task worker swarm...")
+        from pse_quant.tasks import global_worker_swarm
+        global_worker_swarm.stop_all()
 
 
 app = FastAPI(
@@ -115,6 +140,7 @@ app.include_router(oaas.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(rate_limit.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

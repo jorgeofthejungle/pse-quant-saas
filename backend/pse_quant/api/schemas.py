@@ -237,3 +237,22 @@ class PipelineTriggerResponse(BaseModel):
     run_id: Optional[int] = None
     message: str
     summary: Optional[dict[str, Any]] = None
+
+
+
+# ── Background Task Schemas ───────────────────────────────────
+
+class TaskEnqueueRequest(BaseModel):
+    task_name: str = Field(..., min_length=2, max_length=128, description="Registered task name e.g. 'etl.sync_all'")
+    payload: Optional[dict[str, Any]] = Field(default_factory=dict, description="Task execution arguments")
+    priority: Optional[int] = Field(5, ge=1, le=10, description="Task priority (1-10, higher processed first)")
+    max_retries: Optional[int] = Field(3, ge=0, le=10, description="Maximum retry attempts on failure")
+
+
+class TaskEnqueueResponse(BaseModel):
+    task_id: str
+    task_name: str
+    status: str
+    priority: int
+    max_retries: int
+    created_at: str

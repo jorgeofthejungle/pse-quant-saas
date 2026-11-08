@@ -361,3 +361,35 @@ class UserNotification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped[User] = relationship("User", back_populates="notifications")
+
+
+
+# ── Distributed Task Queue & Leased Worker Ledger ─────────────
+
+class TaskRecord(Base):
+    """
+    Persistent task ledger for distributed background jobs (ETL sync, PDF compilation,
+    email digests, quant valuation batching). Guarantees reliable execution via
+    worker leases, heartbeats, and automatic zombie reclamation.
+    """
+    __tablename__ = "background_tasks"
+    __table_args__ = (
+        Index("idx_bg_tasks_status_priority", "status", "priority", "created_at"),
+        Index("idx_bg_tasks_lease", "status", "lease_expires_at"),
+        Index("idx_bg_tasks_task_name", "task_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=5, index=True)
+    payload_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    result_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    worker_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

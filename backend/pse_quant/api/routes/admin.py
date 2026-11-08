@@ -267,3 +267,45 @@ def reset_db_pool_metrics():
         "message": "Query routing counters reset to 0",
         "metrics": pool_manager.get_pool_metrics(),
     }
+
+
+
+# ── Distributed Tracing & Latency Telemetry ──────────────────
+
+@router.get("/telemetry/latency", summary="Inspect route latency histograms and quantiles (p50, p95, p99)")
+def get_telemetry_latency():
+    """Returns rolling latency percentiles (p50, p95, p99, min, max, avg) per endpoint."""
+    from pse_quant.telemetry import global_latency_tracker
+    return global_latency_tracker.get_summary()
+
+
+@router.get("/telemetry/traces", summary="List recent sampled request traces with correlation IDs")
+def get_telemetry_traces(limit: int = Query(50, ge=1, le=200)):
+    """Returns recent request traces with X-Correlation-ID, duration, and HTTP status."""
+    from pse_quant.telemetry import global_latency_tracker
+    return {"traces": global_latency_tracker.get_recent_traces(limit=limit)}
+
+
+@router.get("/telemetry/live", summary="Unified system pulse (latency, DB pool, cache, task queue)")
+def get_telemetry_live():
+    """Returns a single executive health payload aggregating all subsystem metrics."""
+    from pse_quant.telemetry import global_latency_tracker
+    from pse_quant.db.pool import pool_manager
+    from pse_quant.cache import global_cache
+    from pse_quant.tasks.engine import task_queue
+
+    return {
+        "status": "healthy",
+        "latency": global_latency_tracker.get_summary()["overall"],
+        "database_pools": pool_manager.get_pool_metrics()["routing"],
+        "cache": global_cache.get_metrics(),
+        "task_queue": task_queue.get_metrics(),
+    }
+
+
+@router.post("/telemetry/reset", summary="Reset latency reservoirs and trace buffer")
+def reset_telemetry():
+    """Flushes rolling latency samples and trace buffer."""
+    from pse_quant.telemetry import global_latency_tracker
+    global_latency_tracker.reset()
+    return {"status": "success", "message": "Latency tracker and trace buffer reset to 0."}

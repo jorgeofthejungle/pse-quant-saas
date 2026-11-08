@@ -8,6 +8,20 @@ import { MOCK_RANKINGS, MOCK_STOCK_DETAILS } from './mockData';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 
+function getClientCorrelationId(): string {
+  const rand = Math.random().toString(36).substring(2, 10);
+  return `corr_fe_${Date.now()}_${rand}`;
+}
+
+async function tracedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (!headers.has('X-Correlation-ID')) {
+    headers.set('X-Correlation-ID', getClientCorrelationId());
+  }
+  return fetch(input, { ...init, headers });
+}
+
+
 function mapScoringGroup(rawGroup: string | undefined, sector: string): SectorGroup {
   if (!rawGroup) {
     if (sector.includes('Hold')) return 'Conglomerate';
@@ -59,7 +73,7 @@ export const stockApi = {
       url.searchParams.set('portfolio', portfolio);
       if (sector) url.searchParams.set('sector', sector);
 
-      const res = await fetch(url.toString(), { next: { revalidate: 60 } });
+      const res = await tracedFetch(url.toString(), { next: { revalidate: 60 } });
       if (res.ok) {
         const json = await res.json();
         if (json.data && json.data.length > 0) {
@@ -75,7 +89,7 @@ export const stockApi = {
   async getProfile(ticker: string): Promise<StockDetail | null> {
     const cleanTicker = ticker.toUpperCase().trim();
     try {
-      const res = await fetch(`${BASE_URL}/stocks/${cleanTicker}`, { next: { revalidate: 60 } });
+      const res = await tracedFetch(`${BASE_URL}/stocks/${cleanTicker}`, { next: { revalidate: 60 } });
       if (res.ok) {
         const data = await res.json();
         const ranking = transformRawStock(data);
@@ -140,7 +154,7 @@ export const stockApi = {
 
   async getBargains(minMos = 0.0): Promise<StockRanking[]> {
     try {
-      const res = await fetch(`${BASE_URL}/stocks/bargains?min_mos=${minMos}`, { cache: 'no-store' });
+      const res = await tracedFetch(`${BASE_URL}/stocks/bargains?min_mos=${minMos}`, { cache: 'no-store' });
       if (res.ok) {
         const json = await res.json();
         return (json.data || []).map(transformRawStock);
@@ -153,7 +167,7 @@ export const stockApi = {
 
   async getMacro() {
     try {
-      const res = await fetch(`${BASE_URL}/stocks/macro`, { next: { revalidate: 3600 } });
+      const res = await tracedFetch(`${BASE_URL}/stocks/macro`, { next: { revalidate: 3600 } });
       if (res.ok) {
         return await res.json();
       }
@@ -198,7 +212,7 @@ export interface WatchlistItem {
 export const customerApi = {
   async signup(email: string, name?: string, tier = 'free'): Promise<CustomerProfile | null> {
     try {
-      const res = await fetch(`${BASE_URL}/customers/signup`, {
+      const res = await tracedFetch(`${BASE_URL}/customers/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name, tier }),
@@ -212,7 +226,7 @@ export const customerApi = {
 
   async getProfile(identifier: string): Promise<CustomerProfile | null> {
     try {
-      const res = await fetch(`${BASE_URL}/customers/${identifier}`, { cache: 'no-store' });
+      const res = await tracedFetch(`${BASE_URL}/customers/${identifier}`, { cache: 'no-store' });
       if (res.ok) return await res.json();
     } catch (err) {
       console.error('[customerApi.getProfile] Error:', err);
@@ -222,7 +236,7 @@ export const customerApi = {
 
   async getWatchlist(userId: number): Promise<WatchlistItem[]> {
     try {
-      const res = await fetch(`${BASE_URL}/customers/${userId}/watchlist`, { cache: 'no-store' });
+      const res = await tracedFetch(`${BASE_URL}/customers/${userId}/watchlist`, { cache: 'no-store' });
       if (res.ok) return await res.json();
     } catch (err) {
       console.error('[customerApi.getWatchlist] Error:', err);
@@ -232,7 +246,7 @@ export const customerApi = {
 
   async addToWatchlist(userId: number, ticker: string, targetMos = 20.0, notes?: string) {
     try {
-      const res = await fetch(`${BASE_URL}/customers/${userId}/watchlist`, {
+      const res = await tracedFetch(`${BASE_URL}/customers/${userId}/watchlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: ticker.toUpperCase(), target_mos_pct: targetMos, notes }),
@@ -246,7 +260,7 @@ export const customerApi = {
 
   async removeFromWatchlist(userId: number, ticker: string) {
     try {
-      const res = await fetch(`${BASE_URL}/customers/${userId}/watchlist/${ticker.toUpperCase()}`, {
+      const res = await tracedFetch(`${BASE_URL}/customers/${userId}/watchlist/${ticker.toUpperCase()}`, {
         method: 'DELETE',
       });
       return res.ok;
@@ -275,7 +289,7 @@ export const watchlistApi = {
     try {
       const headers = getMemberHeaders();
       if (!headers['Authorization']) return [];
-      const res = await fetch(`${BASE_URL}/watchlist`, {
+      const res = await tracedFetch(`${BASE_URL}/watchlist`, {
         cache: 'no-store',
         headers,
       });
@@ -290,7 +304,7 @@ export const watchlistApi = {
 
   async addToWatchlist(ticker: string, targetMos = 20.0, notes?: string): Promise<boolean> {
     try {
-      const res = await fetch(`${BASE_URL}/watchlist`, {
+      const res = await tracedFetch(`${BASE_URL}/watchlist`, {
         method: 'POST',
         headers: getMemberHeaders(),
         body: JSON.stringify({ ticker: ticker.toUpperCase(), target_mos_pct: targetMos, notes }),
@@ -304,7 +318,7 @@ export const watchlistApi = {
 
   async removeFromWatchlist(ticker: string): Promise<boolean> {
     try {
-      const res = await fetch(`${BASE_URL}/watchlist/${ticker.toUpperCase()}`, {
+      const res = await tracedFetch(`${BASE_URL}/watchlist/${ticker.toUpperCase()}`, {
         method: 'DELETE',
         headers: getMemberHeaders(),
       });
@@ -331,7 +345,7 @@ function getAdminHeaders(): Record<string, string> {
 
 export const authApi = {
   async loginMember(email: string, password: string) {
-    const res = await fetch(`${BASE_URL}/auth/member/login`, {
+    const res = await tracedFetch(`${BASE_URL}/auth/member/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -344,7 +358,7 @@ export const authApi = {
   },
 
   async registerMember(email: string, password: string, name?: string) {
-    const res = await fetch(`${BASE_URL}/auth/member/register`, {
+    const res = await tracedFetch(`${BASE_URL}/auth/member/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name }),
@@ -357,7 +371,7 @@ export const authApi = {
   },
 
   async loginAdmin(email: string, password: string) {
-    const res = await fetch(`${BASE_URL}/auth/admin/login`, {
+    const res = await tracedFetch(`${BASE_URL}/auth/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -370,7 +384,7 @@ export const authApi = {
   },
 
   async getMe(token: string) {
-    const res = await fetch(`${BASE_URL}/auth/me`, {
+    const res = await tracedFetch(`${BASE_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
@@ -402,7 +416,7 @@ export interface PipelineRunLog {
 export const adminApi = {
   async getMetrics(): Promise<AdminMetrics> {
     try {
-      const res = await fetch(`${BASE_URL}/admin/metrics`, {
+      const res = await tracedFetch(`${BASE_URL}/admin/metrics`, {
         cache: 'no-store',
         headers: getAdminHeaders(),
       });
@@ -422,7 +436,7 @@ export const adminApi = {
 
   async listCustomers(skip = 0, limit = 50) {
     try {
-      const res = await fetch(`${BASE_URL}/admin/customers?skip=${skip}&limit=${limit}`, {
+      const res = await tracedFetch(`${BASE_URL}/admin/customers?skip=${skip}&limit=${limit}`, {
         cache: 'no-store',
         headers: getAdminHeaders(),
       });
@@ -435,7 +449,7 @@ export const adminApi = {
 
   async getPipelineRuns(limit = 15): Promise<PipelineRunLog[]> {
     try {
-      const res = await fetch(`${BASE_URL}/admin/pipeline/runs?limit=${limit}`, {
+      const res = await tracedFetch(`${BASE_URL}/admin/pipeline/runs?limit=${limit}`, {
         cache: 'no-store',
         headers: getAdminHeaders(),
       });
@@ -451,7 +465,7 @@ export const adminApi = {
     if (tickers && tickers.length > 0) {
       tickers.forEach((t) => url.searchParams.append('tickers', t));
     }
-    const res = await fetch(url.toString(), {
+    const res = await tracedFetch(url.toString(), {
       method: 'POST',
       headers: getAdminHeaders(),
     });
@@ -463,7 +477,7 @@ export const adminApi = {
     if (tickers && tickers.length > 0) {
       tickers.forEach((t) => url.searchParams.append('tickers', t));
     }
-    const res = await fetch(url.toString(), {
+    const res = await tracedFetch(url.toString(), {
       method: 'POST',
       headers: getAdminHeaders(),
     });
@@ -471,7 +485,7 @@ export const adminApi = {
   },
 
   async triggerRecomputeScores() {
-    const res = await fetch(`${BASE_URL}/admin/pipeline/score`, {
+    const res = await tracedFetch(`${BASE_URL}/admin/pipeline/score`, {
       method: 'POST',
       headers: getAdminHeaders(),
     });
@@ -483,7 +497,7 @@ export const adminApi = {
     if (recipients && recipients.length > 0) {
       recipients.forEach((r) => url.searchParams.append('recipients', r));
     }
-    const res = await fetch(url.toString(), {
+    const res = await tracedFetch(url.toString(), {
       method: 'POST',
       headers: getAdminHeaders(),
     });
@@ -491,7 +505,7 @@ export const adminApi = {
   },
 
   async triggerEvaluateAlerts() {
-    const res = await fetch(`${BASE_URL}/admin/pipeline/evaluate-alerts`, {
+    const res = await tracedFetch(`${BASE_URL}/admin/pipeline/evaluate-alerts`, {
       method: 'POST',
       headers: getAdminHeaders(),
     });
@@ -499,7 +513,7 @@ export const adminApi = {
   },
 
   async overrideFinancials(ticker: string, year: number, data: any) {
-    const res = await fetch(`${BASE_URL}/admin/stocks/${ticker.toUpperCase()}/financials/${year}`, {
+    const res = await tracedFetch(`${BASE_URL}/admin/stocks/${ticker.toUpperCase()}/financials/${year}`, {
       method: 'POST',
       headers: getAdminHeaders(),
       body: JSON.stringify(data),
@@ -592,7 +606,7 @@ export const outcomeApi = {
   }> {
     const cleanEmail = email.trim().toLowerCase();
     try {
-      const res = await fetch(`${BASE_URL}/customers/on-demand-checkout`, {
+      const res = await tracedFetch(`${BASE_URL}/customers/on-demand-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -639,7 +653,7 @@ export const outcomeApi = {
       if (hypeCheckTicker && hypeCheckTicker.trim()) {
         params.set('hype_check_ticker', hypeCheckTicker.trim().toUpperCase());
       }
-      const res = await fetch(`${BASE_URL}/reports/done-for-you?${params.toString()}`, {
+      const res = await tracedFetch(`${BASE_URL}/reports/done-for-you?${params.toString()}`, {
         cache: 'no-store',
       });
       if (res.ok) {
@@ -654,7 +668,7 @@ export const outcomeApi = {
   async verifyAccess(email: string): Promise<{ has_access: boolean; email: string; message: string }> {
     const cleanEmail = email.trim().toLowerCase();
     try {
-      const res = await fetch(`${BASE_URL}/customers/verify-access`, {
+      const res = await tracedFetch(`${BASE_URL}/customers/verify-access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail }),
@@ -738,7 +752,7 @@ export const oaasApi = {
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const res = await fetch(`${BASE_URL}/oaas/regime`, { headers });
+    const res = await tracedFetch(`${BASE_URL}/oaas/regime`, { headers });
     if (!res.ok) {
       throw new Error(`Failed to fetch macro regime: ${res.statusText}`);
     }
@@ -747,7 +761,7 @@ export const oaasApi = {
 
   async evaluate(shocks: Record<string, any> = {}): Promise<any> {
     const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
-    const res = await fetch(`${BASE_URL}/oaas/evaluate`, {
+    const res = await tracedFetch(`${BASE_URL}/oaas/evaluate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -761,7 +775,7 @@ export const oaasApi = {
 
   async updateMacroState(state: Record<string, any>): Promise<any> {
     const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
-    const res = await fetch(`${BASE_URL}/oaas/macro-state`, {
+    const res = await tracedFetch(`${BASE_URL}/oaas/macro-state`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -775,7 +789,7 @@ export const oaasApi = {
 
   async dispatch(action: 'weekly_brief' | 'daily_triage', dryRun = false): Promise<any> {
     const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
-    const res = await fetch(`${BASE_URL}/oaas/dispatch`, {
+    const res = await tracedFetch(`${BASE_URL}/oaas/dispatch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -789,7 +803,7 @@ export const oaasApi = {
 
   async getHistory(): Promise<any> {
     const adminHeaders = typeof window !== 'undefined' ? (window as any).getAdminHeaders?.() || {} : {};
-    const res = await fetch(`${BASE_URL}/oaas/history`, {
+    const res = await tracedFetch(`${BASE_URL}/oaas/history`, {
       headers: adminHeaders,
     });
     if (!res.ok) throw new Error(`Failed to fetch history: ${res.statusText}`);

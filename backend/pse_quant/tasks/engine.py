@@ -102,13 +102,19 @@ class TaskQueueService:
         task_id = f"task_{uuid.uuid4().hex[:12]}"
         now = _utc_now()
 
+        from pse_quant.telemetry.context import get_correlation_id
+        active_corr = get_correlation_id()
+        task_payload = dict(payload or {})
+        if active_corr and "_correlation_id" not in task_payload:
+            task_payload["_correlation_id"] = active_corr
+
         with get_write_session() as session:
             record = TaskRecord(
                 id=task_id,
                 task_name=task_name,
                 status=TaskStatus.PENDING,
                 priority=max(1, min(priority, 10)),
-                payload_json=payload or {},
+                payload_json=task_payload,
                 max_retries=max(0, max_retries),
                 created_at=now,
             )
@@ -341,6 +347,10 @@ class TaskWorker:
         attempts = task_info["attempts"]
         max_retries = task_info["max_retries"]
 
+        from pse_quant.telemetry.context import set_correlation_id, reset_correlation_id, generate_correlation_id
+        corr_id = payload.get("_correlation_id") or generate_correlation_id(prefix="task_corr_")
+        token_corr = set_correlation_id(corr_id)
+
         self._current_task_id = task_id
         self._start_heartbeat(task_id)
 
@@ -370,6 +380,8 @@ class TaskWorker:
             self._mark_failed(task_id=task_id, error_msg=error_msg, should_retry=should_retry)
             self._current_task_id = None
             return False
+        finally:
+            reset_correlation_id(token_corr)
 
     def _mark_completed(self, task_id: str, result: Any) -> None:
         """Marks task as successfully completed with returned JSON-safe payload."""

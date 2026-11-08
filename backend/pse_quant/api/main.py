@@ -22,6 +22,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from pse_quant.db.connection import init_db
 from pse_quant.api.limiter import limiter, custom_rate_limit_handler
 from pse_quant.api.rate_limiting import TokenBucketMiddleware
+from pse_quant.telemetry import TracingMiddleware
 from pse_quant.api.routes import (
     stocks,
     customers,
@@ -80,6 +81,9 @@ app.add_middleware(SlowAPIMiddleware)
 # Layer 2: Institutional Token Bucket Middleware (Multi-tier quota & RFC headers)
 _token_bucket_enabled = os.getenv("ENABLE_TOKEN_BUCKET_RATE_LIMIT", "true").lower() in ("true", "1", "yes")
 app.add_middleware(TokenBucketMiddleware, enabled=_token_bucket_enabled)
+
+# Layer 3: Distributed Tracing & Correlation ID Context Propagation
+app.add_middleware(TracingMiddleware)
 
 
 # ── Dynamic CORS Configuration ────────────────────────────────

@@ -403,3 +403,73 @@ stateDiagram-v2
     ]
   }
   ```
+
+
+---
+
+## 12. Distributed Tracing, Correlation IDs & Observability Contract
+
+### Objective:
+Unify diagnostic context across all distributed execution boundaries (Next.js presentation layer, API gateway, dual-engine connection pool, cache-aside store, pub-sub alerts, and asynchronous leased workers). Guarantees instantaneous forensic correlation between user requests, database queries, and background worker jobs while tracking rolling p50, p95, and p99 latency quantiles.
+
+### A. HTTP Tracing Header Protocols:
+| Header | Ingestion / Egress Rule | Example Format |
+| :--- | :--- | :--- |
+| `X-Correlation-ID` | Ingested if provided; generated if absent (`corr_<16hex>`). Always reflected in response. | `corr_4a8b1c2d3e4f5a6b` |
+| `X-Response-Time-Ms` | Egress only. High-precision monotonic execution duration computed via `time.perf_counter()`. | `4.25ms` |
+| `traceparent` | W3C distributed trace standard. TracingMiddleware extracts 16-char trace prefix if `X-Correlation-ID` is missing. | `00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01` |
+
+### B. Ambient Context Propagation & Task Worker Inheritance:
+1. **Thread & Async Context**:
+   - `correlation_id` is stored in ambient Python `contextvars.ContextVar`.
+   - Accessible anywhere via `get_correlation_id()` without passing logger arguments through function signatures.
+2. **Asynchronous Worker Handoff**:
+   - When `task_queue.enqueue(...)` is invoked during an HTTP request, the active `correlation_id` is automatically stamped into `TaskRecord.payload_json["_correlation_id"]`.
+   - When a `TaskWorker` claims the task in a separate background thread, it binds that exact `_correlation_id` into its thread's `ContextVar`.
+   - All logs, database queries, and sub-actions executed by the worker share the original user's request trace!
+
+### C. Structured JSON Logging Schema:
+```json
+{
+  "timestamp": "2026-11-08T14:36:00.123456+00:00",
+  "level": "INFO",
+  "logger": "pse_quant.services.stock",
+  "message": "Stock profile query executed",
+  "correlation_id": "corr_3a9f02bc14a5d8e7",
+  "path": "/api/v1/stocks/ALI",
+  "method": "GET",
+  "status_code": 200,
+  "duration_ms": 8.42,
+  "client_ip": "127.0.0.1"
+}
+```
+
+### D. Latency Percentile Telemetry Schema:
+- **Endpoint**: `GET /api/v1/admin/telemetry/latency` (Admin authorized).
+- **Payload Structure**:
+  ```json
+  {
+    "overall": {
+      "total_requests": 1420,
+      "p50_ms": 4.12,
+      "p95_ms": 14.85,
+      "p99_ms": 28.30,
+      "avg_ms": 5.40,
+      "min_ms": 0.85,
+      "max_ms": 45.10
+    },
+    "routes": {
+      "GET /api/v1/stocks": {
+        "count": 850,
+        "sample_window_size": 850,
+        "p50_ms": 3.90,
+        "p95_ms": 11.20,
+        "p99_ms": 19.50,
+        "avg_ms": 4.60,
+        "min_ms": 0.85,
+        "max_ms": 22.40
+      }
+    }
+  }
+  ```
+- **Unified Live Pulse**: `GET /api/v1/admin/telemetry/live` aggregates overall latency, DB connection pool health, cache hit ratios, and task queue depth into a single atomic heartbeat payload.

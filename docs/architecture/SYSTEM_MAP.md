@@ -424,3 +424,88 @@ sequenceDiagram
     Ledger-->>Gateway: status='completed', result_json
     Gateway-->>Client: 200 OK {status: 'completed', result: {...}}
 ```
+
+
+---
+
+## Level 10: Distributed Tracing, Correlation IDs & Latency Observability Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client["Next.js Presentation Tier"]
+        UI["React Screener / Fact Card Component"]
+        TracedFetch["lib/api.ts (tracedFetch)<br/>Injects X-Correlation-ID: corr_fe_..."]
+    end
+
+    subgraph Ingress["FastAPI Gateway & Tracing Middleware"]
+        TracingMW["TracingMiddleware<br/>1. Ingests or generates correlation_id<br/>2. Starts time.perf_counter()<br/>3. Injects X-Correlation-ID & X-Response-Time-Ms"]
+        CtxVar["ContextVar ambient storage<br/>(correlation_id_ctx, trace_metadata_ctx)"]
+    end
+
+    subgraph ObservabilityCore["Observability & Structured Logging Engine"]
+        Formatter["StructuredJsonFormatter<br/>{timestamp, level, correlation_id, path, duration_ms}"]
+        Tracker["LatencyTracker (Circular Reservoir)<br/>Calculates p50, p95, p99 & recent traces"]
+        LogSink[("Structured Log Sink<br/>(Console / Loki / Datadog)")]
+    end
+
+    subgraph BackendTier["Internal Services & Persistence"]
+        DBPool["Dual Engine Pool (Reader / Writer)"]
+        TaskQueue["TaskQueueService (attaches _correlation_id)"]
+        Worker["TaskWorker (restores correlation_id in background)"]
+    end
+
+    subgraph TelemetryEndpoints["Observability API"]
+        AdminAPI["GET /api/v1/admin/telemetry/latency<br/>GET /api/v1/admin/telemetry/traces<br/>GET /api/v1/admin/telemetry/live"]
+    end
+
+    UI --> TracedFetch
+    TracedFetch -->|"HTTP + X-Correlation-ID"| TracingMW
+    TracingMW -->|"set_correlation_id()"| CtxVar
+
+    TracingMW --> DBPool
+    TracingMW --> TaskQueue
+    TaskQueue -->|"payload['_correlation_id']"| Worker
+    Worker -->|"set_correlation_id()"| CtxVar
+
+    CtxVar -.->|"Extracts correlation_id"| Formatter
+    Formatter --> LogSink
+
+    TracingMW -->|"record_request(duration_ms)"| Tracker
+    Tracker --> AdminAPI
+```
+
+### End-to-End Distributed Trace Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Next.js (Browser)
+    participant MW as TracingMiddleware
+    participant Ctx as ContextVar Storage
+    participant Route as FastAPI Route Handler
+    participant Log as StructuredJsonFormatter
+    participant Task as Background Task Worker
+    participant DB as Dual DB Pool
+
+    UI->>MW: GET /api/v1/stocks/ALI [X-Correlation-ID: corr_fe_1001]
+    MW->>Ctx: set_correlation_id('corr_fe_1001')
+    MW->>MW: start_time = time.perf_counter()
+    
+    MW->>Route: get_stock_profile("ALI")
+    Route->>Log: logger.info("Stock profile requested")
+    Log-->>Log: Formats JSON: {"correlation_id": "corr_fe_1001", "msg": "..."}
+    
+    Route->>DB: Query Stock, Price, Financials
+    DB-->>Route: Stock Profile Data
+    
+    opt Trigger Background PDF Generation
+        Route->>Task: enqueue("reports.generate_pdf", payload)
+        Note over Task: TaskRecord saved with _correlation_id = 'corr_fe_1001'
+        Task->>Ctx: Worker thread binds 'corr_fe_1001' during PDF compilation
+    end
+
+    Route-->>MW: 200 OK (8.4ms)
+    MW->>MW: duration_ms = (perf_counter() - start_time) * 1000.0
+    MW->>MW: Record in LatencyTracker (p50, p95, p99)
+    MW-->>UI: Response 200 OK<br/>X-Correlation-ID: corr_fe_1001<br/>X-Response-Time-Ms: 8.42ms
+```

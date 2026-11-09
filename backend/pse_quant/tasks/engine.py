@@ -394,6 +394,15 @@ class TaskWorker:
                 record.result_json = safe_result
                 record.completed_at = now
                 record.lease_expires_at = None
+        try:
+            from pse_quant.streaming.hub import stream_hub
+            stream_hub.broadcast(
+                channel=f"tasks:{task_id}",
+                event_type="task_completed",
+                data={"task_id": task_id, "status": TaskStatus.COMPLETED, "result": safe_result},
+            )
+        except Exception:
+            pass
 
     def _mark_failed(self, task_id: str, error_msg: str, should_retry: bool) -> None:
         """Marks task failed or re-queues it for retry if attempts < max_retries."""
@@ -482,5 +491,24 @@ class TaskWorkerSwarm:
 
 
 # Global singleton queue and swarm instances
+
+
+def broadcast_task_progress(task_id: str, progress_pct: int, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    """Broadcasts a granular milestone event to all clients streaming this task's progress via SSE."""
+    try:
+        from pse_quant.streaming.hub import stream_hub
+        stream_hub.broadcast(
+            channel=f"tasks:{task_id}",
+            event_type="task_progress",
+            data={
+                "task_id": task_id,
+                "progress_pct": max(0, min(progress_pct, 100)),
+                "message": message,
+                "data": data or {},
+            },
+        )
+    except Exception as exc:
+        logger.warning("Failed to broadcast SSE task progress for %s: %s", task_id, exc)
+
 task_queue = TaskQueueService()
 global_worker_swarm = TaskWorkerSwarm(concurrency=2, lease_duration=30, poll_interval=0.5)

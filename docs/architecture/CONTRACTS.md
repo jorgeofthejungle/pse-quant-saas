@@ -473,3 +473,47 @@ Unify diagnostic context across all distributed execution boundaries (Next.js pr
   }
   ```
 - **Unified Live Pulse**: `GET /api/v1/admin/telemetry/live` aggregates overall latency, DB connection pool health, cache hit ratios, and task queue depth into a single atomic heartbeat payload.
+
+
+---
+
+## 13. Real-Time Server-Sent Events (SSE) Streaming Pipeline Contract
+
+### Objective:
+Replace inefficient client polling loops with unidirectional, HTTP-native real-time event streaming compliant with the W3C EventSource specification. Guarantees sub-50ms push delivery of background task progress milestones, personalized Margin of Safety portfolio alerts, and live market quotes without WebSockets stateful proxy overhead.
+
+### A. W3C Protocol & Transport Headers:
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no
+X-Correlation-ID: corr_883a9f02bc14a5d8
+
+id: evt_4a8b1c2d3e4f
+event: task_progress
+retry: 3000
+data: {"task_id": "task_xyz", "progress_pct": 65, "step": "scrape_quotes", "message": "Quotes updated for 278 stocks"}
+
+: ping
+
+```
+
+### B. Streaming Channels & Topology:
+| Channel | Target Audience | Emitted Event Types | Producer Source |
+| :--- | :--- | :--- | :--- |
+| `tasks:{task_id}` | Task initiator / Admin | `task_initial`, `task_progress`, `task_completed`, `task_failed` | `TaskWorker` via `broadcast_task_progress` |
+| `alerts:user:{user_id}` | Authenticated Member | `alert_notification`, `mos_breach` | `AlertFanoutService` (Lab 7) |
+| `market:ticks` | Public / Dashboard | `tick`, `price_shift`, `volume_surge` | PSE Edge Scraper / Quote Ingest |
+| `admin:pulse` | System Admin | `system_pulse`, `queue_metrics` | `StreamHub` Telemetry Generator |
+
+### C. Connection Resiliency & Proxy Invariants:
+1. **Heartbeat Keep-Alive**:
+   - Streams emit a W3C comment (`: ping\n\n`) every 5.0 seconds when no domain events are published.
+   - Prevents AWS ALB, Cloudflare (100s timeout), and Nginx reverse proxies from severing idle connections.
+2. **Slow Consumer Backpressure**:
+   - Each subscriber queue is bounded (`max_queue_size = 100`).
+   - If a slow client fails to read fast enough, the oldest event is discarded (`drop_oldest`) to prevent memory exhaustion on the server.
+3. **Clean Disconnect Recovery**:
+   - Detects `request.is_disconnected()` or `asyncio.CancelledError` and immediately purges subscriber queues, preventing zombie connection memory leaks.

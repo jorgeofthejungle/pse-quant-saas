@@ -509,3 +509,83 @@ sequenceDiagram
     MW->>MW: Record in LatencyTracker (p50, p95, p99)
     MW-->>UI: Response 200 OK<br/>X-Correlation-ID: corr_fe_1001<br/>X-Response-Time-Ms: 8.42ms
 ```
+
+
+---
+
+## Level 11: Real-Time Server-Sent Events (SSE) Streaming Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client["Next.js Presentation Tier"]
+        UI["React Investor Dashboard & Screener"]
+        SSEClient["lib/sse.ts (createEventSource / subscribeToTask)<br/>W3C EventSource + Auto-reconnect"]
+    end
+
+    subgraph StreamingGateway["FastAPI Gateway & SSE Streaming Endpoints"]
+        TaskStream["GET /api/v1/stream/tasks/{id}"]
+        AlertStream["GET /api/v1/stream/alerts"]
+        MarketStream["GET /api/v1/stream/market"]
+        AdminStream["GET /api/v1/stream/hub/metrics"]
+    end
+
+    subgraph SSEHub["Real-Time SSE Engine (pse_quant.streaming)"]
+        StreamHubNode["StreamHub<br/>- Channel-based async queues<br/>- Keep-alive ping (: ping) every 5s<br/>- Drop-oldest backpressure<br/>- Disconnect garbage collection"]
+    end
+
+    subgraph Producers["Domain Event & Worker Producers"]
+        TaskWorker["TaskWorker (broadcast_task_progress)<br/>Emits task_initial, task_progress, task_completed"]
+        AlertFanout["AlertFanoutService (Lab 7)<br/>Emits alert_notification on MOS breach"]
+        MarketIngest["PSE Edge Scraper & Pricing<br/>Emits market_tick"]
+    end
+
+    UI --> SSEClient
+    SSEClient -->|"GET /stream/tasks/{id}"| TaskStream
+    SSEClient -->|"GET /stream/alerts"| AlertStream
+    SSEClient -->|"GET /stream/market"| MarketStream
+
+    TaskStream --> StreamHubNode
+    AlertStream --> StreamHubNode
+    MarketStream --> StreamHubNode
+
+    TaskWorker -->|"broadcast('tasks:xyz', ...)"| StreamHubNode
+    AlertFanout -->|"broadcast('alerts:user:12', ...)"| StreamHubNode
+    MarketIngest -->|"broadcast('market:ticks', ...)"| StreamHubNode
+
+    StreamHubNode -->|"Yield chunk (text/event-stream)"| UI
+```
+
+### Real-Time Task Progress & Alert SSE Push Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Next.js (Browser EventSource)
+    participant API as FastAPI Gateway (/stream)
+    participant Hub as StreamHub Channel (tasks:task_100)
+    participant Worker as Leased Task Worker
+    participant DB as Relational Ledger
+
+    UI->>API: GET /api/v1/stream/tasks/task_100
+    API->>Hub: subscribe("tasks:task_100")
+    Hub-->>API: Return client async queue
+    API-->>UI: HTTP 200 text/event-stream<br/>id: evt_1\nevent: connected\ndata: {"status": "active"}
+
+    Worker->>DB: Claim lease & start execution
+    Worker->>Hub: broadcast_task_progress(task_100, 25, "Directory sync complete")
+    Hub-->>API: Push formatted SSE block
+    API-->>UI: id: evt_2\nevent: task_progress\ndata: {"progress_pct": 25, "message": "Directory sync complete"}
+
+    Worker->>Hub: broadcast_task_progress(task_100, 75, "Financial statements parsed")
+    Hub-->>API: Push formatted SSE block
+    API-->>UI: id: evt_3\nevent: task_progress\ndata: {"progress_pct": 75, "message": "Financial statements parsed"}
+
+    Worker->>DB: UPDATE status='completed'
+    Worker->>Hub: broadcast(task_100, "task_completed", {"status": "completed", "result": {...}})
+    Hub-->>API: Push terminal SSE block
+    API-->>UI: id: evt_4\nevent: task_completed\ndata: {"status": "completed"}
+    
+    API->>API: Stream generator breaks cleanly
+    API->>Hub: unsubscribe("tasks:task_100")
+    UI->>UI: Update UI state to completed
+```

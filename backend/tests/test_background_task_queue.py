@@ -36,6 +36,8 @@ from pse_quant.api.main import app
 @pytest.fixture(autouse=True)
 def setup_db():
     init_db()
+    with get_write_session() as session:
+        session.query(TaskRecord).delete()
 
 
 @pytest.fixture

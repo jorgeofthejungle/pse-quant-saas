@@ -143,5 +143,23 @@ class AlertFanoutService:
             session.commit()
             for n in generated_notifications:
                 session.refresh(n)
+                # Broadcast real-time SSE notification
+                try:
+                    from pse_quant.streaming.hub import stream_hub
+                    stream_hub.broadcast(
+                        channel=f"alerts:user:{n.user_id}",
+                        event_type="alert_notification",
+                        data={
+                            "id": n.id,
+                            "ticker": n.ticker,
+                            "title": n.title,
+                            "message": n.message,
+                            "severity": n.severity,
+                            "metadata": n.metadata_json,
+                            "created_at": n.created_at.isoformat() if n.created_at else None,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("Failed to broadcast SSE alert for user %d: %s", n.user_id, e)
 
         return generated_notifications

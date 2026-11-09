@@ -22,6 +22,12 @@ SessionLocal = pool_manager.WriterSession
 def init_db() -> None:
     """Creates all tables on the primary writer engine if they do not exist."""
     Base.metadata.create_all(bind=pool_manager.writer_engine)
+    try:
+        from pse_quant.search.fts_engine import init_fts_tables
+        with get_write_session() as session:
+            init_fts_tables(session)
+    except Exception:
+        pass
 
 
 @contextmanager

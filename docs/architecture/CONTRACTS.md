@@ -573,3 +573,71 @@ $$\Delta = | \text{amount\_centavos} - \text{round}(\text{amount\_php} \times 10
 - `MigrationManager.run_backfill(name, batch_size=100, max_batches=50)`
 - Updates legacy rows in isolated transactions with bounded commit sizes (`LIMIT :batch_size`).
 - Prevents database table locks, WAL explosion, and transaction starvation for live user payment webhooks.
+
+
+---
+
+## 15. Full-Text Search (FTS5) & Lexical Retrieval Contract
+
+### Objective:
+Provide sub-5ms typeahead autocomplete, exact ticker prioritization, and lexical full-text discovery across Philippine equities, company legal names, sectors, and colloquial nicknames (e.g., "Meralco", "Banco De Oro", "Shoemart", "PLDT"). Eliminates slow sequential `LIKE '%query%'` table scans via SQLite FTS5 inverted indexes and Okapi BM25 ranking.
+
+### A. SQLite FTS5 Virtual Table Schema (`stocks_fts`):
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS stocks_fts USING fts5(
+    ticker,
+    name,
+    sector,
+    aliases,
+    tokenize='unicode61 remove_diacritics 2'
+);
+```
+
+### B. BM25 Column Weighting & Ranking Matrix:
+Inverted index query scoring applies asymmetric column weights in `bm25(stocks_fts, w0, w1, w2, w3)`:
+$$\text{Score} = \text{BM25}(\text{stocks\_fts}, 15.0, 8.0, 2.0, 5.0)$$
+
+| Column | Column Index | Weight | Architectural Rationale |
+| :--- | :--- | :--- | :--- |
+| `ticker` | 0 | **15.0** | Symbol matches must always dominate results (e.g. `MER` -> Manila Electric Company). |
+| `name` | 1 | **8.0** | Formal corporate legal name matches (e.g. `Ayala Land`). |
+| `aliases` | 3 | **5.0** | Colloquial trader nicknames, holding parents, and founder names. |
+| `sector` | 2 | **2.0** | Broad industry discovery (e.g. `Property`, `Financials`). |
+
+- **Exact Ticker Pinned Rank Invariant**:
+  ```sql
+  ORDER BY CASE WHEN UPPER(ticker) = :exact_ticker THEN 0 ELSE 1 END, relevance_score ASC
+  ```
+  If a user inputs an exact ticker (e.g. `"ALI"`), that stock is pinned to rank 0 regardless of frequency in other corporate names.
+
+### C. Typeahead Wildcard & Sanitization Invariant:
+1. **Query Tokenization**:
+   - Strips non-alphanumeric punctuation: `re.sub(r"[^\w\s]", " ", query)`.
+   - Wraps every token in double quotes with trailing wildcard: `f'"{token}"*'`.
+   - Prevents operator syntax errors when users type reserved keywords (`AND`, `OR`, `NOT`, `NEAR`) or malicious SQL fragments.
+2. **Contextual Highlight Contract**:
+   - `highlight(stocks_fts, 0, '<mark>', '</mark>')` for highlighted tickers.
+   - `highlight(stocks_fts, 1, '<mark>', '</mark>')` for highlighted company names.
+
+### D. Search Transport Payload (`GET /api/v1/search?q={query}&limit=10`):
+```json
+{
+  "query": "meral",
+  "total_matches": 1,
+  "execution_ms": 1.45,
+  "results": [
+    {
+      "ticker": "MER",
+      "name": "Manila Electric Company",
+      "highlighted_name": "<mark>Manila</mark> Electric Company",
+      "highlighted_ticker": "MER",
+      "sector": "Services",
+      "is_reit": false,
+      "is_bank": false,
+      "close_price": 380.0,
+      "market_cap": 428000000000.0,
+      "relevance_score": -1.803
+    }
+  ]
+}
+```

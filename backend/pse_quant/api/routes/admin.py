@@ -369,3 +369,19 @@ def verify_migration_parity(name: str = Path(..., min_length=2, max_length=128))
         return migration_manager.verify_parity(name)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+# ── Full-Text Search (FTS5) Admin Operations ──────────────────
+
+@router.post("/search/rebuild", summary="Rebuild SQLite FTS5 full-text inverted index")
+def rebuild_search_index():
+    """Re-indexes all active equities into the SQLite FTS5 inverted search table."""
+    from pse_quant.search.service import search_service
+    return search_service.rebuild_index()
+
+
+@router.get("/search/stats", summary="Inspect FTS5 inverted index metrics")
+def get_search_index_stats():
+    """Returns document counts and synchronization health of the stocks_fts table."""
+    from pse_quant.search.service import search_service
+    return search_service.get_stats()

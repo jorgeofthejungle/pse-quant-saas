@@ -683,3 +683,80 @@ sequenceDiagram
     Mgr->>Ledger: Set phase = 'COMPLETED', completed_at = now()
     Mgr-->>Admin: Migration COMPLETED with 0 downtime
 ```
+
+
+---
+
+## Level 13: Full-Text Search (FTS5) & Fast Lexical Stock Retrieval Engine
+
+```mermaid
+flowchart TD
+    subgraph ClientTier["Next.js Presentation Tier"]
+        SearchBar["Search Input / Autocomplete Dropdown"]
+        ClientApi["stockApi.search(query, limit)<br/>lib/api.ts (tracedFetch)"]
+    end
+
+    subgraph FastApiIngress["FastAPI Gateway & Route Handlers"]
+        SearchRoute["GET /api/v1/search?q={query}&limit=10<br/>Rate-limited 60/min"]
+        AdminRebuild["POST /api/v1/admin/search/rebuild"]
+        AdminStats["GET /api/v1/admin/search/stats"]
+    end
+
+    subgraph SearchEngine["Search Engine (pse_quant.search)"]
+        SearchService["FtsSearchService<br/>- Query timing & duration_ms<br/>- Metadata & pricing enrichment"]
+        FTSEngine["fts_engine.py<br/>- Tokenizer & sanitize_query()<br/>- Okapi BM25 Asymmetric Ranker<br/>- Highlight extractor"]
+        AliasesDict["PSE_ALIASES Dictionary<br/>(Nicknames, conglomerates, founders)"]
+    end
+
+    subgraph RelationalStorage["SQLite Persistence Engine"]
+        FTSIndex[("stocks_fts Virtual Table<br/>(Inverted Index: ticker, name, sector, aliases)<br/>tokenize='unicode61 remove_diacritics 2'")]
+        StocksTable[("stocks Table<br/>(Primary relational store)")]
+        PricesTable[("prices Table<br/>(Latest closing prices & market caps)")]
+    end
+
+    SearchBar --> ClientApi
+    ClientApi -->|"HTTP GET /search?q=..."| SearchRoute
+    SearchRoute --> SearchService
+    SearchService --> FTSEngine
+    FTSEngine <--> AliasesDict
+
+    FTSEngine -->|"MATCH :query ORDER BY CASE WHEN ... BM25()"| FTSIndex
+    SearchService -->|"Enrich classification (is_reit, is_bank)"| StocksTable
+    SearchService -->|"Enrich latest close & market_cap"| PricesTable
+
+    AdminRebuild --> SearchService
+    AdminStats --> SearchService
+    SearchService -->|"rebuild_fts_index()"| FTSIndex
+```
+
+### Lexical Search & Autocomplete Query Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Next.js (Search Bar)
+    participant API as FastAPI Ingress (/api/v1/search)
+    participant Svc as FtsSearchService
+    participant Engine as fts_engine (sanitize_query)
+    participant FTS as stocks_fts (Virtual Table)
+    participant DB as Reader Pool (stocks, prices)
+
+    UI->>API: GET /api/v1/search?q=meral&limit=5
+    API->>Svc: search("meral", limit=5, enrich_pricing=True)
+    Svc->>Svc: start_time = perf_counter()
+    Svc->>Engine: search_stocks_fts(session, "meral", 5)
+    
+    Engine->>Engine: sanitize_query("meral") -> '"meral"*'
+    Engine->>FTS: SELECT ticker, name, sector, aliases,<br/>highlight(stocks_fts, 0, '<mark>', '</mark>'),<br/>highlight(stocks_fts, 1, '<mark>', '</mark>'),<br/>bm25(stocks_fts, 15.0, 8.0, 2.0, 5.0)<br/>WHERE stocks_fts MATCH '"meral"*'<br/>ORDER BY CASE WHEN UPPER(ticker)='MERAL' THEN 0 ELSE 1 END, bm25 ASC
+    
+    FTS-->>Engine: [('MER', 'Manila Electric Company', 'Services', '<mark>Manila</mark> Electric Company', ...)]
+    Engine-->>Svc: raw_results (ticker='MER')
+    
+    Svc->>DB: Query Price & Stock for 'MER'
+    DB-->>Svc: close = 380.00, market_cap = 428B, is_reit = false
+    
+    Svc->>Svc: execution_ms = (perf_counter() - start_time) * 1000.0 (1.42ms)
+    Svc-->>API: Enriched payload { query: 'meral', total_matches: 1, execution_ms: 1.42, results: [...] }
+    API-->>UI: 200 OK + JSON
+    UI->>UI: Render autocomplete dropdown with highlighted matched terms
+```

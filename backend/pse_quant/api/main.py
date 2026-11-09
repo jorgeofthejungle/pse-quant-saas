@@ -36,6 +36,7 @@ from pse_quant.api.routes import (
     notifications,
     tasks,
     stream,
+    search,
 )
 
 logger = logging.getLogger("pse_quant.api")
@@ -147,6 +148,7 @@ app.include_router(rate_limit.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(stream.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

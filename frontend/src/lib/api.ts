@@ -182,6 +182,62 @@ export const stockApi = {
       special_dividend_cap: 20.0,
     };
   },
+
+  async search(query: string, limit = 10) {
+    const cleanQ = query.trim();
+    if (!cleanQ) {
+      return { query: '', totalMatches: 0, executionMs: 0, results: [] };
+    }
+    try {
+      const res = await tracedFetch(`${BASE_URL}/search?q=${encodeURIComponent(cleanQ)}&limit=${limit}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return {
+          query: json.query,
+          totalMatches: json.total_matches,
+          executionMs: json.execution_ms,
+          results: (json.results || []).map((r: any) => ({
+            ticker: r.ticker,
+            name: r.name,
+            highlightedName: r.highlighted_name,
+            highlightedTicker: r.highlighted_ticker,
+            sector: r.sector,
+            isReit: Boolean(r.is_reit),
+            isBank: Boolean(r.is_bank),
+            closePrice: r.close_price,
+            marketCap: r.market_cap,
+            relevanceScore: r.relevance_score,
+          })),
+        };
+      }
+    } catch (err) {
+      console.warn('[stockApi.search] Error:', err);
+    }
+    const qLower = cleanQ.toLowerCase();
+    const fallbackMatches = MOCK_RANKINGS.filter(
+      (s) => s.ticker.toLowerCase().includes(qLower) || s.name.toLowerCase().includes(qLower)
+    ).slice(0, limit);
+
+    return {
+      query: cleanQ,
+      totalMatches: fallbackMatches.length,
+      executionMs: 0.1,
+      results: fallbackMatches.map((s) => ({
+        ticker: s.ticker,
+        name: s.name,
+        highlightedName: s.name,
+        highlightedTicker: s.ticker,
+        sector: s.sector,
+        isReit: s.scoringGroup === 'REIT',
+        isBank: s.scoringGroup === 'Bank',
+        closePrice: s.currentPrice,
+        marketCap: null,
+        relevanceScore: -1.0,
+      })),
+    };
+  },
 };
 
 // ── Customer API ─────────────────────────────────────────────

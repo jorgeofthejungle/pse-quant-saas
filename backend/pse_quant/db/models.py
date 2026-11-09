@@ -299,7 +299,21 @@ class PaymentEvent(Base):
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)    # payment.paid, payment.failed
     status: Mapped[str] = mapped_column(String(32), default="pending")     # pending, processed, duplicate, failed
     amount_php: Mapped[float] = mapped_column(Float, default=0.0)
+    amount_centavos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="PHP")
     customer_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    @property
+    def effective_amount_php(self) -> float:
+        """Returns normalized amount in PHP, prioritizing fixed-precision centavos if present."""
+        if self.amount_centavos is not None:
+            return round(self.amount_centavos / 100.0, 2)
+        return round(self.amount_php, 2)
+
+    def set_amount(self, php_amount: float) -> None:
+        """Dual-writes to both floating-point PHP and fixed-precision centavos."""
+        self.amount_php = round(php_amount, 2)
+        self.amount_centavos = int(round(php_amount * 100))
     idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     payload_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -392,4 +406,29 @@ class TaskRecord(Base):
     max_retries: Mapped[int] = mapped_column(Integer, default=3)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+
+# ── Zero-Downtime Migration State Ledger ───────────────────────
+
+class SchemaMigrationLedger(Base):
+    """
+    Persistent audit ledger tracking phased Expand-Contract database migrations.
+    Guarantees observable progress, phase advancement gates, and zero-downtime execution.
+    """
+    __tablename__ = "schema_migrations_ledger"
+    __table_args__ = (
+        Index("idx_migrations_name", "migration_name", unique=True),
+        Index("idx_migrations_phase", "phase"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    migration_name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    phase: Mapped[str] = mapped_column(String(32), default="EXPAND", nullable=False)  # EXPAND, DUAL_WRITE, BACKFILL, READ_NEW, CONTRACT, COMPLETED
+    rows_backfilled: Mapped[int] = mapped_column(Integer, default=0)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0)
+    verified_parity: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

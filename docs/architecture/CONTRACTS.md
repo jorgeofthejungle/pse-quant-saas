@@ -517,3 +517,59 @@ data: {"task_id": "task_xyz", "progress_pct": 65, "step": "scrape_quotes", "mess
    - If a slow client fails to read fast enough, the oldest event is discarded (`drop_oldest`) to prevent memory exhaustion on the server.
 3. **Clean Disconnect Recovery**:
    - Detects `request.is_disconnected()` or `asyncio.CancelledError` and immediately purges subscriber queues, preventing zombie connection memory leaks.
+
+
+---
+
+## 14. Zero-Downtime Database Migrations Contract (Expand-Contract Pattern)
+
+### Objective:
+Enable safe, continuous zero-downtime schema migrations for live transactional tables without downtime, lock contention, or binary rounding discrepancies. Demonstrated via the migration of floating-point currency `amount_php` (`Float`) to fixed-precision integer centavos `amount_centavos` (`Integer`) and ISO-4217 code `currency` (`VARCHAR(3) = "PHP"`).
+
+### A. 5-Phase Lifecycle & State Machine:
+```mermaid
+stateDiagram-v2
+    [*] --> EXPAND: Add new columns (nullable/default)
+    EXPAND --> DUAL_WRITE: Model dual-writes old + new
+    DUAL_WRITE --> BACKFILL: Throttled chunked batch update
+    BACKFILL --> READ_NEW: Mathematical parity gate verified (100%)
+    READ_NEW --> CONTRACT: Drop legacy column in post-deploy
+    CONTRACT --> COMPLETED: Schema migration finalized
+    COMPLETED --> [*]
+```
+
+| Phase | Table Schema State | Application Write Path | Application Read Path | Parity Gate Required |
+| :--- | :--- | :--- | :--- | :--- |
+| `EXPAND` | `amount_php`, `amount_centavos` (NULL), `currency` | Legacy `amount_php` only | Legacy `amount_php` only | No |
+| `DUAL_WRITE`| Both columns exist | Writes BOTH `amount_php` & `amount_centavos` | Reads `amount_php` (or `effective_amount_php`) | No |
+| `BACKFILL` | Both columns exist | Writes BOTH | Reads BOTH / Fallback | No |
+| `READ_NEW` | Both columns exist | Writes BOTH | Reads NEW `amount_centavos` (`round(cents/100, 2)`) | **YES (100% Match Gate)** |
+| `CONTRACT` | `amount_centavos`, `currency` (`amount_php` dropped) | Writes NEW `amount_centavos` only | Reads NEW `amount_centavos` only | **YES (Final Pre-Drop Audit)** |
+
+### B. Persistent Schema Migration Ledger Schema (`schema_migrations_ledger`):
+```sql
+CREATE TABLE schema_migrations_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    migration_name VARCHAR(128) UNIQUE NOT NULL,
+    phase VARCHAR(32) NOT NULL DEFAULT 'EXPAND',
+    rows_backfilled INTEGER DEFAULT 0,
+    total_rows INTEGER DEFAULT 0,
+    verified_parity BOOLEAN DEFAULT FALSE,
+    error_message TEXT,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+CREATE UNIQUE INDEX idx_migrations_name ON schema_migrations_ledger(migration_name);
+CREATE INDEX idx_migrations_phase ON schema_migrations_ledger(phase);
+```
+
+### C. Mathematical Parity Audit Contract:
+Before advancing to `READ_NEW` or `CONTRACT`, `MigrationManager.verify_parity()` executes an exhaustive verification comparing every record in the table:
+$$\Delta = | \text{amount\_centavos} - \text{round}(\text{amount\_php} \times 100) |$$
+- **Parity Gate Invariant**: $\Delta == 0$ for 100% of rows.
+- If $\Delta > 0$ or any row has `amount_centavos IS NULL`, the migration manager raises `RuntimeError` and blocks phase progression, preventing silent ledger corruption.
+
+### D. Throttled Chunked Backfill Specifications:
+- `MigrationManager.run_backfill(name, batch_size=100, max_batches=50)`
+- Updates legacy rows in isolated transactions with bounded commit sizes (`LIMIT :batch_size`).
+- Prevents database table locks, WAL explosion, and transaction starvation for live user payment webhooks.

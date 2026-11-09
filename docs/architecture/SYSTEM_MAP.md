@@ -589,3 +589,97 @@ sequenceDiagram
     API->>Hub: unsubscribe("tasks:task_100")
     UI->>UI: Update UI state to completed
 ```
+
+
+---
+
+## Level 12: Zero-Downtime Database Migrations & Expand-Contract Engine
+
+```mermaid
+flowchart TD
+    subgraph ClientAndAdmin["Management & Control Plane"]
+        AdminCLI["Admin Migration Control<br/>POST /admin/migrations/{name}/advance<br/>POST /admin/migrations/{name}/backfill<br/>GET /admin/migrations/{name}/verify"]
+        AdminUI["Admin Dashboard"]
+    end
+
+    subgraph Orchestrator["Migration Engine (pse_quant.migrations)"]
+        Mgr["MigrationManager<br/>- Phase State Machine<br/>- Parity Gate Auditor<br/>- Throttled Batch Runner"]
+        Ledger[("schema_migrations_ledger<br/>Tracks: Phase, Backfilled Rows, Parity Verified")]
+    end
+
+    subgraph ExpandContractPhases["Expand-Contract Lifecycle Stages"]
+        P1["1. EXPAND<br/>DDL: Non-destructive column addition<br/>(amount_centavos INTEGER, currency VARCHAR)"]
+        P2["2. DUAL-WRITE<br/>App writes: amount_php AND amount_centavos<br/>(PaymentEvent.set_amount)"]
+        P3["3. BACKFILL<br/>Throttled worker batches historical NULL rows<br/>(batch_size=100, bounded commits)"]
+        P4["4. READ-NEW<br/>PARITY AUDIT GATE (100% Match Requirement)<br/>App reads: effective_amount_php (centavos)"]
+        P5["5. CONTRACT<br/>Post-deploy DDL drops legacy column<br/>(ALTER TABLE payment_events DROP COLUMN amount_php)"]
+    end
+
+    subgraph LiveTables["Relational Persistence"]
+        LivePaymentEvents[("payment_events<br/>[Zero downtime during all 5 phases]")]
+    end
+
+    AdminCLI --> Mgr
+    AdminUI --> Mgr
+    Mgr <--> Ledger
+
+    Mgr --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> P5
+
+    P1 -.->|"ALTER TABLE ADD COLUMN"| LivePaymentEvents
+    P2 -.->|"Simultaneous writes"| LivePaymentEvents
+    P3 -.->|"UPDATE in batches"| LivePaymentEvents
+    P4 -.->|"Audit select & new read path"| LivePaymentEvents
+    P5 -.->|"ALTER TABLE DROP COLUMN"| LivePaymentEvents
+```
+
+### Zero-Downtime Phased Migration Sequence & Parity Gate
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Admin as System Admin / CI Pipeline
+    participant Mgr as MigrationManager
+    participant Ledger as schema_migrations_ledger
+    participant DB as payment_events Table
+    participant App as Active Application Code
+
+    Note over DB: Current: amount_php (Float) only
+    Admin->>Mgr: advance_phase(m001, target=EXPAND)
+    Mgr->>DB: ALTER TABLE payment_events ADD COLUMN amount_centavos INTEGER
+    Mgr->>DB: ALTER TABLE payment_events ADD COLUMN currency VARCHAR(3) DEFAULT 'PHP'
+    Mgr->>Ledger: Set phase = 'EXPAND'
+    Mgr-->>Admin: Phase EXPAND activated
+
+    Admin->>Mgr: advance_phase(m001, target=DUAL_WRITE)
+    Mgr->>Ledger: Set phase = 'DUAL_WRITE'
+    Note over App: App writes: event.set_amount(1499.75) -> dual writes both columns
+
+    Admin->>Mgr: run_backfill(m001, batch_size=100)
+    loop Until pending rows == 0
+        Mgr->>DB: SELECT id, amount_php WHERE amount_centavos IS NULL LIMIT 100
+        Mgr->>DB: UPDATE amount_centavos = round(amount_php * 100)
+        Mgr->>Ledger: Increment rows_backfilled += 100
+    end
+    Mgr-->>Admin: Backfill complete (0 remaining)
+
+    Admin->>Mgr: advance_phase(m001, target=READ_NEW)
+    Mgr->>DB: Audit 100% parity: amount_centavos == round(amount_php * 100)
+    alt Discrepancies > 0
+        Mgr-->>Admin: ABORT: Parity gate failed!
+    else 100% Parity Clean
+        Mgr->>Ledger: Set phase = 'READ_NEW', verified_parity = true
+        Mgr-->>Admin: Phase READ_NEW activated
+    end
+
+    Note over App: App reads: event.effective_amount_php (from amount_centavos)
+
+    Admin->>Mgr: advance_phase(m001, target=CONTRACT)
+    Mgr->>DB: Re-verify parity check
+    Mgr->>DB: ALTER TABLE payment_events DROP COLUMN amount_php
+    Mgr->>Ledger: Set phase = 'COMPLETED', completed_at = now()
+    Mgr-->>Admin: Migration COMPLETED with 0 downtime
+```

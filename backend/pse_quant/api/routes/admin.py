@@ -309,3 +309,63 @@ def reset_telemetry():
     from pse_quant.telemetry import global_latency_tracker
     global_latency_tracker.reset()
     return {"status": "success", "message": "Latency tracker and trace buffer reset to 0."}
+
+
+
+# ── Zero-Downtime Database Migration Controls ─────────────────
+
+@router.get("/migrations", summary="List all schema migrations and their current phase")
+def list_migrations():
+    """Returns all registered Expand-Contract migrations and their execution phases."""
+    from pse_quant.migrations import migration_manager
+    return {"migrations": migration_manager.list_migrations()}
+
+
+@router.get("/migrations/{name}", summary="Inspect status of a specific migration")
+def get_migration_status(name: str = Path(..., min_length=2, max_length=128)):
+    """Returns current phase, pending backfill counts, and verification status."""
+    from pse_quant.migrations import migration_manager
+    try:
+        return migration_manager.get_status(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/migrations/{name}/advance", summary="Advance a migration to the next phase")
+def advance_migration(
+    name: str = Path(..., min_length=2, max_length=128),
+    target_phase: Optional[str] = Query(None, pattern="^(EXPAND|DUAL_WRITE|BACKFILL|READ_NEW|CONTRACT|COMPLETED)$"),
+):
+    """Advances migration through the 5-phase lifecycle (EXPAND -> DUAL_WRITE -> BACKFILL -> READ_NEW -> CONTRACT)."""
+    from pse_quant.migrations import migration_manager, MigrationPhase
+    try:
+        phase_enum = MigrationPhase(target_phase) if target_phase else None
+        return migration_manager.advance_phase(name, target_phase=phase_enum)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/migrations/{name}/backfill", summary="Execute chunked historical backfill")
+def backfill_migration(
+    name: str = Path(..., min_length=2, max_length=128),
+    batch_size: int = Query(100, ge=1, le=1000),
+    max_batches: int = Query(50, ge=1, le=500),
+):
+    """Executes throttled batch updates for historical records without locking tables."""
+    from pse_quant.migrations import migration_manager
+    try:
+        return migration_manager.run_backfill(name, batch_size=batch_size, max_batches=max_batches)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/migrations/{name}/verify", summary="Verify mathematical parity between old and new columns")
+def verify_migration_parity(name: str = Path(..., min_length=2, max_length=128)):
+    """Audits 100% of rows to guarantee mathematical parity before allowing phase transition."""
+    from pse_quant.migrations import migration_manager
+    try:
+        return migration_manager.verify_parity(name)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

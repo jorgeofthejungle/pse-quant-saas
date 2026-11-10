@@ -38,3 +38,8 @@ data/reports/
 frontend/.next/
 frontend/out/
 node_modules/
+
+# Disaster Recovery & Database Snapshots
+*.bak
+backups/
+test_backups/

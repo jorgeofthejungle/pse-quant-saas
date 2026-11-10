@@ -641,3 +641,55 @@ $$\text{Score} = \text{BM25}(\text{stocks\_fts}, 15.0, 8.0, 2.0, 5.0)$$
   ]
 }
 ```
+
+
+---
+
+## 16. Disaster Recovery, Point-in-Time Database Snapshots & Cold Storage Contract
+
+### Objective:
+Guarantee non-blocking point-in-time database snapshots (RPO < 1 hour, RTO < 30 seconds), mathematical integrity auditing (`PRAGMA integrity_check`), bit-rot tamper detection via cryptographic SHA-256 checksums, automated retention pruning, and atomic live restoration with zero-risk fallback copies.
+
+### A. Non-Blocking Hot Backup Protocol:
+- Live SQLite database snapshots are captured exclusively using the cooperative **SQLite Online Backup API** (`source_conn.backup(dest_conn, pages=250)`).
+- **Zero-Downtime Guarantee**: Reads and writes proceed uninterrupted during snapshot generation without WAL lock contention or torn-page corruptions.
+
+### B. Persistent Snapshot Manifest Schema (`database_snapshots`):
+```sql
+CREATE TABLE database_snapshots (
+    snapshot_id VARCHAR(64) PRIMARY KEY,
+    filename VARCHAR(255) NOT NULL,
+    filepath VARCHAR(512) NOT NULL,
+    raw_bytes INTEGER DEFAULT 0,
+    compressed_bytes INTEGER DEFAULT 0,
+    compression_ratio FLOAT DEFAULT 0.0,
+    sha256_checksum VARCHAR(64) NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    tables_count INTEGER DEFAULT 0,
+    total_rows INTEGER DEFAULT 0,
+    status VARCHAR(32) DEFAULT 'completed', -- completed, restored, corrupt, pruned
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    restored_at TIMESTAMP
+);
+CREATE INDEX idx_snapshots_created ON database_snapshots(created_at);
+CREATE INDEX idx_snapshots_status ON database_snapshots(status);
+```
+
+### C. Integrity Verification & Tamper Detection Invariants:
+1. **Mathematical Structure Audit**:
+   - Every snapshot is audited with `PRAGMA integrity_check;` before serialization and before any restore execution.
+   - Result must be strictly `[('ok',)]`.
+2. **Cryptographic SHA-256 Checksumming**:
+   - Stored compressed archive (`.db.gz`) is digested with SHA-256 upon creation.
+   - Any bit-flip or unauthorized file modification causes immediate audit rejection (`is_valid = False`, `sha256_match = False`).
+
+### D. Atomic Restoration Protocol:
+1. **Dry-Run Mode (`dry_run=true`)**: Decompresses and verifies structural integrity in a detached sandbox without touching the target database.
+2. **Safety Pre-Restore Copy**: Live target database is backed up to `pse_local.db.pre_restore_{timestamp}.bak` before replacement.
+3. **Dual Replacement Mechanics**:
+   - Attempts atomic `os.replace` rename.
+   - On Windows (where open pooled file handles prevent physical unlinking), automatically falls back to streaming restored pages directly into the target database via `restore_src.backup(restore_dst)`.
+
+### E. Retention Pruning Policy:
+- Default policy: Retain $N$ newest snapshots (`max_retained = 10`).
+- Pruned snapshots have their physical files securely deleted from disk, and their status transitioned to `'pruned'` in the manifest ledger to retain historical audit logs.

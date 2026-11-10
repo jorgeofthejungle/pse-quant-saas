@@ -432,3 +432,32 @@ class SchemaMigrationLedger(Base):
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# ── Disaster Recovery & Database Snapshot Manifest Ledger ──────
+
+class DatabaseSnapshotManifest(Base):
+    """
+    Persistent audit ledger tracking verified point-in-time database snapshots.
+    Guarantees observable recovery points, SHA-256 cryptographic verification,
+    and storage compression metrics.
+    """
+    __tablename__ = "database_snapshots"
+    __table_args__ = (
+        Index("idx_snapshots_created", "created_at"),
+        Index("idx_snapshots_status", "status"),
+    )
+
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    filepath: Mapped[str] = mapped_column(String(512), nullable=False)
+    raw_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    compressed_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    compression_ratio: Mapped[float] = mapped_column(Float, default=0.0)
+    sha256_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    tables_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), default="completed")  # completed, restored, corrupt, pruned
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

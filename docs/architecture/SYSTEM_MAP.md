@@ -760,3 +760,88 @@ sequenceDiagram
     API-->>UI: 200 OK + JSON
     UI->>UI: Render autocomplete dropdown with highlighted matched terms
 ```
+
+
+---
+
+## Level 14: Disaster Recovery, Point-in-Time Database Snapshots & Cold Storage Engine
+
+```mermaid
+flowchart TD
+    subgraph ManagementTier["Admin Control & Automation"]
+        AdminCLI["Admin Console / Automated Cron"]
+        AdminAPI["POST /admin/snapshots/create<br/>GET /admin/snapshots<br/>POST /admin/snapshots/{id}/verify<br/>POST /admin/snapshots/{id}/restore<br/>POST /admin/snapshots/prune"]
+    end
+
+    subgraph DREngine["Disaster Recovery Engine (pse_quant.backup)"]
+        SnapshotSvc["SnapshotEngine<br/>- Non-blocking online hot backup (pages=250)<br/>- PRAGMA integrity_check<br/>- Streaming gzip compression<br/>- SHA-256 cryptographic hash<br/>- Atomic restore & safety fallback"]
+        Ledger[("database_snapshots Table<br/>(Manifest: bytes, ratio, sha256, verified, status)")]
+    end
+
+    subgraph LivePersistence["Active Primary Persistence"]
+        LiveDB[("pse_local.db<br/>(Live transactional database)")]
+        SafetyBackup[("pse_local.db.pre_restore.bak<br/>(Pre-restore safety copy)")]
+    end
+
+    subgraph ColdStorage["Encrypted / Compressed Cold Storage"]
+        GzipArchive[("backups/snap_*.db.gz<br/>(Deterministic compressed archives)")]
+    end
+
+    AdminCLI --> AdminAPI
+    AdminAPI --> SnapshotSvc
+    SnapshotSvc <--> Ledger
+
+    SnapshotSvc -->|"1. source_conn.backup(pages=250)"| LiveDB
+    SnapshotSvc -->|"2. PRAGMA integrity_check"| LiveDB
+    SnapshotSvc -->|"3. Stream gzip + SHA-256"| GzipArchive
+    SnapshotSvc -->|"4. Prune aged files"| GzipArchive
+
+    SnapshotSvc -->|"Pre-restore safety duplicate"| SafetyBackup
+    SnapshotSvc -.->|"Atomic replace / Cooperative page restore"| LiveDB
+```
+
+### Hot Snapshot & Disaster Recovery Restore Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Admin as System Administrator / Scheduler
+    participant API as FastAPI Ingress (/admin/snapshots)
+    participant Engine as SnapshotEngine
+    participant LiveDB as Live SQLite Database
+    participant Storage as Compressed Storage (.db.gz)
+    participant Ledger as Manifest Table
+
+    rect rgb(240, 248, 255)
+        Note over Admin,Storage: Phase 1: Online Non-Blocking Hot Snapshot
+        Admin->>API: POST /api/v1/admin/snapshots/create?compress=true
+        API->>Engine: create_snapshot()
+        Engine->>LiveDB: sqlite3.Connection.backup(pages=250)
+        LiveDB-->>Engine: Clean in-memory point-in-time copy
+        Engine->>Engine: PRAGMA integrity_check -> 'ok'
+        Engine->>Storage: Stream gzip (compresslevel=9) & compute SHA-256
+        Engine->>Ledger: Insert DatabaseSnapshotManifest
+        Engine->>Storage: prune_snapshots(max_retained=10)
+        Engine-->>API: 200 OK + snapshot_id
+        API-->>Admin: Snapshot completed & verified
+    end
+
+    rect rgb(255, 245, 245)
+        Note over Admin,LiveDB: Phase 2: Catastrophic Loss & Atomic Recovery
+        Note over LiveDB: Corrupted or Accidental Data Truncation!
+        Admin->>API: POST /api/v1/admin/snapshots/{id}/verify
+        API->>Engine: verify_snapshot(snapshot_id)
+        Engine->>Storage: Read .db.gz & verify SHA-256
+        Engine->>Engine: Decompress & PRAGMA integrity_check
+        Engine-->>API: Verified 100% clean
+        API-->>Admin: Verification PASSED
+
+        Admin->>API: POST /api/v1/admin/snapshots/{id}/restore?confirm=true
+        API->>Engine: restore_snapshot(snapshot_id)
+        Engine->>LiveDB: Create safety copy: pse_local.db.pre_restore.bak
+        Engine->>LiveDB: Decompress & atomically restore pages
+        Engine->>Ledger: Update status = 'restored'
+        Engine-->>API: Restored successfully
+        API-->>Admin: System recovered (RTO < 5 seconds)
+    end
+```

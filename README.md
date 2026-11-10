@@ -1,443 +1,189 @@
-# PSE Quant SaaS — StockPilot PH
-### A Deterministic Multi-Factor Philippine Equity Ranking Engine
+# StockPilot PH — PSE Quant SaaS (v2 Rebuild)
+### Institutional-Grade Philippine Investment Research Platform & Hands-On System Design Workbench
 
-PSE Quant is a locally-run investment research tool for the Philippine Stock Exchange (PSE).
-It automatically ranks every publicly listed PSE company using a unified 4-layer fundamental
-scoring system, generates professional PDF research reports, delivers them to Discord,
-and powers a premium Discord bot (StockPilot PH) — all on a hands-free schedule.
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-242%2F242%20Passing-brightgreen?style=flat-square)](https://github.com/jorgeofthejungle/pse-quant-saas)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16.4.5%20Turbopack-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI%200.115+-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python)](https://python.org/)
+[![SQLite FTS5](https://img.shields.io/badge/Search-SQLite%20FTS5%20BM25-003B57?style=flat-square&logo=sqlite)](https://www.sqlite.org/fts5.html)
+[![System Design](https://img.shields.io/badge/System%20Design%20Labs-14%20Completed-blueviolet?style=flat-square)](#-the-system-design-workbench-14-labs)
 
-The system runs continuously on **Railway** (cloud hosting), with a local admin dashboard
-accessible via the dashboard module.
-
-This is a **research and educational tool**. It does not provide investment advice.
-All reports are for informational purposes only.
+**StockPilot PH** is a full-stack, institutional-grade quantitative investment research platform engineered specifically for the **Philippine Stock Exchange (PSE)**. It combines deterministic multi-factor equity scoring, intrinsic valuation modeling (DDM, DCF, EPS-PE), automated Margin of Safety screening, and real-time event streaming—all serving as a **live System Design Workbench** showcasing high-throughput, fault-tolerant distributed architecture.
 
 ---
 
-## What It Does
+## 🏛️ System Architecture Overview
 
-### 1. Scrapes & Validates Financial Data
-The system connects to **PSE Edge** (the official PSE disclosure platform) and downloads:
-- Stock prices and market capitalisation
-- Annual financial statements (revenue, earnings, equity, debt, cash flow)
-- Dividend history (per-share amounts, ex-dates)
-- Corporate disclosures (quarterly earnings filings, dividend declarations)
-
-After every scrape, an automated **data quality pipeline** runs:
-- **Canary checks** — validates that PSE Edge page structure hasn't changed; alerts admin via DM if patterns break
-- **Unit validation** — requires explicit currency line; cross-validates revenue/share and EPS/NI ratios
-- **Write gate** — blocks dividend yields > 25% (non-REIT) or > 35% (REIT) at scrape time
-- **DPS auto-cleaner** — nulls any dividend yield > 20% (non-REIT) or > 30% (REIT) post-scrape
-- **Full audit** — checks payout ratios, EPS/NI mismatches, revenue anomalies, and implausible figures
-- **Audit log** — issues recorded to the dashboard activity log for review
-- **Scheduler heartbeat** — monitors scheduler health; alerts admin if process stops responding
-
-Data is stored in a SQLite database hosted on Railway. Financial data sourced exclusively from PSE Edge — no third-party data providers.
-
-### 2. Scores Every PSE Stock
-Every stock is scored using the **StockPilot PH Rankings** system — a unified 3-layer
-sector-aware fundamental framework. The scoring is **deterministic** — the same data always produces
-the same score, with no randomness or AI guessing.
-
-**Portfolio-specific weights** (weights vary by investment objective):
-| Layer | Dividend | Value | What It Measures |
-|-------|----------|-------|-----------------|
-| **Health** | 30% | 35% | Financial health today (ROE, NI margin, D/E, FCF, EPS stability) — sector-specific metrics |
-| **Improvement** | 25% | 30% | Fundamentals improving (Revenue, EPS, ROE deltas) — recency-weighted (50/30/20) |
-| **Persistence** | 45% | 35% | Improvement consistent and reliable (direction + magnitude + streak) |
-
-Scoring is **sector-aware**: banks, REITs, holding firms, property, industrial, mining, and services
-each use tailored sub-score metrics and weights. This prevents penalizing stocks for how their
-industry naturally operates (e.g., banks don't need FCF yield; REITs use FFO not earnings).
-
-The PDF shows two portfolio sections: **Dividend** and **Value**. A stock can qualify for both.
-Each stock carries a **data confidence multiplier** (5yr=1.0, 4yr=0.9, 3yr=0.8, 2yr=0.65)
-that reduces the final score for limited data.
-
-**Dynamic score threshold**: Rankings show only stocks scoring above **mean + 0.5 SD** of the
-scored universe, with a hard floor at 45. This threshold recalculates every run, ensuring
-top-tier quality regardless of market conditions.
-
-### 3. Calculates Margin of Safety
-For each stock, the system calculates an **intrinsic value** — a mathematical estimate
-of what the business is worth based on earnings, cash flow, and dividends.
-
-Three models are used:
-- **DDM** (Dividend Discount Model) — for dividend stocks
-- **DCF** (Discounted Cash Flow) — for cash-generating businesses
-- **EPS × PE** — earnings-based fair value estimate
-
-The discount rate is **risk-adjusted** by company size (0-5% premium) and sector
-(0-2% premium), so riskier companies get a more conservative valuation.
-
-The **Margin of Safety** is the percentage discount between the intrinsic value and
-the current market price. A larger margin means more cushion if our estimates are off.
-
-> Intrinsic value is a mathematical reference point — not a price prediction or target.
-
-### 4. Enriches with News Sentiment (Optional)
-For qualifying stocks, the system fetches recent news headlines from Yahoo Finance
-and Philippine business news sources, then uses **Claude Haiku** to classify the tone
-as Positive, Neutral, or Negative.
-
-Sentiment is **informational only** — it does not change any score.
-To activate: add `ANTHROPIC_API_KEY` to `.env`.
-
-### 5. Generates PDF Research Reports
-Each run produces a professional A4 PDF report containing:
-- Cover page with methodology overview
-- Rankings table (all qualifying stocks, ranked by score)
-- Individual detail page for every qualifying stock:
-  - Score breakdown by layer (with weights and plain-English explanations)
-  - Intrinsic value calculation and Margin of Safety
-  - News sentiment summary (if enabled)
-- Full methodology and disclaimer page
-
-Reports are written for **beginner investors**. Every financial term is explained
-in plain language.
-
-### 6. Delivers Reports to Discord
-After generating a PDF, the system sends it to designated Discord channels:
-- `#rankings` — Full StockPilot PH Rankings PDF report (premium members)
-- `#deep-analysis` — Stock of the Week, monthly performance (premium members)
-- `#daily-briefing` — Top 3 grades only, no scores (public)
-- `#alerts` — Price, dividend, and earnings alerts (public)
-
-### 7. Discord Bot — StockPilot PH
-A slash-command Discord bot gives premium members on-demand access to rankings data.
-
-| Command | Access | Description |
-|---------|--------|-------------|
-| `/help` | Free, anywhere | Commands guide and glossary |
-| `/subscribe` | Free, DM only | Pricing and payment link |
-| `/mystatus` | Free, DM only | Subscription tier and expiry |
-| `/top10` | Premium, DM only | Current top 10 with full scores |
-| `/stock <ticker>` | Premium, DM only | Full analysis for any PSE stock |
-| `/watchlist show/add/remove` | Premium, DM only | Personal stock watchlist (max 20) |
-| `/admin list/pending/confirm/extend/status` | Josh only, DM | Member management |
-
-Free users see grade only (A/B/C). Premium members see scores, MoS, IV, and 3-layer breakdown.
-
-### 8. Sends Real-Time Alerts
-The alert engine monitors PSE Edge for:
-- **New dividend declarations** — notifies when a company declares a dividend
-- **New earnings filings** — notifies when a quarterly or annual result is filed
-- **Price triggers** — notifies when a stock drops below its calculated buy price
-
-The system prevents duplicate alerts using atomic database writes.
-
-### 9. Runs on a Schedule
-| Job | When | What |
-|-----|------|------|
-| Disclosure monitor | Every 15 min | PSE Edge feed polling |
-| Alert check | Weekdays 06:30 PHT | Price, dividend, earnings alerts |
-| Scoring | Weekdays 17:30 PHT | Score all stocks, detect rank changes |
-| Report | Weekdays 18:00 PHT | Send PDF if rankings changed |
-| Full scrape | Sunday 22:00 PHT | Refresh all financials from PSE Edge |
-| Stock of the Week | Monday 08:00 PHT | Biggest score mover → #deep-analysis |
-| Weekly Digest DM | Friday 17:00 PHT | Personalised DM to premium members |
-| Expiry reminders | Daily 09:00 PHT | 7d, 1d, 0d before subscription expiry |
-| Monthly reports | 1st of month 09:00 PHT | Dividend calendar + model performance |
-
-### 10. Admin Dashboard
-A browser-based dashboard (Flask) for local admin use:
-- **Overview** — StockPilot PH Rankings, member counts, recent activity
-- **Pipeline** — Trigger scoring runs or alert checks manually; start/stop scheduler
-- **Stock Lookup** — Search any PSE stock by ticker or company name
-- **Members** — Add, edit, extend, and manage Discord member subscriptions
-- **Analytics** — Revenue charts, member growth, plan distribution
-- **Settings** — Webhook status, DB table sizes, configuration
-
-Run locally with `python dashboard/app.py` → `http://localhost:8080`. The scheduler and
-bot run automatically on Railway — the dashboard is for admin management only.
-
----
-
-## How It Works (Technical)
+StockPilot PH is strictly built around a **4-Layer Decoupled Architecture** governed by formal contracts codified in `docs/architecture/GUARDRAILS.md`:
 
 ```
-PSE Edge (web scraper)
-    ↓
-Data Quality Pipeline (DPS auto-clean + full audit)
-    ↓
-SQLite Database (Railway cloud)
-    ↓
-Filter engine (minimum health thresholds)
-    ↓
-Scoring engine (0-100 weighted 3-layer score, sector-aware)
-    ↓
-Margin of Safety calculator (DDM / DCF / EPS×PE)
-    ↓
-News enrichment (Claude Haiku, optional)
-    ↓
-PDF report generator (ReportLab)
-    ↓
-Discord delivery (webhooks + bot)
-    ↓
-Alert engine (dividend, earnings, price triggers)
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  LAYER 1: PRESENTATION TIER (Next.js 16 + React 19 + Tailwind CSS)               │
+│  - Screener, Executive Dashboard, Fact Cards, Watchlists, SSE Live Subscribers   │
+│  - Strict Invariant: Zero quantitative math or valuation modeling in UI          │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │ HTTP / JSON / SSE (Traced via X-Correlation-ID)
+┌────────────────────────────────────────▼─────────────────────────────────────────┐
+│  LAYER 2: API GATEWAY & INGRESS RUNTIME (FastAPI + Asynchronous ASGI)             │
+│  - TracingMiddleware (ContextVar propagation, p50/p95/p99 latency tracking)      │
+│  - TokenBucket Rate Limiting (RFC 6585 429 headers, Tiered Client Quotas)        │
+│  - Webhook Ingestion & Fast-ACK Idempotency (HMAC SHA-256, atomic deduplication) │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │
+┌────────────────────────────────────────▼─────────────────────────────────────────┐
+│  LAYER 3: CORE VALUATION, SEARCH & STREAMING ENGINES                             │
+│  - 3-Layer Fundamental Scoring (Health, Improvement, Persistence)                │
+│  - Intrinsic Value & Margin of Safety Blend (DDM, DCF, EPS-PE with risk premia)  │
+│  - Full-Text Search Engine (FTS5 + Asymmetric Okapi BM25 Ranking)                │
+│  - Real-Time StreamHub (W3C Server-Sent Events with keep-alive pings)            │
+│  - Distributed Leased Worker Swarm (SKIP LOCKED queue, heartbeat lease renewal)  │
+└────────────────────────────────────────┬─────────────────────────────────────────┘
+                                         │
+┌────────────────────────────────────────▼─────────────────────────────────────────┐
+│  LAYER 4: PERSISTENCE, REPLICAS & DISASTER RECOVERY                              │
+│  - DatabasePoolManager (Dual-engine Reader Replica / Writer connection routing)   │
+│  - Zero-Downtime Expand-Contract Database Migration Framework                    │
+│  - Disaster Recovery Engine (Online hot backup, streaming gzip, SHA-256 hash)    │
+│  - CacheEngine L1 (Single-flight mutex locks against stampede / dog-piling)      │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Design Principles
-- **Deterministic** — same data always produces the same output. No AI in the scoring.
-- **Cloud-hosted** — runs continuously on Railway; DB synced via export/import tooling.
-- **Fail-safe** — missing data is `None`, not estimated. Bad data is flagged, not hidden.
-- **Data quality first** — every scrape is automatically audited and cleaned.
-- **Educational** — every report is written to teach, not to sell.
+---
+
+## 🧪 The System Design Workbench (14 Labs)
+
+Every tier of the platform has been systematically built, stress-tested, and verified through **14 progressive System Design Labs**, with **242 / 242 automated backend tests passing**:
+
+| Lab | Architectural Component | Core Pattern / Algorithm | Verification Metric |
+| :---: | :--- | :--- | :--- |
+| **01** | **Golden Dataset Math Lock** | Deterministic Ground Truth Fixtures | Zero-drift floating-point valuation lock |
+| **02** | **Clean Architecture UI Decoupling** | Fallback-Safe Presentation Contracts | AST code scan & 24/24 SSG offline builds |
+| **03** | **Asynchronous Payment Webhooks** | Fast-ACK & Atomic Idempotency Ledger | PayMongo HMAC SHA-256 idempotency |
+| **04** | **Multi-Tier Token Bucket Limiter** | TokenBucket with RFC 6585 Headers | Thread-safe burst handling & client tiers |
+| **05** | **Scraper Resiliency & DLQ** | Circuit Breaker (Hystrix) + Full Jitter | Auto-trip to OPEN & poison-pill isolation |
+| **06** | **Multi-Tier Cache-Aside** | Single-Flight Mutex Locking | Zero cache stampedes across 30 threads |
+| **07** | **Event-Driven Alert Fanout** | Decoupled Pub-Sub & Cooldown Ledger | 4-hour anti-fatigue deduplication |
+| **08** | **Read Replicas & Connection Pools** | Dual-Engine Writer / Reader Routing | Pool queue telemetry & failover safety |
+| **09** | **Distributed Task Queue** | `SKIP LOCKED` Worker Lease Swarm | Heartbeat renewers & zombie task salvage |
+| **10** | **Distributed Tracing & Telemetry** | Ambient `ContextVar` + Sliding Reservoir | End-to-end `X-Correlation-ID` & p95 latency |
+| **11** | **Real-Time SSE Streaming** | W3C EventSource Hub + Drop-Oldest | Sub-50ms push & 5s proxy keep-alive pings |
+| **12** | **Zero-Downtime DB Migrations** | 5-Phase Expand-Contract State Machine | 100% Mathematical Parity Gate before drop |
+| **13** | **Full-Text Search Engine (FTS5)** | Asymmetric Okapi BM25 Ranking | Sub-5ms prefix search & exact ticker pin |
+| **14** | **Disaster Recovery & Snapshots** | Hot SQLite Online Backup + Gzip SHA-256 | RTO < 2s atomic restore & bit-rot audit |
 
 ---
 
-## Scoring Methodology
+## 📈 Quantitative Valuation & Research Methodology
 
-### StockPilot PH Rankings — Sector-Aware 3-Layer Score
+### 1. Deterministic 3-Layer Fundamental Scoring
+StockPilot PH evaluates every publicly listed Philippine company using a sector-aware 0–100 fundamental scoring algorithm. **Zero randomness, zero AI hallucinations—strictly deterministic**:
 
-Each of the 3 layers (Health, Improvement, Persistence) uses **different sub-score metrics
-depending on sector group** (bank, REIT, holding firm, property, industrial, mining, services/general):
+* **Health (30–35%)**: Balance sheet strength, ROE, net margins, debt-to-equity, and free cash flow stability (calibrated to PSE market percentiles). Tailored by sector (e.g. banks use regulatory capital limits; REITs use FFO yields).
+* **Improvement (25–30%)**: Recency-weighted fundamental trajectory over 3 years (50% newest, 30% prior, 20% oldest).
+* **Persistence (35–45%)**: Consistency of growth, direction stability, and multi-year positive streak bonuses.
 
-| Layer | Dividend | Value | What It Measures |
-|-------|----------|-------|-----------------|
-| **Health** | 30% | 35% | ROE, NI margin, D/E, EPS stability, FCF yield, dividend yield — sub-scores chosen per sector |
-| **Improvement** | 25% | 30% | Revenue, EPS, ROE deltas — recency-weighted (50/30/20 newest-first) |
-| **Persistence** | 45% | 35% | Direction consistency + growth magnitude + streak bonus — no sector modification |
+### 2. Tri-Model Intrinsic Valuation & Margin of Safety
+Calculates conservative intrinsic business values using three risk-adjusted valuation models:
+* **Dividend Discount Model (DDM)**: Terminal Gordon Growth Model for dividend champions.
+* **Discounted Cash Flow (DCF)**: 10-year free cash flow projections with terminal multiples.
+* **Normalized EPS × Fair PE Multiple**: P/E multiple model adjusted for sector benchmarks.
 
-**Key principles:**
-- **Sector-aware**: Banks exclude D/E (use 10× limit instead); REITs use FFO-equivalent metrics; holding firms skip FCF requirements
-- **Missing factors handled dynamically**: If a factor is unavailable, weight redistributes to available factors (never forces zeros as penalties)
-- **Data confidence multiplier**: 5yr data=1.0×, 4yr=0.9×, 3yr=0.8×, 2yr=0.65× — multiplied into final score
-- **Dynamic threshold**: mean + 0.5 SD of scored universe; hard floor at 45
+**Discount Rate Structure**: Risk-free rate (PH 10Y T-Bond ~6.5%) + Damodaran Equity Risk Premium (5.0%) + Company Size Premium (0–5%) + Sector Risk Premium (0–2%).
 
-Health thresholds are calibrated from PSE market percentiles (top-10% = excellent, median = average).
-
-**Health filter** (pass/fail before scoring):
-- Minimum 2 years of EPS and Revenue data
-- Normalized EPS must be positive
-- No persistent negative earnings (3-year average)
-- D/E ≤ 3.0× (non-financial), ≤ 10× (bank), or ≤ 4.0× (REIT)
+$$\text{Margin of Safety (MoS)} = \frac{\text{Intrinsic Value} - \text{Market Price}}{\text{Intrinsic Value}} \times 100\%$$
 
 ---
 
-## Setup
+## 🚀 Quickstart Guide
 
-### Requirements
-- **Cloud**: Railway account (hosting + PostgreSQL addon)
-- **Local**: WSL2/Ubuntu or Linux, Python 3.14.x (`python` command)
-- A PSE Edge account (free at edge.pse.com.ph)
-- A Discord server with webhook URLs and a bot token
+### Prerequisites
+* **Python 3.12+**
+* **Node.js 20+** / npm 10+
+* **SQLite 3.35+** (built into Python 3.12 with FTS5 support)
 
-### Installation
+### 1. Backend Setup (FastAPI Gateway & Quant Engine)
 ```bash
-python -m pip install requests beautifulsoup4 pdfplumber reportlab
-python -m pip install apscheduler pydantic pandas pytest
-python -m pip install python-dotenv lxml anthropic flask discord.py
+# Clone the repository
+git clone https://github.com/jorgeofthejungle/pse-quant-saas.git
+cd pse-quant-saas/backend
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate      # Windows
+# source venv/bin/activate # Linux/macOS
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run all 242 automated tests
+python -m pytest tests/ --ignore=tests/test_e2e_live.py -v
+
+# Start development server
+uvicorn pse_quant.api.main:app --reload --port 8000
 ```
+API Documentation will be live at: `http://127.0.0.1:8000/docs`
 
-### Configuration
-Create a `.env` file in the project root:
-```
-# PSE Edge credentials
-PSE_EDGE_EMAIL=your@email.com
-PSE_EDGE_PASSWORD=yourpassword
-
-# Discord webhooks (5 channels)
-DISCORD_WEBHOOK_RANKINGS=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_ALERTS=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_DEEP_ANALYSIS=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_DAILY_BRIEFING=https://discord.com/api/webhooks/...
-DISCORD_WEBHOOK_OPS=https://discord.com/api/webhooks/...  # ops channel (private, pipeline failure alerts)
-
-# Discord bot
-DISCORD_BOT_TOKEN=your_bot_token_here
-ADMIN_DISCORD_ID=your_discord_user_id
-DISCORD_INVITE_URL=https://discord.gg/your_invite
-
-# Optional: instant guild sync during bot testing
-DISCORD_GUILD_ID=your_server_id
-
-# Optional: AI news sentiment
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: PayMongo payment links
-PAYMONGO_SECRET_KEY=sk_test_...
-MONTHLY_PRICE_CENTAVOS=9900
-ANNUAL_PRICE_CENTAVOS=99900
-
-# PostgreSQL (required — Railway provides this via the Postgres addon)
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-
-# Dashboard admin auth
-DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD=changeme
-
-# Optional: data dir for PDFs/caches (default /app/data)
-PSE_DATA_DIR=/app/data
-
-# Railway (set automatically by Railway, override if needed)
-PORT=8080
-```
-
-### Running the System
+### 2. Frontend Setup (Next.js 16 Presentation Tier)
 ```bash
-# Full unified pipeline (score + PDF + Discord)
-python main.py
+cd ../frontend
 
-# Dry run (no Discord publish)
-python main.py --dry-run
+# Install dependencies
+npm install
 
-# Start the scheduler (runs on automatic schedule)
-python scheduler.py
+# Run production build (verifies 24/24 static & dynamic routes)
+npm run build
 
-# Start the Discord bot
-python discord/bot.py
-
-# Open the admin dashboard
-python dashboard/app.py    # then open http://localhost:8080
-
-# Manual pipeline triggers
-python scheduler.py --run-now           # trigger full scoring cycle
-python scheduler.py --run-alerts        # trigger alert check
-python scheduler.py --run-weekly        # trigger full financial scrape
-python scheduler.py --run-score         # scoring phase only (4 PM job)
-python scheduler.py --run-report        # report phase only (6 PM job)
-python scheduler.py --run-sotw          # Stock of the Week
-python scheduler.py --run-digest        # Weekly Digest DMs
-python scheduler.py --run-monthly       # Monthly reports
-python scheduler.py --run-backfill      # Historical data backfill (2018-2023)
-
-# Threshold calibration
-python engine/calibrate_thresholds.py   # Derive thresholds from DB percentiles
-
-# Data quality
-python db/db_data_quality.py            # full audit of all stocks
-python db/db_data_quality.py --ticker DMC  # audit one ticker
+# Start production server
+npm start
+# or development server: npm run dev
 ```
+Investor Dashboard will be live at: `http://localhost:3000`
 
 ---
 
-## File Structure
+## 🔌 Core API Reference
 
-```
-pse-quant-saas/
-├── config.py               Central configuration
-├── main.py                 Pipeline entry point
-├── scheduler.py            Automated job scheduler
-│   ├── scheduler_data.py
-│   └── scheduler_jobs.py
-│
-├── engine/                 Scoring and calculation logic
-│   ├── metrics.py          Financial ratio calculations
-│   ├── filters_v2.py       Health filter (pass/fail, 2yr min)
-│   ├── scorer_v2.py        Unified 3-layer scorer (portfolio-specific weights)
-│   ├── scorer_health.py    Health layer (sector-aware sub-scores)
-│   ├── scorer_improvement.py  Improvement layer (recency-weighted deltas)
-│   ├── scorer_persistence.py  Persistence layer (direction + magnitude + streak)
-│   ├── scorer_utils.py     Blending and normalization utilities
-│   ├── sector_groups.py    Sector classification + layer config lookup
-│   ├── mos.py              Margin of Safety (risk-adjusted discount rate)
-│   ├── validator.py        Pre-scoring data validation + confidence calc
-│   ├── calibrate_thresholds.py  Percentile-based threshold derivation
-│   └── sentiment_engine.py AI news sentiment (Claude Haiku, optional)
-│
-├── scraper/                Data collection from PSE Edge
-│   ├── pse_edge_scraper.py Main scraper facade
-│   ├── pse_session.py      PSE Edge login + session management
-│   ├── pse_lookup.py       Company search + ticker lookup
-│   ├── pse_stock_data.py   Dividend scraper (COMMON-only, deduped)
-│   ├── pse_financial_reports.py  Annual financial statement scraper
-│   ├── scraper_canary.py   Canary checks + admin DM alerts
-│   └── news_fetcher.py     News headline fetcher (Yahoo Finance + PH news)
-│
-├── db/                     SQLite database layer
-│   ├── database.py         Facade (all DB functions exported here)
-│   ├── db_connection.py    SQLite connection + DB_PATH
-│   ├── db_schema.py        Table creation (init_db)
-│   ├── db_financials.py    Financial data CRUD (yield gate at write)
-│   ├── db_data_quality.py  Post-scrape data quality auditor
-│   └── db_maintenance.py   DPS auto-cleaner + stale data pruner
-│
-├── reports/                PDF report generation
-│   └── pdf_generator.py    Report builder (ReportLab)
-│
-├── discord/                Discord delivery and bot
-│   ├── publisher.py        Webhook sender facade
-│   ├── bot.py              Slash command bot (run standalone)
-│   ├── bot_commands.py     /stock, /top10, /help logic
-│   ├── bot_subscribe.py    /subscribe, /mystatus logic
-│   ├── bot_watchlist.py    /watchlist logic
-│   ├── bot_admin.py        /admin commands (Josh only)
-│   ├── discord_dm.py       Direct message via Discord REST API
-│   ├── discord_core.py
-│   ├── discord_reports.py
-│   └── discord_alerts.py
-│
-├── alerts/                 Real-time alerts
-│   ├── alert_engine.py     Dividend, earnings, price alerts
-│   └── disclosure_monitor.py  PSE Edge feed monitor (15-min)
-│
-├── dashboard/              Local admin dashboard (Flask)
-│   ├── app.py              Entry point — runs on localhost:8080
-│   ├── background.py       Pipeline threads + scheduler process control
-│   ├── access_control.py   Member tier checking (check_access)
-│   ├── db_members.py       Member management DB operations
-│   ├── routes_home.py      Overview page
-│   ├── routes_pipeline.py  Pipeline controls + scheduler start/stop
-│   ├── routes_stocks.py    Stock Lookup page + autocomplete API
-│   ├── routes_portal.py    Public portal/landing page
-│   ├── routes_paymongo.py  PayMongo payment link generation
-│   ├── templates/          HTML templates
-│   └── static/             CSS + JS
-│
-└── tests/                  Unit tests for engine components
-```
+### Public & Discovery Endpoints
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/stocks` | List top-ranked equities filtered by portfolio, sector, min score, or min MoS. |
+| `GET` | `/api/v1/stocks/{ticker}` | Deep-dive stock profile with valuation breakdown and 5-year financials. |
+| `GET` | `/api/v1/stocks/bargains` | Screen stocks trading at high positive Margin of Safety discounts. |
+| `GET` | `/api/v1/search?q={query}` | Sub-5ms FTS5 typeahead search across tickers, names, and colloquial aliases. |
+
+### Real-Time Server-Sent Events (SSE)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/stream/tasks/{id}` | Real-time task execution milestones and progress bar updates. |
+| `GET` | `/api/v1/stream/alerts` | Live portfolio Margin of Safety breach and price limit notifications. |
+| `GET` | `/api/v1/stream/market` | Real-time market tick and price movement push feed. |
+
+### Admin & Operations Endpoints (Protected via `X-Admin-Key`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/admin/snapshots/create` | Trigger hot point-in-time database backup (Gzip + SHA-256). |
+| `POST` | `/api/v1/admin/snapshots/{id}/verify` | Execute cryptographic SHA-256 and `PRAGMA integrity_check` audit. |
+| `POST` | `/api/v1/admin/snapshots/{id}/restore` | Atomic live database restoration with automated safety fallback. |
+| `GET` | `/api/v1/admin/migrations` | Inspect status of active 5-phase Expand-Contract schema migrations. |
+| `POST` | `/api/v1/admin/migrations/{name}/advance`| Advance migration phase with 100% mathematical parity verification. |
+| `GET` | `/api/v1/admin/telemetry/live` | Unified live pulse aggregating latency, DB pools, cache ratios, and queue depth. |
+| `POST` | `/api/v1/admin/search/rebuild` | Drop and rebuild SQLite FTS5 inverted search index. |
 
 ---
 
-## Data Quality System
+## 🛡️ Architecture & Integrity Documentation
 
-Every weekly scrape automatically runs a 3-layer quality pipeline:
-
-**Layer 1 — Scraper (prevents bad data entering the DB)**
-- Canary field checks — validates PSE Edge page structure before parsing
-- COMMON shares whitelist — preferred/warrant dividends excluded
-- Ex-date deduplication — amended circulars don't double-count
-- Per-share rate cap — ₱0.001–₱100 per declaration
-- Mandatory unit detection — requires explicit currency line (no silent defaults)
-- Fiscal year mapping — dividends attributed to correct fiscal year, not ex-date year
-
-**Layer 2 — Write gate (catches anything the scraper misses)**
-- Dividend yield > 25% (non-REIT) or > 35% (REIT) at write time → blocked
-- Negative revenue → blocked
-- Unit plausibility cross-validation (revenue/share, EPS/NI mismatch, net margin)
-
-**Layer 3 — Post-scrape audit (auto-runs after every weekly scrape)**
-- `clean_bad_dps()` — nulls DPS where yield > 20%/30%
-- `run_audit()` — checks payout ratios, EPS/NI mismatches, revenue anomalies
-- Results logged to dashboard activity log
-
-**Layer 4 — Staleness prevention**
-- Price older than 7 days → excluded from scoring
-- Financials older than 15 months → excluded from scoring
-- Consecutive scrape failures → escalated to admin; auto-suspended after 7 failures
-- Scheduler heartbeat monitored every 15 minutes
-
-Run manually: `py db/db_data_quality.py`
+For detailed architectural specifications, formulas, and data contracts, refer to the living documentation suite:
+* **[CONTRACTS.md](docs/architecture/CONTRACTS.md)** — Comprehensive specifications for all 16 architectural contracts, schemas, and mathematical bounds.
+* **[SYSTEM_MAP.md](docs/architecture/SYSTEM_MAP.md)** — Detailed Mermaid.js topology diagrams, data flows, and sequence charts for Levels 1 through 14.
+* **[GUARDRAILS.md](docs/architecture/GUARDRAILS.md)** — Core architectural boundaries and mandatory pre-code verification gates.
 
 ---
 
-## Disclaimer
+## ⚖️ Disclaimer
 
-This tool is for **research and educational purposes only**.
-
-- It does not constitute financial advice.
-- It does not recommend buying or selling any security.
-- Past performance of any ranking model does not guarantee future results.
-- Intrinsic value calculations are mathematical estimates based on historical data,
-  not predictions of future stock prices.
-- All investment decisions are your own responsibility.
-- Always do your own due diligence before investing.
-
-Data sourced from PSE Edge (Philippine Stock Exchange).
-Sentiment analysis powered by Claude (Anthropic), for informational purposes only.
+StockPilot PH is an automated financial research, quantitative modeling, and educational software system. It does not constitute investment advice, financial planning, or securities endorsement. All intrinsic valuation calculations and Margin of Safety metrics are mathematical references based on historical filings and public market data.
 
 ---
 
-*StockPilot PH — Built for the Philippine retail investor.*
-*Version: Phase 13 complete (sector-aware 3-layer scoring) | Last updated: 2026-03-24*
+**StockPilot PH** • Engineered with precision for Philippine Equities.

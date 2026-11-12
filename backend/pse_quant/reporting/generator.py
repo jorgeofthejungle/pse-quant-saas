@@ -77,8 +77,11 @@ def _build_fact_card_box(compiled: dict[str, Any], styles: Any) -> KeepTogether:
     roe_str = f"{sn['roe_pct']:.1f}%" if sn.get("roe_pct") is not None else "N/A"
     de_str = f"{sn['debt_to_equity']:.2f}x" if sn.get("debt_to_equity") is not None else "N/A"
     sub_scores = ""
-    if sn.get("health_score") is not None:
-        sub_scores = f" (H:{sn['health_score']:.0f} | I:{sn['improvement_score']:.0f} | P:{sn['persistence_score']:.0f})"
+    h = sn.get("health_score")
+    i = sn.get("improvement_score")
+    p = sn.get("persistence_score")
+    if h is not None and i is not None and p is not None:
+        sub_scores = f" (H:{h:.0f} | I:{i:.0f} | P:{p:.0f})"
 
     header_row = [
         Paragraph(

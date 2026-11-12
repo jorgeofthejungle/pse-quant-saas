@@ -91,7 +91,21 @@ def init_test_database():
                 score=78.5,
                 rank=1,
                 category="Highest Quality",
-                breakdown_json={"ticker": "DMC", "score": 78.5, "sector": "Holding Firms", "mos_pct": 22.3},
+                breakdown_json={
+                    "ticker": "DMC",
+                    "name": "DMCI Holdings",
+                    "score": 78.5,
+                    "health_score": 80.0,
+                    "improvement_score": 75.0,
+                    "persistence_score": 82.0,
+                    "sector": "Holding Firms",
+                    "mos_pct": 22.3,
+                    "margin_of_safety_pct": 22.3,
+                    "roe_pct": 15.0,
+                    "debt_to_equity": 0.5,
+                    "current_price": 11.50,
+                    "intrinsic_value": 14.80,
+                },
             ))
 
         areit_score = session.query(Score).filter_by(ticker="AREIT", portfolio_type="unified").first()
@@ -103,7 +117,21 @@ def init_test_database():
                 score=82.0,
                 rank=2,
                 category="Highest Quality",
-                breakdown_json={"ticker": "AREIT", "score": 82.0, "sector": "Property", "mos_pct": 18.1},
+                breakdown_json={
+                    "ticker": "AREIT",
+                    "name": "AREIT Inc",
+                    "score": 82.0,
+                    "health_score": 85.0,
+                    "improvement_score": 78.0,
+                    "persistence_score": 84.0,
+                    "sector": "Property",
+                    "mos_pct": 18.1,
+                    "margin_of_safety_pct": 18.1,
+                    "roe_pct": 12.0,
+                    "debt_to_equity": 0.6,
+                    "current_price": 34.00,
+                    "intrinsic_value": 41.50,
+                },
             ))
 
         dito_score = session.query(Score).filter_by(ticker="DITO", portfolio_type="unified").first()

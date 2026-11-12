@@ -7,3 +7,5 @@ data/raw
 data/parsed
 data/reports
 claude.md
+node_modules
+.next

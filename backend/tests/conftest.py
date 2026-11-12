@@ -55,6 +55,19 @@ def init_test_database():
             )
             session.add(dito)
 
+        # 4. Seed ALI (Property Blue Chip)
+        ali = session.get(Stock, "ALI")
+        if not ali:
+            ali = Stock(
+                ticker="ALI",
+                name="Ayala Land Inc",
+                sector="Property",
+                is_bank=False,
+                is_reit=False,
+                status="active",
+            )
+            session.add(ali)
+
         # 4. Seed prices
         dmc_price = session.query(Price).filter_by(ticker="DMC").first()
         if not dmc_price:
@@ -67,6 +80,10 @@ def init_test_database():
         dito_price = session.query(Price).filter_by(ticker="DITO").first()
         if not dito_price:
             session.add(Price(ticker="DITO", trade_date=date(2026, 11, 4), close=1.65, market_cap=25000.0))
+
+        ali_price = session.query(Price).filter_by(ticker="ALI").first()
+        if not ali_price:
+            session.add(Price(ticker="ALI", trade_date=date(2026, 11, 4), close=28.00, market_cap=400000.0))
 
         # 5. Seed financials for DITO (negative earnings -> triggers hype trap)
         dito_fin = session.query(Financial).filter_by(ticker="DITO").first()
@@ -157,6 +174,32 @@ def init_test_database():
                     "debt_to_equity": 4.20,
                     "current_price": 1.65,
                     "intrinsic_value": 0.75,
+                },
+            ))
+
+        ali_score = session.query(Score).filter_by(ticker="ALI", portfolio_type="unified").first()
+        if not ali_score:
+            session.add(Score(
+                ticker="ALI",
+                run_date=date(2026, 11, 4),
+                portfolio_type="unified",
+                score=75.0,
+                rank=3,
+                category="Highest Quality",
+                breakdown_json={
+                    "ticker": "ALI",
+                    "name": "Ayala Land Inc",
+                    "score": 75.0,
+                    "health_score": 78.0,
+                    "improvement_score": 72.0,
+                    "persistence_score": 75.0,
+                    "sector": "Property",
+                    "mos_pct": 15.0,
+                    "margin_of_safety_pct": 15.0,
+                    "roe_pct": 11.5,
+                    "debt_to_equity": 0.8,
+                    "current_price": 28.00,
+                    "intrinsic_value": 33.00,
                 },
             ))
 

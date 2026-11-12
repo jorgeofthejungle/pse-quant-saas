@@ -1103,4 +1103,84 @@ sequenceDiagram
     Note over Trader1: Trader 1 receives nothing
 ```
 
+---
+
+## Level 18: Multi-Region Ingress & Dynamic Edge Caching Architecture
+
+```mermaid
+flowchart TD
+    subgraph GlobalUsers["Global Clients & Multi-Region Ingress"]
+        MNL_User["Manila Client (CF-Ray: ...-MNL)"]
+        SIN_User["Singapore Client (CF-Ray: ...-SIN)"]
+        HKG_User["Hong Kong Client (CF-Ray: ...-HKG)"]
+    end
+
+    subgraph CDNEdge["Global CDN Edge POP Tier (Cloudflare / Fastly / Vercel Edge)"]
+        EdgeCache[("Edge Cache Storage<br/>Indexed by URI + Surrogate-Key")]
+        ConditionalCheck{"If-None-Match in Request?"}
+        EdgeHit["304 Not Modified<br/>(Zero Origin Egress)"]
+    end
+
+    subgraph OriginIngress["FastAPI Origin Gateway (StockPilot PH)"]
+        EdgeMW["DynamicEdgeCacheMiddleware<br/>1. Extracts X-Edge-Origin-POP (MNL/SIN/HKG)<br/>2. Resolves RFC 7234 Cache Policy<br/>3. Computes SHA-256 ETag<br/>4. Evaluates If-None-Match"]
+        RouteHandler["FastAPI Route Handlers (/stocks, /rankings)"]
+    end
+
+    subgraph EdgeManager["EdgeCacheManager (pse_quant.edge)"]
+        Telemetry[("Edge Telemetry Ledger<br/>Hits, Misses, 304s, Active POPs")]
+        PurgeEngine["Surrogate Key Purge Dispatcher<br/>POST /admin/cache/purge"]
+    end
+
+    MNL_User --> CDNEdge
+    SIN_User --> CDNEdge
+    HKG_User --> CDNEdge
+
+    CDNEdge --> ConditionalCheck
+    ConditionalCheck -->|Match| EdgeHit
+    ConditionalCheck -->|Miss / Stale| OriginIngress
+
+    OriginIngress --> EdgeMW
+    EdgeMW <--> EdgeManager
+    EdgeMW --> RouteHandler
+    RouteHandler --> EdgeMW
+    EdgeMW -->|200 OK + ETag + Surrogate-Key| CDNEdge
+    EdgeMW -->|304 Not Modified| CDNEdge
+
+    PurgeEngine -.->|"Invalidates surrogate tags across POPs"| EdgeCache
+```
+
+### Conditional ETag & 304 Revalidation Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as Client Browser
+    participant CDN as Cloudflare Edge POP (SIN)
+    participant Origin as FastAPI Origin Gateway
+    participant EdgeMgr as EdgeCacheManager
+
+    Note over Browser,Origin: Step 1: Initial Cold Fetch
+    Browser->>CDN: GET /api/v1/stocks [CF-Ray: ...-SIN]
+    CDN->>Origin: Forward request (Edge Miss)
+    Origin->>Origin: Compute SHA-256 ETag: "4f53a9b1c2d3e4f5"
+    Origin->>EdgeMgr: record_200("SIN")
+    Origin-->>CDN: 200 OK [ETag: "4f53...", Cache-Control: public, s-maxage=300, Surrogate-Key: stocks]
+    CDN-->>Browser: 200 OK [Payload: 278 stocks] (Cached at CDN & Browser)
+
+    Note over Browser,Origin: Step 2: Subsequent Revalidation Fetch
+    Browser->>CDN: GET /api/v1/stocks [If-None-Match: "4f53a9b1c2d3e4f5"]
+    alt CDN Cache Revalidation or Expired Max-Age
+        CDN->>Origin: GET /api/v1/stocks [If-None-Match: "4f53..."]
+        Origin->>Origin: Match: If-None-Match == computed ETag
+        Origin->>EdgeMgr: record_304("SIN")
+        Origin-->>CDN: 304 Not Modified [X-Cache-Status: REVALIDATED, Body: 0 bytes]
+        CDN-->>Browser: 304 Not Modified (Instant render from browser disk cache!)
+    end
+
+    Note over Browser,Origin: Step 3: Targeted Cache Invalidation
+    Origin->>EdgeMgr: POST /admin/cache/purge {tags: ["stock-DMC"]}
+    EdgeMgr-->>CDN: Evict all edge objects tagged with 'stock-DMC'
+```
+
+
 

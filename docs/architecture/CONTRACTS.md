@@ -852,3 +852,36 @@ Provide ultra-low latency, bi-directional, stateful market quote and order-book 
    - When a WebSocket terminates (normal or abrupt), the client's sender task is cancelled and its ID is atomically scrubbed from all ticker subscription index sets.
 
 
+---
+
+## 20. Multi-Region Ingress & Dynamic Edge Caching Headers Contract
+
+### Objective:
+Offload 90%+ of repetitive read volume from origin servers to global CDN POPs (Cloudflare / Fastly / Vercel Edge) while maintaining strict financial consistency. Implements RFC 7234 / RFC 9111 HTTP caching directives, deterministic SHA-256 ETags with sub-millisecond RFC 7232 HTTP 304 Not Modified validation, and surrogate-key invalidation tags.
+
+### A. HTTP Cache Policy Directives by Route:
+| Route Category | Path Semantics | `Cache-Control` Directive | `Surrogate-Key` / `Cache-Tag` |
+| :--- | :--- | :--- | :--- |
+| **Public Quant Reference** | `/api/v1/stocks`, `/api/v1/rankings` | `public, max-age=60, s-maxage=300, stale-while-revalidate=60` | `stocks pse-market` |
+| **Individual Stock Profile** | `/api/v1/stocks/{ticker}` | `public, max-age=60, s-maxage=300, stale-while-revalidate=60` | `stock-{TICKER} stocks pse-market` |
+| **Live Quote Ticks** | General market endpoints | `public, max-age=5, s-maxage=15, stale-while-revalidate=10` | `general` |
+| **Private / Customer Data** | `/api/v1/customers/me`, `/api/v1/watchlist`, `/api/v1/admin/*` | `private, no-cache, no-store, must-revalidate` | *(None)* |
+| **Health Liveness Probes** | `/health`, `/api/v1/health` | `no-store, no-cache, must-revalidate` | *(None)* |
+
+### B. Conditional ETag Protocol & 304 Not Modified Invariants:
+1. **Deterministic Hashing**:
+   - Response payloads on 200 OK GET requests are digested with SHA-256 (`ETag: "<hex[:16]>"`).
+2. **Sub-Millisecond 304 Revalidation**:
+   - When incoming `If-None-Match` matches the computed ETag (or contains `*`), the server returns `HTTP 304 Not Modified` with zero content bytes.
+   - Saves serialization, memory allocation, and egress bandwidth.
+   - Header `X-Cache-Status: REVALIDATED` is injected for telemetry tracking.
+3. **Stream Exemption**:
+   - SSE streams (`/api/v1/stream/*`) and WebSocket connections (`/api/v1/ws/*`) are strictly exempt from response buffering.
+
+### C. Multi-Region POP Ingress Telemetry:
+- Middleware inspects ingress POP headers (`CF-Ray`, `X-Edge-Region`, `CF-IPCountry`) and tags every response:
+  `X-Edge-Origin-POP: MNL | SIN | HKG`
+- Edge cache admin routes (`/api/v1/admin/cache/telemetry`, `/api/v1/admin/cache/purge`) track edge efficiency, 304 hit ratios, and tag invalidation history.
+
+
+

@@ -24,6 +24,7 @@ from pse_quant.api.limiter import limiter, custom_rate_limit_handler
 from pse_quant.api.rate_limiting import TokenBucketMiddleware
 from pse_quant.telemetry import TracingMiddleware
 from pse_quant.chaos import ChaosMiddleware
+from pse_quant.edge import DynamicEdgeCacheMiddleware
 from pse_quant.api.routes import (
     stocks,
     customers,
@@ -42,6 +43,7 @@ from pse_quant.api.routes import (
     chaos,
     feature_flags,
     websocket,
+    edge,
 )
 from pse_quant.feature_flags import feature_flag_engine
 
@@ -96,6 +98,9 @@ app.add_middleware(TracingMiddleware)
 
 # Layer 4: Controlled Chaos Engineering & Fault Injection Middleware
 app.add_middleware(ChaosMiddleware)
+
+# Layer 5: Dynamic Edge Caching & Multi-Region Ingress Middleware
+app.add_middleware(DynamicEdgeCacheMiddleware)
 
 
 # ── Dynamic CORS Configuration ────────────────────────────────
@@ -163,6 +168,7 @@ app.include_router(snapshots.router, prefix="/api/v1")
 app.include_router(chaos.router, prefix="/api/v1")
 app.include_router(feature_flags.router, prefix="/api/v1")
 app.include_router(websocket.router, prefix="/api/v1")
+app.include_router(edge.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

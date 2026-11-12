@@ -41,6 +41,7 @@ from pse_quant.api.routes import (
     snapshots,
     chaos,
     feature_flags,
+    websocket,
 )
 from pse_quant.feature_flags import feature_flag_engine
 
@@ -161,6 +162,7 @@ app.include_router(search.router, prefix="/api/v1")
 app.include_router(snapshots.router, prefix="/api/v1")
 app.include_router(chaos.router, prefix="/api/v1")
 app.include_router(feature_flags.router, prefix="/api/v1")
+app.include_router(websocket.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

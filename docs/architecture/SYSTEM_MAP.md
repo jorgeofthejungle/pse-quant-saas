@@ -1015,3 +1015,92 @@ sequenceDiagram
     end
 ```
 
+---
+
+## Level 17: Bi-Directional WebSocket Market Data Streaming Swarm
+
+```mermaid
+flowchart TD
+    subgraph Clients["Subscribed Clients (Web / Terminal / API)"]
+        Client1["Trader 1 (Subscribed: DMC, AREIT)"]
+        Client2["Trader 2 (Subscribed: ALI)"]
+        Client3["Trader 3 (Subscribed: DMC)"]
+    end
+
+    subgraph FastApiWs["FastAPI WebSocket Gateway (/api/v1/ws/market-data)"]
+        Handshake["Handshake & Connection ID Generation"]
+        CommandRouter["Inbound Action Router<br/>(ping, subscribe, unsubscribe, get_subscriptions)"]
+    end
+
+    subgraph SwarmCore["WebSocketSwarmManager (pse_quant.websocket)"]
+        Reg[("Client Registry (_connections)<br/>Tracks connection_id, websocket, queue")]
+        Index[("Ticker Inverted Index (_ticker_subscribers)<br/>DMC -> {Client1, Client3}<br/>ALI -> {Client2}<br/>AREIT -> {Client1}")]
+        Backpressure["Drop-Oldest Backpressure Engine<br/>QueueFull -> queue.get_nowait() -> queue.put_nowait()"]
+        WorkerPool["Per-Client Sender Loop Tasks<br/>(Dedicated non-blocking asyncio task)"]
+        Telemetry["SwarmTelemetry Tracker<br/>(Active conns, delivered, dropped)"]
+    end
+
+    subgraph Producers["Market Data Ingestion & Broadcast"]
+        ScraperETL["Real-Time PSE Scraper / Worker"]
+        AdminBroadcast["POST /api/v1/admin/ws/broadcast-tick"]
+    end
+
+    Client1 <--> FastApiWs
+    Client2 <--> FastApiWs
+    Client3 <--> FastApiWs
+
+    FastApiWs --> CommandRouter
+    CommandRouter --> Reg
+    CommandRouter --> Index
+
+    Producers --> AdminBroadcast
+    AdminBroadcast --> SwarmCore
+    SwarmCore --> Index
+    Index --> Backpressure
+    Backpressure --> WorkerPool
+    WorkerPool --> Client1
+    WorkerPool --> Client2
+    WorkerPool --> Client3
+```
+
+### WebSocket Subscription & Selective Tick Fan-Out Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Trader1 as Trader 1 (DMC)
+    participant Trader2 as Trader 2 (ALI)
+    participant Gateway as /ws/market-data
+    participant Swarm as WebSocketSwarmManager
+    participant Ingestion as Market Data Ingest / ETL
+
+    Trader1->>Gateway: Connect
+    Gateway->>Swarm: register(ws) -> ws_client_01
+    Swarm-->>Trader1: {"type": "connected", "connection_id": "ws_client_01"}
+
+    Trader2->>Gateway: Connect
+    Gateway->>Swarm: register(ws) -> ws_client_02
+    Swarm-->>Trader2: {"type": "connected", "connection_id": "ws_client_02"}
+
+    Trader1->>Gateway: {"action": "subscribe", "tickers": ["DMC"]}
+    Gateway->>Swarm: subscribe("ws_client_01", ["DMC"])
+    Swarm-->>Trader1: {"type": "ack", "action": "subscribe", "added": ["DMC"]}
+
+    Trader2->>Gateway: {"action": "subscribe", "tickers": ["ALI"]}
+    Gateway->>Swarm: subscribe("ws_client_02", ["ALI"])
+    Swarm-->>Trader2: {"type": "ack", "action": "subscribe", "added": ["ALI"]}
+
+    Note over Ingestion: Executed trade on PSE: DMC @ 13.50 PHP (+1.88%)
+    Ingestion->>Swarm: broadcast_tick(DMC, 13.50)
+    Swarm->>Swarm: Lookup subscribers for "DMC" -> {ws_client_01}
+    Swarm-->>Trader1: {"type": "tick", "data": {"ticker": "DMC", "price": 13.50}}
+    Note over Trader2: Trader 2 receives nothing (Zero noise!)
+
+    Note over Ingestion: Executed trade on PSE: ALI @ 32.20 PHP
+    Ingestion->>Swarm: broadcast_tick(ALI, 32.20)
+    Swarm->>Swarm: Lookup subscribers for "ALI" -> {ws_client_02}
+    Swarm-->>Trader2: {"type": "tick", "data": {"ticker": "ALI", "price": 32.20}}
+    Note over Trader1: Trader 1 receives nothing
+```
+
+

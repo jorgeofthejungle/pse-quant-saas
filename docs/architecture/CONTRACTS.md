@@ -797,3 +797,58 @@ When a client requests a feature flag via the in-memory engine or `require_featu
 5. **Relational Write-Through & Immutable Audit Ledger**:
    - Every creation, percentage tweak, allowlist modification, and kill-switch activation is recorded in `feature_flag_audits` with actor attribution, ISO timestamp, and full diffs.
 
+
+---
+
+## 19. Bi-Directional WebSocket Market Data Streaming Swarm Contract
+
+### Objective:
+Provide ultra-low latency, bi-directional, stateful market quote and order-book streaming. Allows clients to dynamically subscribe and unsubscribe to specific Philippine equities, exchange sub-millisecond heartbeats, and receive tick updates while enforcing strict drop-oldest backpressure protection to prevent memory saturation from slow consumers.
+
+### A. Protocol Handshake & Wire Format:
+- Endpoint: `ws://.../api/v1/ws/market-data`
+- Initial Handshake Frame (Server $\to$ Client):
+  ```json
+  {
+    "type": "connected",
+    "connection_id": "ws_client_3a8f90bc12",
+    "message": "Connected to StockPilot PH WebSocket Market Data Swarm",
+    "server_time": 1731411234.567
+  }
+  ```
+
+### B. Client Command Frame Schema:
+| Action | Payload Example | Server Response Frame |
+| :--- | :--- | :--- |
+| `ping` | `{"action": "ping", "client_time": 1731411234.5}` | `{"type": "pong", "client_time": 1731411234.5, "server_time": 1731411234.568}` |
+| `subscribe` | `{"action": "subscribe", "tickers": ["DMC", "AREIT"]}` | `{"type": "ack", "action": "subscribe", "added": ["DMC", "AREIT"], "subscriptions": ["AREIT", "DMC"]}` |
+| `unsubscribe` | `{"action": "unsubscribe", "tickers": ["DMC"]}` | `{"type": "ack", "action": "unsubscribe", "removed": ["DMC"], "subscriptions": ["AREIT"]}` |
+| `get_subscriptions` | `{"action": "get_subscriptions"}` | `{"type": "subscriptions", "subscriptions": ["AREIT"]}` |
+
+### C. Market Tick Broadcast Schema (`type: "tick"`):
+```json
+{
+  "type": "tick",
+  "data": {
+    "ticker": "DMC",
+    "price": 13.50,
+    "change": 0.25,
+    "change_pct": 1.88,
+    "volume": 250000,
+    "timestamp": "2026-11-12T05:00:00.123456Z"
+  }
+}
+```
+
+### D. Backpressure & Capacity Invariants:
+1. **Isolated Client Sender Loops**:
+   - Each client possesses a dedicated non-blocking `asyncio.Queue(maxsize=100)` drained by a dedicated consumer task.
+2. **Drop-Oldest Backpressure Policy**:
+   - If a slow consumer's outbound queue saturates (`QueueFull`), the oldest queued frame is evicted immediately (`queue.get_nowait()`) to accept the newest price tick.
+   - Prevents head-of-line blocking and keeps consumers synchronized with live market reality without server OOM.
+3. **Hard Connection Ceiling**:
+   - Swarm rejects incoming connections with RFC 6455 status `1008 (Policy Violation)` once `max_connections` (default 1,000) is reached.
+4. **Scrub-on-Disconnect Invariant**:
+   - When a WebSocket terminates (normal or abrupt), the client's sender task is cancelled and its ID is atomically scrubbed from all ticker subscription index sets.
+
+

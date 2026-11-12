@@ -23,8 +23,10 @@ jobs:
       # ── Check for Deployment Provider Configuration ─────────────────────────
       - name: Check Provisioning Status
         id: check_env
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+          if [ -z "$RAILWAY_TOKEN" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
             echo "ℹ️ Railway deployment token is not configured in GitHub Secrets."
             echo "ℹ️ Skipping automated deployment step. The pre-merge CI gatekeeper remains active."
@@ -47,10 +49,11 @@ jobs:
 
       - name: Await Service Convergence & Run Healthcheck
         if: steps.check_env.outputs.configured == 'true'
+        env:
+          PRODUCTION_BACKEND_URL: ${{ secrets.PRODUCTION_BACKEND_URL }}
         run: |
           echo "Checking production health endpoint..."
-          PROD_URL="${{ secrets.PRODUCTION_BACKEND_URL }}"
-          if [ -z "$PROD_URL" ]; then
+          if [ -z "$PRODUCTION_BACKEND_URL" ]; then
             echo "PRODUCTION_BACKEND_URL not provided, skipping HTTP probe."
             exit 0
           fi
@@ -60,8 +63,8 @@ jobs:
           SUCCESS=0
 
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Healthcheck attempt $ATTEMPT of $MAX_ATTEMPTS against $PROD_URL/api/v1/health..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PROD_URL/api/v1/health" || echo "000")
+            echo "Healthcheck attempt $ATTEMPT of $MAX_ATTEMPTS against $PRODUCTION_BACKEND_URL/api/v1/health..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_BACKEND_URL/api/v1/health" || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Healthcheck passed with HTTP 200 OK!"
               SUCCESS=1
@@ -79,11 +82,16 @@ jobs:
 
       # ── Ops Alerting (Activated once DISCORD_WEBHOOK_OPS is added) ───────────
       - name: Notify Discord Ops on Deployment Status
-        if: always() && steps.check_env.outputs.configured == 'true' && secrets.DISCORD_WEBHOOK_OPS != ''
+        if: always() && steps.check_env.outputs.configured == 'true'
         env:
           DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
           STATUS: ${{ job.status }}
         run: |
+          if [ -z "$DISCORD_WEBHOOK_OPS" ]; then
+            echo "DISCORD_WEBHOOK_OPS not configured, skipping alert."
+            exit 0
+          fi
+
           COLOR=65280
           if [ "$STATUS" != "success" ]; then
             COLOR=16711680

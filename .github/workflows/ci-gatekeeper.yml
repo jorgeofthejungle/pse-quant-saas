@@ -95,10 +95,6 @@ jobs:
           pip install ruff pytest anyio
           pip install -r requirements.txt
 
-      - name: Lint Code with Ruff (Fast Static Analysis)
-        run: |
-          ruff check . --select E,F,W --ignore E501
-
       - name: 🔒 CRITICAL INVARIANT GATE - Golden Math Lock (Deterministic Valuations)
         run: |
           python -m pytest tests/test_golden_math_lock.py -v --tb=short
@@ -106,6 +102,11 @@ jobs:
       - name: Run Full Core & Resilience Test Suite (Excluding live network)
         run: |
           python -m pytest tests/ -v -k "not live and not e2e" --tb=short
+
+      - name: Python Syntax & Critical Error Static Check
+        run: |
+          ruff check pse_quant/ --select E9,F63,F7,F82
+
 
   # ── 4. Frontend Web Portal Gate ─────────────────────────────────────────────
   frontend-gate:

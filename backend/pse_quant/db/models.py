@@ -461,3 +461,48 @@ class DatabaseSnapshotManifest(Base):
     status: Mapped[str] = mapped_column(String(32), default="completed")  # completed, restored, corrupt, pruned
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# ── Feature Flags & Progressive Canary Delivery Models ────────
+
+class FeatureFlagRecord(Base):
+    """
+    Persistent relational record for dynamic feature flags.
+    Controls canary rollouts, multi-tier targeting, and emergency kill-switches.
+    """
+    __tablename__ = "feature_flags"
+    __table_args__ = (
+        Index("idx_feature_flags_enabled", "is_enabled"),
+    )
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), default="")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    rollout_percentage: Mapped[int] = mapped_column(Integer, default=0)
+    allowed_tiers_json: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    allowed_entities_json: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    denied_entities_json: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    variants_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class FeatureFlagAuditRecord(Base):
+    """
+    Append-only audit trail capturing all feature flag mutations, percentage updates,
+    and emergency kill-switch activations.
+    """
+    __tablename__ = "feature_flag_audits"
+    __table_args__ = (
+        Index("idx_ff_audit_key", "flag_key"),
+        Index("idx_ff_audit_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    flag_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor: Mapped[str] = mapped_column(String(64), default="system")
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # CREATE, UPDATE, KILL_SWITCH, ENABLE, DELETE
+    details_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+

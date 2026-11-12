@@ -40,7 +40,9 @@ from pse_quant.api.routes import (
     search,
     snapshots,
     chaos,
+    feature_flags,
 )
+from pse_quant.feature_flags import feature_flag_engine
 
 logger = logging.getLogger("pse_quant.api")
 
@@ -50,6 +52,7 @@ async def lifespan(app: FastAPI):
     """Initializes database schema, background worker swarm, and warm resources on startup."""
     logger.info("Initializing database schema...")
     init_db()
+    feature_flag_engine.initialize()
 
     enable_workers = os.getenv("ENABLE_TASK_WORKERS", "false").lower() in ("true", "1", "yes")
     if enable_workers:
@@ -157,6 +160,7 @@ app.include_router(stream.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(snapshots.router, prefix="/api/v1")
 app.include_router(chaos.router, prefix="/api/v1")
+app.include_router(feature_flags.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

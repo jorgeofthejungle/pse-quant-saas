@@ -925,3 +925,93 @@ sequenceDiagram
         Note over MW,Engine: All subsequent calls execute normally with zero latency or error!
     end
 ```
+
+---
+
+## Level 16: Dynamic Feature Flags & Progressive Canary Delivery Engine
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["Client Ingress"]
+        WebUser["Next.js Web Client<br/>(Headers: X-User-ID, X-Client-Tier)"]
+        ExternalAPI["External Consumer<br/>(API Key / Client IP)"]
+    end
+
+    subgraph FastApiIngress["FastAPI Endpoint Ingress Guard"]
+        Dep["require_feature('flag_key')<br/>Extracts entity_id + tier from context<br/>Evaluates against FeatureFlagEngine"]
+        Guard{Flag Enabled?}
+        DarkLaunch["404 Not Found<br/>(Zero-Knowledge Defense)"]
+        FeatureRoute["Route Handler Execution<br/>(200 OK + Payload)"]
+    end
+
+    subgraph FlagEngineCore["FeatureFlagEngine (In-Memory + Thread-Safe)"]
+        Cache[("In-Memory Flag Cache<br/>(Sub-microsecond read, RLock)")]
+        Evaluator["Evaluation Pipeline<br/>1. Master is_enabled<br/>2. Denylist<br/>3. Allowlist<br/>4. Multi-tier Gate<br/>5. Deterministic Sticky Hashing"]
+        Hasher["SHA-256(flag_key:entity_id)[:8] % 100<br/>Deterministic Bucket [0..99]"]
+        KillSwitch["Sub-Millisecond Kill Switch<br/>(is_enabled = False)"]
+    end
+
+    subgraph StorageLayer["Relational Persistence & Audit Trail"]
+        DBFlags[("feature_flags<br/>Relational Table")]
+        DBAudits[("feature_flag_audits<br/>Immutable Audit Log")]
+    end
+
+    subgraph AdminPlane["Admin Control Plane (/api/v1/admin/feature-flags)"]
+        AdminUI["Admin Dashboard"]
+        AdminEndpoints["POST / (Create)<br/>PUT /{key} (Update % / Tiers)<br/>POST /{key}/kill-switch<br/>POST /{key}/evaluate<br/>GET /{key}/audit-trail"]
+    end
+
+    WebUser --> Dep
+    ExternalAPI --> Dep
+    Dep --> Evaluator
+    Evaluator <--> Cache
+    Evaluator --> Hasher
+    Evaluator --> Guard
+    Guard -->|NO| DarkLaunch
+    Guard -->|YES| FeatureRoute
+
+    AdminUI --> AdminEndpoints
+    AdminEndpoints --> FlagEngineCore
+    AdminEndpoints --> KillSwitch
+    FlagEngineCore --> DBFlags
+    FlagEngineCore --> DBAudits
+```
+
+### Deterministic Sticky Canary & Monotonic Rollout Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TraderA as Trader A (user_101, bucket=14)
+    participant TraderB as Trader B (user_909, bucket=78)
+    participant Engine as FeatureFlagEngine
+    participant Admin as System Administrator / PM
+    participant Audit as feature_flag_audits Table
+
+    Note over Engine: Feature 'dark_pool_v2' created with rollout_percentage = 25%
+    
+    TraderA->>Engine: evaluate('dark_pool_v2', entity_id='user_101')
+    Engine->>Engine: SHA256('dark_pool_v2:user_101') -> bucket 14 (< 25)
+    Engine-->>TraderA: enabled: true (PERCENTAGE_CANARY_MATCH)
+
+    TraderB->>Engine: evaluate('dark_pool_v2', entity_id='user_909')
+    Engine->>Engine: SHA256('dark_pool_v2:user_909') -> bucket 78 (>= 25)
+    Engine-->>TraderB: enabled: false (PERCENTAGE_CANARY_MISS)
+
+    Note over Admin: Phase 2 Rollout: Increase to 50%
+    Admin->>Engine: PUT /admin/feature-flags/dark_pool_v2 {rollout_percentage: 50}
+    Engine->>Audit: INSERT INTO feature_flag_audits (UPDATE, old=25, new=50)
+    
+    TraderA->>Engine: evaluate('dark_pool_v2', entity_id='user_101')
+    Engine->>Engine: Bucket 14 is still < 50
+    Engine-->>TraderA: enabled: true (Monotonicity Preserved!)
+
+    opt Emergency Abort
+        Admin->>Engine: POST /admin/feature-flags/dark_pool_v2/kill-switch
+        Engine->>Engine: is_enabled = False (Atomic memory flag)
+        Engine->>Audit: INSERT INTO feature_flag_audits (KILL_SWITCH)
+        TraderA->>Engine: evaluate('dark_pool_v2', entity_id='user_101')
+        Engine-->>TraderA: enabled: false (DISABLED)
+    end
+```
+

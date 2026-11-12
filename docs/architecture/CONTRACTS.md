@@ -746,3 +746,54 @@ Empirically validate system resilience, graceful client degradation, downstream 
   }
 }
 ```
+
+---
+
+## 18. Feature Flags & Progressive Canary Delivery Engine Contract
+
+### Objective:
+Decouple software deployment from feature activation. Enable zero-downtime progressive canary rollouts (0% $\to$ 100%), customer tier targeting (`FREE`, `PRO`, `INSTITUTIONAL`), entity allowlists and denylists, and sub-millisecond emergency kill-switches with an immutable relational audit trail.
+
+### A. Core Evaluation Precedence Order:
+When a client requests a feature flag via the in-memory engine or `require_feature` ingress dependency, rules are evaluated strictly in the following deterministic sequence:
+
+```
+[Incoming Request + Context (entity_id, tier)]
+               │
+               ▼
+      [Flag Exists in Memory?] ─────────► NO  ──► enabled: false, reason: "NOT_FOUND"
+               │ YES
+               ▼
+     [Master Flag is_enabled?] ─────────► NO  ──► enabled: false, reason: "DISABLED" (Kill-Switch)
+               │ YES
+               ▼
+      [entity_id in denylist?] ─────────► YES ──► enabled: false, reason: "DENIED_ENTITY"
+               │ NO
+               ▼
+      [entity_id in allowlist?] ────────► YES ──► enabled: true,  reason: "ALLOWED_ENTITY"
+               │ NO
+               ▼
+     [allowed_tiers configured?] ───────► YES ──► [tier match?] ──► NO ──► enabled: false, reason: "TIER_MISMATCH"
+               │ NO (or matched)
+               ▼
+    [rollout_percentage Evaluation]
+       ├── >= 100% ─────────────────────► enabled: true,  reason: "PERCENTAGE_CANARY_MATCH"
+       ├── <= 0%   ─────────────────────► enabled: false, reason: "PERCENTAGE_CANARY_MISS"
+       └── 1%..99% ─────────────────────► SHA-256(flag_key:entity_id)[:8] % 100 < percentage
+                                            ├── MATCH ──► enabled: true,  reason: "PERCENTAGE_CANARY_MATCH"
+                                            └── MISS  ──► enabled: false, reason: "PERCENTAGE_CANARY_MISS"
+```
+
+### B. Invariant Guarantees:
+1. **Deterministic Monotonicity**:
+   - The hash bucket assignment for any given `(flag_key, entity_id)` pair is immutable.
+   - When rollout percentage increases from $N$ to $M$ ($M > N$), any user enabled at $N$ is guaranteed to remain enabled at $M$.
+2. **Sub-Millisecond Evaluation Latency**:
+   - In-memory read path executes with $p99 < 50\mu\text{s}$, avoiding database I/O bottlenecks on critical request paths.
+3. **Sub-Millisecond Emergency Kill-Switch**:
+   - Toggling `kill_switch(flag_key)` sets `is_enabled = False` under a thread lock immediately, cutting off access across all worker threads without application restart.
+4. **Zero-Knowledge Dark Launching**:
+   - Routes guarded with `require_feature(flag_key)` raise `HTTP 404 Not Found` (rather than 403 Forbidden) when disabled for the caller, preventing external clients from discovering unreleased endpoints.
+5. **Relational Write-Through & Immutable Audit Ledger**:
+   - Every creation, percentage tweak, allowlist modification, and kill-switch activation is recorded in `feature_flag_audits` with actor attribution, ISO timestamp, and full diffs.
+

@@ -42,11 +42,12 @@ class CircuitBreaker:
         name: str = "pse_edge",
         failure_threshold: int = 5,
         cooldown_seconds: float = 30.0,
+        recovery_time: Optional[float] = None,
         half_open_successes: int = 1,
     ):
         self.name = name
         self.failure_threshold = failure_threshold
-        self.cooldown_seconds = cooldown_seconds
+        self.cooldown_seconds = recovery_time if recovery_time is not None else cooldown_seconds
         self.half_open_successes = half_open_successes
 
         self._state = CircuitState.CLOSED
@@ -68,6 +69,18 @@ class CircuitBreaker:
         with self._lock:
             self._check_cooldown_transition(current_time)
             return self._state in (CircuitState.CLOSED, CircuitState.HALF_OPEN)
+
+    def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Executes a callable under circuit breaker protection, fast-failing if OPEN."""
+        if not self.can_execute():
+            raise RuntimeError(f"Circuit breaker is OPEN (name={self.name})")
+        try:
+            result = func(*args, **kwargs)
+            self.record_success()
+            return result
+        except Exception as exc:
+            self.record_failure(reason=str(exc))
+            raise
 
     def _check_cooldown_transition(self, current_time: Optional[float] = None) -> None:
         """Transitions from OPEN to HALF_OPEN if the cooldown period has elapsed."""

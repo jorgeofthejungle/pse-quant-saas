@@ -845,3 +845,83 @@ sequenceDiagram
         API-->>Admin: System recovered (RTO < 5 seconds)
     end
 ```
+
+
+---
+
+## Level 15: Chaos Engineering & Automated Fault Injection Engine
+
+```mermaid
+flowchart TD
+    subgraph ClientAndLoad["Client & Traffic Generation"]
+        WebUser["Next.js Browser Client"]
+        ScraperWorker["Background Scraper Worker"]
+    end
+
+    subgraph FastApiIngress["FastAPI Gateway Ingress"]
+        TracingMW["TracingMiddleware (Starts timer)"]
+        ChaosMW["ChaosMiddleware<br/>- Checks blast-radius exemptions<br/>- Evaluates target path<br/>- Probability dice roll"]
+        StandardRoutes["Route Handlers (/stocks, /payments, /scraper)"]
+    end
+
+    subgraph ChaosCore["Chaos Engine (pse_quant.chaos)"]
+        ChaosEng["ChaosEngine<br/>- Config state (is_active, prob, latency_ms)<br/>- Telemetry tracking (injected vs bypassed)<br/>- Emergency Kill Switch (<1ms abort)"]
+        ExemptList["Blast-Radius Locks<br/>(/health, /api/v1/health, /admin/chaos)"]
+    end
+
+    subgraph AdminControlPlane["Admin Control Plane"]
+        AdminCLI["POST /admin/chaos/enable<br/>POST /admin/chaos/disable<br/>POST /admin/chaos/kill-switch<br/>GET /admin/chaos/status"]
+    end
+
+    WebUser --> TracingMW
+    ScraperWorker --> TracingMW
+    TracingMW --> ChaosMW
+
+    ChaosMW <--> ChaosEng
+    ChaosEng <--> ExemptList
+    AdminControlPlane --> ChaosEng
+
+    ChaosMW -.->|"Fault: LATENCY"| StandardRoutes
+    ChaosMW -.->|"Fault: HTTP_ERROR (503)"| WebUser
+    ChaosMW -.->|"Fault: CIRCUIT_BREAKER_STRESS"| ScraperWorker
+    ChaosMW -->|"Standard Path (No fault)"| StandardRoutes
+```
+
+### Chaos Fault Evaluation & Emergency Kill-Switch Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Web Client / Worker
+    participant MW as ChaosMiddleware
+    participant Engine as ChaosEngine
+    participant Route as FastAPI Route (/stocks)
+    participant Admin as System Administrator
+
+    Client->>MW: GET /api/v1/stocks [X-Correlation-ID: corr_test_1]
+    MW->>Engine: evaluate_request("/api/v1/stocks")
+
+    alt Path in Exempt List (/health, /admin/chaos)
+        Engine-->>MW: Return None (Protected)
+        MW->>Route: Execute immediately
+        Route-->>Client: 200 OK
+    else Chaos Enabled & Probability Hits
+        alt FaultType: LATENCY
+            Engine-->>MW: FaultPlan(LATENCY, 250ms)
+            MW->>MW: await asyncio.sleep(0.25)
+            MW->>Route: Call route after synthetic delay
+            Route-->>MW: 200 OK
+            MW-->>Client: 200 OK + [X-Chaos-Injected: LATENCY] + [X-Chaos-Latency-Ms: 250]
+        else FaultType: HTTP_ERROR
+            Engine-->>MW: FaultPlan(HTTP_ERROR, 503)
+            MW-->>Client: 503 Service Unavailable + [X-Chaos-Injected: HTTP_ERROR]
+        end
+    end
+
+    opt Emergency Kill Switch Engaged
+        Admin->>MW: POST /api/v1/admin/chaos/kill-switch
+        MW->>Engine: emergency_kill_switch()
+        Engine-->>Admin: Aborted immediately (< 1ms)
+        Note over MW,Engine: All subsequent calls execute normally with zero latency or error!
+    end
+```

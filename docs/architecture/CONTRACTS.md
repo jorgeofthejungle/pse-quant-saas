@@ -693,3 +693,56 @@ CREATE INDEX idx_snapshots_status ON database_snapshots(status);
 ### E. Retention Pruning Policy:
 - Default policy: Retain $N$ newest snapshots (`max_retained = 10`).
 - Pruned snapshots have their physical files securely deleted from disk, and their status transitioned to `'pruned'` in the manifest ledger to retain historical audit logs.
+
+
+---
+
+## 17. Chaos Engineering & Automated Fault Injection Contract
+
+### Objective:
+Empirically validate system resilience, graceful client degradation, downstream circuit breaker tripping, and distributed tracing under synthetic turbulent conditions. Inspired by Netflix Chaos Monkey, with zero-delay blast-radius containment and an instant emergency kill-switch.
+
+### A. Controlled Fault Taxonomy:
+| Fault Type (`FaultType`) | Injection Mechanism | Response Header | Observable System Reaction |
+| :--- | :--- | :--- | :--- |
+| `LATENCY` | `await asyncio.sleep(latency_ms / 1000.0)` | `X-Chaos-Injected: LATENCY`<br/>`X-Chaos-Latency-Ms: 250` | `LatencyTracker` registers p95/p99 inflation; client timeouts tested. |
+| `HTTP_ERROR` | Drops request with status 500, 502, 503, 504 | `X-Chaos-Injected: HTTP_ERROR`<br/>`X-Chaos-Status: 503` | Next.js client falls back to local benchmarks without crashing. |
+| `CIRCUIT_BREAKER_STRESS` | Repeated downstream 503 synthetic drops | `X-Chaos-Injected: CIRCUIT_BREAKER_STRESS` | Downstream Circuit Breaker trips from `CLOSED` $\to$ `OPEN` $\to$ fast-fails. |
+| `DB_STARVATION` | Returns 500 `DatabasePoolStarvationFault` | `X-Chaos-Injected: DB_STARVATION` | Verifies graceful error boundaries on connection timeouts. |
+
+### B. Blast-Radius Containment Invariants:
+1. **Permanent Route Exemptions**:
+   - `/health` and `/api/v1/health` are strictly exempt from fault injection. Orchestrators (Kubernetes/Railway) will never fail liveness probes.
+   - `/api/v1/admin/chaos` is strictly exempt. Administrators can always access control and telemetry endpoints.
+2. **Path Scoping**:
+   - Faults only execute if `request.url.path.startswith(config.target_path_prefix)`.
+3. **Probabilistic Roll**:
+   - Evaluated via `random.random() < config.probability`. Bypassed requests proceed with standard execution without headers.
+
+### C. Emergency Kill-Switch Contract:
+- `POST /api/v1/admin/chaos/kill-switch` or `chaos_engine.emergency_kill_switch()`
+- **Sub-Millisecond Abort (< 1ms)**: Atomically toggles `is_active = False` across all worker threads.
+- All subsequent incoming requests immediately revert to 100% normal baseline execution without restart.
+
+### D. Chaos Telemetry Payload (`GET /api/v1/admin/chaos/status`):
+```json
+{
+  "is_active": true,
+  "config": {
+    "is_active": true,
+    "fault_type": "latency",
+    "probability": 0.5,
+    "latency_ms": 300,
+    "http_status_code": 503,
+    "target_path_prefix": "/api/v1/stocks"
+  },
+  "telemetry": {
+    "injected_requests_count": 42,
+    "bypassed_requests_count": 48,
+    "faults_by_type": {
+      "latency": 42
+    },
+    "last_injected_at": "2026-11-12T04:40:00.123456Z"
+  }
+}
+```

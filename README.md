@@ -1,12 +1,12 @@
 # StockPilot PH — PSE Quant SaaS (v2 Rebuild)
 ### Institutional-Grade Philippine Investment Research Platform & Hands-On System Design Workbench
 
-[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-242%2F242%20Passing-brightgreen?style=flat-square)](https://github.com/jorgeofthejungle/pse-quant-saas)
+[![Backend Tests](https://img.shields.io/badge/Backend%20Tests-250%2F250%20Passing-brightgreen?style=flat-square)](https://github.com/jorgeofthejungle/pse-quant-saas)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.4.5%20Turbopack-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI%200.115+-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python)](https://python.org/)
 [![SQLite FTS5](https://img.shields.io/badge/Search-SQLite%20FTS5%20BM25-003B57?style=flat-square&logo=sqlite)](https://www.sqlite.org/fts5.html)
-[![System Design](https://img.shields.io/badge/System%20Design%20Labs-14%20Completed-blueviolet?style=flat-square)](#-the-system-design-workbench-14-labs)
+[![System Design](https://img.shields.io/badge/System%20Design%20Labs-15%20Completed-blueviolet?style=flat-square)](#-the-system-design-workbench-15-labs)
 
 **StockPilot PH** is a full-stack, institutional-grade quantitative investment research platform engineered specifically for the **Philippine Stock Exchange (PSE)**. It combines deterministic multi-factor equity scoring, intrinsic valuation modeling (DDM, DCF, EPS-PE), automated Margin of Safety screening, and real-time event streaming—all serving as a **live System Design Workbench** showcasing high-throughput, fault-tolerant distributed architecture.
 
@@ -26,6 +26,7 @@ StockPilot PH is strictly built around a **4-Layer Decoupled Architecture** gove
 ┌────────────────────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 2: API GATEWAY & INGRESS RUNTIME (FastAPI + Asynchronous ASGI)             │
 │  - TracingMiddleware (ContextVar propagation, p50/p95/p99 latency tracking)      │
+│  - ChaosMiddleware (Controlled latency injection, 503 drops, <1ms kill-switch)   │
 │  - TokenBucket Rate Limiting (RFC 6585 429 headers, Tiered Client Quotas)        │
 │  - Webhook Ingestion & Fast-ACK Idempotency (HMAC SHA-256, atomic deduplication) │
 └────────────────────────────────────────┬─────────────────────────────────────────┘
@@ -50,9 +51,9 @@ StockPilot PH is strictly built around a **4-Layer Decoupled Architecture** gove
 
 ---
 
-## 🧪 The System Design Workbench (14 Labs)
+## 🧪 The System Design Workbench (15 Labs)
 
-Every tier of the platform has been systematically built, stress-tested, and verified through **14 progressive System Design Labs**, with **242 / 242 automated backend tests passing**:
+Every tier of the platform has been systematically built, stress-tested, and verified through **15 progressive System Design Labs**, with **250 / 250 automated backend tests passing**:
 
 | Lab | Architectural Component | Core Pattern / Algorithm | Verification Metric |
 | :---: | :--- | :--- | :--- |
@@ -70,6 +71,7 @@ Every tier of the platform has been systematically built, stress-tested, and ver
 | **12** | **Zero-Downtime DB Migrations** | 5-Phase Expand-Contract State Machine | 100% Mathematical Parity Gate before drop |
 | **13** | **Full-Text Search Engine (FTS5)** | Asymmetric Okapi BM25 Ranking | Sub-5ms prefix search & exact ticker pin |
 | **14** | **Disaster Recovery & Snapshots** | Hot SQLite Online Backup + Gzip SHA-256 | RTO < 2s atomic restore & bit-rot audit |
+| **15** | **Chaos Engineering & Fault Injection** | Controlled Latency & Error Injection | Sub-1ms Emergency Kill-Switch & 503 drops |
 
 ---
 

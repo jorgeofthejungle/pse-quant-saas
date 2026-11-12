@@ -23,6 +23,7 @@ from pse_quant.db.connection import init_db
 from pse_quant.api.limiter import limiter, custom_rate_limit_handler
 from pse_quant.api.rate_limiting import TokenBucketMiddleware
 from pse_quant.telemetry import TracingMiddleware
+from pse_quant.chaos import ChaosMiddleware
 from pse_quant.api.routes import (
     stocks,
     customers,
@@ -38,6 +39,7 @@ from pse_quant.api.routes import (
     stream,
     search,
     snapshots,
+    chaos,
 )
 
 logger = logging.getLogger("pse_quant.api")
@@ -87,6 +89,9 @@ app.add_middleware(TokenBucketMiddleware, enabled=_token_bucket_enabled)
 
 # Layer 3: Distributed Tracing & Correlation ID Context Propagation
 app.add_middleware(TracingMiddleware)
+
+# Layer 4: Controlled Chaos Engineering & Fault Injection Middleware
+app.add_middleware(ChaosMiddleware)
 
 
 # ── Dynamic CORS Configuration ────────────────────────────────
@@ -151,6 +156,7 @@ app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(stream.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(snapshots.router, prefix="/api/v1")
+app.include_router(chaos.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

@@ -1,0 +1,111 @@
+name: CD Production Deployment & Health Verification
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: cd-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-production:
+    name: Deploy Production & Verify Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Check for Deployment Provider Configuration ─────────────────────────
+      - name: Check Provisioning Status
+        id: check_env
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Railway deployment token is not configured in GitHub Secrets."
+            echo "ℹ️ Skipping automated deployment step. The pre-merge CI gatekeeper remains active."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Railway Deployment (Activated once RAILWAY_TOKEN is added) ──────────
+      - name: Install Railway CLI
+        if: steps.check_env.outputs.configured == 'true'
+        run: npm install -g @railway/cli
+
+      - name: Trigger Railway Production Deployment
+        if: steps.check_env.outputs.configured == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Deploying commit ${{ github.sha }} to Railway..."
+          railway up --detach --service backend
+
+      - name: Await Service Convergence & Run Healthcheck
+        if: steps.check_env.outputs.configured == 'true'
+        run: |
+          echo "Checking production health endpoint..."
+          PROD_URL="${{ secrets.PRODUCTION_BACKEND_URL }}"
+          if [ -z "$PROD_URL" ]; then
+            echo "PRODUCTION_BACKEND_URL not provided, skipping HTTP probe."
+            exit 0
+          fi
+
+          MAX_ATTEMPTS=12
+          ATTEMPT=1
+          SUCCESS=0
+
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Healthcheck attempt $ATTEMPT of $MAX_ATTEMPTS against $PROD_URL/api/v1/health..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PROD_URL/api/v1/health" || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Healthcheck passed with HTTP 200 OK!"
+              SUCCESS=1
+              break
+            fi
+            echo "Healthcheck returned HTTP $HTTP_CODE. Retrying in 10 seconds..."
+            sleep 10
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "❌ Healthcheck failed: Service did not return HTTP 200 within timeout."
+            exit 1
+          fi
+
+      # ── Ops Alerting (Activated once DISCORD_WEBHOOK_OPS is added) ───────────
+      - name: Notify Discord Ops on Deployment Status
+        if: always() && steps.check_env.outputs.configured == 'true' && secrets.DISCORD_WEBHOOK_OPS != ''
+        env:
+          DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
+          STATUS: ${{ job.status }}
+        run: |
+          COLOR=65280
+          if [ "$STATUS" != "success" ]; then
+            COLOR=16711680
+          fi
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "embeds": [
+              {
+                "title": "🚀 Production Deployment: $STATUS",
+                "color": $COLOR,
+                "fields": [
+                  {"name": "Commit", "value": "\`${{ github.sha }}\`", "inline": true},
+                  {"name": "Branch", "value": "${{ github.ref_name }}", "inline": true},
+                  {"name": "Author", "value": "${{ github.actor }}", "inline": true},
+                  {"name": "Commit Message", "value": "${{ github.event.head_commit.message }}"}
+                ],
+                "footer": {"text": "StockPilot PH CD Pipeline • GitHub Actions"}
+              }
+            ]
+          }
+          EOF
+          )
+
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK_OPS" || true
